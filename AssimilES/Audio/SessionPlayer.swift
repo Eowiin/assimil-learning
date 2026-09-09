@@ -14,8 +14,9 @@ final class SessionPlayer: ObservableObject {
     @Published private(set) var steps: [SessionStep] = []
     @Published private(set) var index = 0
     @Published private(set) var isPlaying = false
-    @Published private(set) var lesson: Lesson?
-    @Published private(set) var mode: StudyMode = .passive
+    /// Ce qui est joué. Le lecteur ne connaît plus « la leçon en cours » : une
+    /// séance peut en traverser plusieurs, et c'est l'étape qui porte la sienne.
+    @Published private(set) var request: SessionRequest?
     /// Temps réellement écouté, pour alimenter la série de jours.
     @Published private(set) var playedSeconds: Double = 0
 
@@ -29,6 +30,22 @@ final class SessionPlayer: ObservableObject {
     /// Numéro de la phrase en cours, y compris pendant la pause qui la suit :
     /// l'affichage doit continuer de la surligner pendant qu'Ethan la répète.
     var currentSentenceNumber: Int? { currentStep?.sentenceNumber }
+
+    /// Leçon de l'étape en cours — pas celle de la séance, qui peut en couvrir
+    /// plusieurs (la vague en enchaîne deux, la révision autant que nécessaire).
+    var currentLessonNumber: Int? { currentStep?.lessonNumber }
+
+    /// L'étape « visible » : pendant une pause, la phrase que l'on est en train
+    /// de répéter. C'est elle que l'écran surligne et que le drapeau marque.
+    var currentNavigableIndex: Int? {
+        guard steps.indices.contains(index) else { return nil }
+        let i = startOfCurrentSentence()
+        return steps[i].isNavigable ? i : nil
+    }
+
+    var currentNavigableStep: SessionStep? {
+        currentNavigableIndex.map { steps[$0] }
+    }
 
     var onStepChanged: ((SessionStep?) -> Void)?
 
@@ -52,11 +69,13 @@ final class SessionPlayer: ObservableObject {
 
     // MARK: - Cycle de vie d'une séance
 
-    func start(mode: StudyMode, lesson: Lesson, settings: SessionSettings, from stepIndex: Int = 0) {
+    /// Les étapes sont fournies déjà construites : c'est l'appelant qui sait de
+    /// quoi la séance est faite (une leçon, deux, ou une file de phrases
+    /// marquées), et le lecteur n'a plus qu'à les enchaîner.
+    func start(_ request: SessionRequest, steps: [SessionStep], from stepIndex: Int = 0) {
         stop()
-        self.mode = mode
-        self.lesson = lesson
-        self.steps = SessionBuilder.build(mode: mode, lesson: lesson, settings: settings)
+        self.request = request
+        self.steps = steps
         self.index = min(max(0, stepIndex), max(0, steps.count - 1))
         self.playedSeconds = 0
         guard !steps.isEmpty else { return }
@@ -84,7 +103,7 @@ final class SessionPlayer: ObservableObject {
         cancelScheduled()
         steps = []
         index = 0
-        lesson = nil
+        request = nil
     }
 
     // MARK: - Navigation

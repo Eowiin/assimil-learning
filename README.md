@@ -265,6 +265,34 @@ seul », complet — sur `hasText` et `hasTranslation`. Ce n'est plus une questi
 mode disponible, mais de ce que l'écran de lecture peut montrer : sans `fr`, il n'y
 a pas de traduction à révéler sous la phrase.
 
+## La révision des phrases marquées
+
+Pendant l'écoute, le drapeau met une phrase de côté. Ces phrases reviennent
+d'elles-mêmes : l'onglet **À revoir** propose chaque jour celles qui sont dues, et
+l'écran du jour les annonce à côté de la séance.
+
+Une phrase revient à intervalle croissant — **1, 3, 7, 21 puis 60 jours**. Elle ne
+sort jamais de la file toute seule : c'est le **drapeau**, le même qu'en écoute,
+qui l'en retire quand elle est acquise, et qui enchaîne alors sur la suivante.
+
+**Pas de notation.** Un « facile / difficile » après chaque phrase serait plus fin,
+mais il demanderait l'œil sur l'écran et un appui à chaque pause — exactement ce
+dont l'app affranchit. Un seul geste, déjà connu, qui ne sert qu'à dire « celle-là,
+c'est bon ». La séance de révision se conduit sinon comme une leçon, y compris
+depuis l'écran verrouillé.
+
+Deux points de calcul, dans `ReviewSchedule` :
+
+- L'échéance est calée sur le **début de journée**. Une phrase revue le soir revient
+  le lendemain, pas le lendemain soir : la séance est quotidienne, l'heure n'a pas à
+  décider de ce qui est dû.
+- La suite **s'arrête à 60 jours**. Une phrase encore marquée après cinq reprises
+  mérite de repasser de temps en temps, pas de disparaître.
+
+Une phrase compte comme revue dès qu'elle est **jouée** : c'est de l'avoir
+réentendue et redite qui la révise. La rejouer dans la même séance ne repousse pas
+son échéance une seconde fois.
+
 ## Construire l'app
 
 ```bash
@@ -288,7 +316,18 @@ Pour des mises à jour sans fil sur la durée, passer par TestFlight.
 Le projet utilise les *synchronized file groups* de Xcode 16+ : tout fichier
 ajouté sous `AssimilES/` est pris en compte sans toucher au projet.
 
-## Deux décisions non évidentes
+## Trois décisions non évidentes
+
+**C'est l'étape qui porte sa leçon, jamais la séance.** Une séance n'est pas « une
+leçon dans un mode » : la vague en enchaîne deux (la leçon du jour puis celle d'il y
+a 49 jours), et la file de révision en traverse autant qu'il y a de phrases
+marquées. Tant que l'écran de lecture tirait son texte d'une leçon supposée unique,
+il affichait la mauvaise — pendant l'exercice il surlignait les phrases 1 à 5 du
+*dialogue*, et le drapeau enregistrait leur clé. `SessionStep` porte donc son
+`lessonNumber` et son `isExercise`, y compris sur les pauses, et l'écran comme
+l'écran verrouillé se pilotent dessus. C'était le prérequis de la révision, qui
+serait sinon restée enfermée dans une leçon.
+
 
 **Les pauses sont du silence diffusé, pas un minuteur.** iOS suspend une app en
 arrière-plan dès que sa session audio cesse de produire du son. Une pause de

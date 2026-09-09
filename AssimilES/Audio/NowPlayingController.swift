@@ -44,30 +44,35 @@ final class NowPlayingController {
     }
 
     func refreshNowPlaying() {
-        guard let lesson = player.lesson else {
+        guard let request = player.request, let step = player.currentStep else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
         }
 
+        // La leçon de l'étape, pas celle de la séance : la vague en enchaîne
+        // deux et la révision en traverse autant qu'il y a de phrases marquées.
+        // Prise sur la séance, la ligne de l'écran verrouillé annoncerait la
+        // mauvaise leçon la moitié du temps.
+        let lessonNumber = step.lessonNumber
+
         var info: [String: Any] = [
-            MPMediaItemPropertyAlbumTitle: "Leçon \(lesson.number)",
-            MPMediaItemPropertyArtist: player.mode.title,
+            MPMediaItemPropertyAlbumTitle: "Leçon \(lessonNumber)",
+            MPMediaItemPropertyArtist: request.isReview ? request.title : request.subtitle,
             MPNowPlayingInfoPropertyPlaybackRate: player.isPlaying ? Double(player.rate) : 0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]
 
-        let step = player.currentStep
-        if let n = step?.sentenceNumber {
+        if let n = step.sentenceNumber {
             // Le texte de la phrase quand il est saisi, son numéro sinon : dans
             // les deux cas l'écran verrouillé dit où on en est.
-            let spanish = LessonTextStore.text(for: lesson.number)?.sentence(n)?.es
-            info[MPMediaItemPropertyTitle] = spanish ?? "Phrase \(n)"
+            let spanish = step.sentenceText?.es
+            info[MPMediaItemPropertyTitle] = spanish ?? (step.isExercise ? "Exercice \(n)" : "Phrase \(n)")
         } else {
-            info[MPMediaItemPropertyTitle] = LessonTextStore.text(for: lesson.number)?.titleES
-                ?? "Leçon \(lesson.number)"
+            info[MPMediaItemPropertyTitle] = LessonTextStore.text(for: lessonNumber)?.titleES
+                ?? "Leçon \(lessonNumber)"
         }
 
-        info[MPMediaItemPropertyPlaybackDuration] = step?.duration ?? 0
+        info[MPMediaItemPropertyPlaybackDuration] = step.duration
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 0
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info

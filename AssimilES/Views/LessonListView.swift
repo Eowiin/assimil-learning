@@ -12,7 +12,7 @@ struct LessonListView: View {
         NavigationStack {
             List(Manifest.shared.lessons) { lesson in
                 NavigationLink {
-                    PlayerView(lesson: lesson, mode: .shadowing)
+                    PlayerView(request: .lesson(number: lesson.number, mode: .shadowing))
                 } label: {
                     LessonRow(lesson: lesson, isCompleted: completed.contains(lesson.number))
                 }

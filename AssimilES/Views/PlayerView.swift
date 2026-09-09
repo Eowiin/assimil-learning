@@ -2,11 +2,15 @@ import SwiftUI
 import SwiftData
 import UIKit
 
-/// L'écran de lecture : le texte de la leçon, la phrase en cours surlignée, et
+/// L'écran de lecture : le texte de la séance, la phrase en cours surlignée, et
 /// des commandes assez grosses pour être atteintes au pouce en marchant.
+///
+/// Tout ce qui s'affiche est dérivé des **étapes** de la séance, jamais d'une
+/// leçon supposée unique : c'est ce qui permet au même écran de suivre une leçon,
+/// la vague (deux leçons) ou la file de révision (autant de leçons qu'il y a de
+/// phrases marquées).
 struct PlayerView: View {
-    let lesson: Lesson
-    let mode: StudyMode
+    let request: SessionRequest
 
     @EnvironmentObject private var player: SessionPlayer
     @EnvironmentObject private var settings: AppSettings
@@ -16,9 +20,12 @@ struct PlayerView: View {
     @Query private var progress: [LessonProgress]
 
     @State private var showTranslation = false
+    /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
+    /// ne doit pas repousser son échéance une seconde fois.
+    @State private var reviewed: Set<UUID> = []
 
-    private var text: LessonText? { LessonTextStore.text(for: lesson.number) }
     private var markedKeys: Set<String> { Set(marks.map(\.key)) }
+    private var isCurrentSession: Bool { player.request == request }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,7 +33,7 @@ struct PlayerView: View {
             Divider()
             controls
         }
-        .navigationTitle("Leçon \(lesson.number)")
+        .navigationTitle(request.title)
         .navigationBarTitleDisplayMode(.inline)
         // Pendant une séance, la barre d'onglets ne sert à rien et prend la
         // hauteur dont le texte a besoin.
@@ -39,7 +46,6 @@ struct PlayerView: View {
                     Label("Traduction",
                           systemImage: showTranslation ? "eye" : "eye.slash")
                 }
-                .disabled(text == nil)
             }
         }
         .onAppear {
@@ -54,6 +60,47 @@ struct PlayerView: View {
             recordSession()
             player.pause()
         }
+        .onChange(of: player.index) {
+            recordReviewIfNeeded()
+        }
+    }
+
+    // MARK: - Lignes de la séance
+
+    /// Une ligne de l'écran, adossée à une étape navigable.
+    private struct TranscriptRow: Identifiable {
+        let stepIndex: Int
+        let step: SessionStep
+        /// Vrai quand cette ligne inaugure une leçon différente de la précédente.
+        let startsNewLesson: Bool
+
+        var id: Int { stepIndex }
+    }
+
+    private var rows: [TranscriptRow] {
+        guard isCurrentSession else { return [] }
+        var result: [TranscriptRow] = []
+        var previousLesson: Int?
+        for (index, step) in player.steps.enumerated() {
+            // L'annonce ne fait que dire le numéro de la leçon : rien à lire.
+            guard step.isNavigable, step.kind != .announcement else { continue }
+            result.append(TranscriptRow(stepIndex: index,
+                                        step: step,
+                                        startsNewLesson: step.lessonNumber != previousLesson))
+            previousLesson = step.lessonNumber
+        }
+        return result
+    }
+
+    /// Les phrases seules, pour situer où on en est.
+    private var sentenceRows: [TranscriptRow] {
+        rows.filter { $0.step.sentenceNumber != nil && $0.step.kind != .exerciseIntro }
+    }
+
+    /// Une séance à cheval sur plusieurs leçons doit dire laquelle on entend.
+    private var spansSeveralLessons: Bool {
+        guard isCurrentSession else { return false }
+        return Set(player.steps.map(\.lessonNumber)).count > 1
     }
 
     // MARK: - Texte
@@ -62,23 +109,23 @@ struct PlayerView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    if let title = text?.titleES {
-                        Text(title)
-                            .font(.title3.weight(.semibold))
-                            .padding(.bottom, 4)
+                    ForEach(rows) { row in
+                        if spansSeveralLessons, row.startsNewLesson {
+                            Text("Leçon \(row.step.lessonNumber)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 10)
+                        }
+                        rowView(row)
+                            .id(row.stepIndex)
+                            .onTapGesture { player.seek(to: row.stepIndex) }
                     }
 
-                    ForEach(lesson.dialogue, id: \.file) { clip in
-                        SentenceRow(clip: clip,
-                                    text: clip.n.flatMap { text?.sentence($0) },
-                                    isCurrent: isCurrent(clip),
-                                    showTranslation: showTranslation,
-                                    isMarked: isMarked(clip))
-                        .id(clip.file)
-                        .onTapGesture { jump(to: clip) }
-                    }
-
-                    if text == nil {
+                    if rows.isEmpty {
+                        Text(emptyMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if missingTextNotice {
                         Text("Texte non encore saisi pour cette leçon — l'audio fonctionne normalement.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -88,12 +135,51 @@ struct PlayerView: View {
                 .padding(20)
             }
             .onChange(of: player.index) {
-                guard let file = currentClipFile else { return }
+                guard let target = player.currentNavigableIndex else { return }
                 withAnimation(.easeInOut(duration: 0.25)) {
-                    proxy.scrollTo(file, anchor: .center)
+                    proxy.scrollTo(target, anchor: .center)
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: TranscriptRow) -> some View {
+        let isCurrent = player.currentNavigableIndex == row.stepIndex
+
+        switch row.step.kind {
+        case .title:
+            Text(LessonTextStore.text(for: row.step.lessonNumber)?.titleES
+                 ?? "Leçon \(row.step.lessonNumber)")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(isCurrent ? Color.accentColor : .primary)
+                .padding(.bottom, 4)
+
+        case .exerciseIntro:
+            Text("Exercice")
+                .font(.headline)
+                .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
+                .padding(.top, 6)
+
+        default:
+            SentenceRow(step: row.step,
+                        isCurrent: isCurrent,
+                        showTranslation: showTranslation,
+                        isMarked: row.step.markKey.map(markedKeys.contains) ?? false)
+        }
+    }
+
+    private var emptyMessage: String {
+        request.isReview
+            ? "Aucune phrase à revoir aujourd'hui."
+            : "Cette séance ne contient aucune étape."
+    }
+
+    /// Seulement pour une leçon : en révision, les phrases viennent de partout et
+    /// une note par leçon manquante serait du bruit.
+    private var missingTextNotice: Bool {
+        guard case .lesson(let number, _) = request else { return false }
+        return !LessonTextStore.hasText(for: number)
     }
 
     // MARK: - Commandes
@@ -150,71 +236,96 @@ struct PlayerView: View {
 
     // MARK: - État
 
-    private var currentClipFile: String? {
-        guard let n = player.currentSentenceNumber else { return nil }
-        return lesson.dialogue.first { $0.n == n }?.file
-    }
-
-    private func isCurrent(_ clip: AudioClip) -> Bool {
-        player.lesson?.number == lesson.number && player.currentSentenceNumber == clip.n
-    }
-
     private var positionLabel: String {
-        guard let n = player.currentSentenceNumber else { return mode.title }
-        return "Phrase \(n) sur \(lesson.dialogue.count)"
+        guard isCurrentSession, let current = player.currentNavigableIndex else {
+            return request.subtitle
+        }
+        let sentences = sentenceRows
+        guard let rank = sentences.firstIndex(where: { $0.stepIndex == current }) else {
+            return request.subtitle
+        }
+        let step = sentences[rank].step
+        let position = "\(rank + 1) sur \(sentences.count)"
+        if request.isReview {
+            return "Leçon \(step.lessonNumber), phrase \(step.sentenceNumber ?? 0) · \(position)"
+        }
+        return step.isExercise ? "Exercice \(position)" : "Phrase \(position)"
     }
 
-    private func isMarked(_ clip: AudioClip) -> Bool {
-        guard let n = clip.n else { return false }
-        return markedKeys.contains(DifficultSentence.makeKey(lesson.number, n, false))
+    private var currentMarkKey: String? {
+        guard isCurrentSession else { return nil }
+        return player.currentNavigableStep?.markKey
     }
 
     private var isCurrentMarked: Bool {
-        guard let n = player.currentSentenceNumber else { return false }
-        return markedKeys.contains(DifficultSentence.makeKey(lesson.number, n, false))
+        currentMarkKey.map(markedKeys.contains) ?? false
     }
 
     // MARK: - Actions
 
     private func startIfNeeded() {
-        guard player.lesson?.number != lesson.number || player.mode != mode else { return }
-        let resume = progress.first { $0.lessonNumber == lesson.number && $0.mode == mode.rawValue }
-        player.start(mode: mode, lesson: lesson,
-                     settings: settings.session,
-                     from: resume?.stepIndex ?? 0)
+        guard !isCurrentSession else { return }
+        let steps = SessionBuilder.build(request,
+                                         marks: ReviewSchedule.due(in: marks),
+                                         settings: settings.session)
+        player.start(request, steps: steps, from: resumeIndex)
+        recordReviewIfNeeded()
     }
 
-    private func jump(to clip: AudioClip) {
-        guard let target = player.steps.firstIndex(where: {
-            $0.sentenceNumber == clip.n && $0.isNavigable
-        }) else { return }
-        player.seek(to: target)
-        if !player.isPlaying { player.play() }
+    /// La révision ne se reprend pas : la file est reconstruite à chaque fois, à
+    /// partir de ce qui est dû au moment où on la lance.
+    private var resumeIndex: Int {
+        guard case .lesson(let number, let mode) = request else { return 0 }
+        return progress.first {
+            $0.lessonNumber == number && $0.mode == mode.rawValue
+        }?.stepIndex ?? 0
     }
 
+    /// En révision, le drapeau **retire** la phrase de la file et passe à la
+    /// suivante : c'est le geste « celle-là est acquise », le seul de la séance.
+    /// Ailleurs, il marque ou démarque comme avant.
     private func toggleMarkCurrent() {
-        guard let n = player.currentSentenceNumber else { return }
-        let key = DifficultSentence.makeKey(lesson.number, n, false)
+        guard let step = player.currentNavigableStep,
+              let n = step.sentenceNumber,
+              let key = step.markKey
+        else { return }
+
         if let existing = marks.first(where: { $0.key == key }) {
             context.delete(existing)
+            if request.isReview { player.nextSentence() }
         } else {
-            context.insert(DifficultSentence(lessonNumber: lesson.number,
+            context.insert(DifficultSentence(lessonNumber: step.lessonNumber,
                                              sentenceNumber: n,
-                                             isExercise: false))
+                                             isExercise: step.isExercise))
         }
+    }
+
+    /// Une phrase compte comme revue dès qu'elle est jouée : c'est de l'avoir
+    /// réentendue et redite qui la révise, pas une note qu'on lui donnerait.
+    private func recordReviewIfNeeded() {
+        guard request.isReview, isCurrentSession,
+              let step = player.currentNavigableStep,
+              let key = step.markKey,
+              !reviewed.contains(step.id)
+        else { return }
+
+        reviewed.insert(step.id)
+        marks.first { $0.key == key }?.recordReview()
     }
 
     /// Sauvegarde la reprise et le temps écouté en quittant l'écran.
     private func recordSession() {
-        let entry = progress.first { $0.lessonNumber == lesson.number && $0.mode == mode.rawValue }
-            ?? {
-                let new = LessonProgress(lessonNumber: lesson.number, mode: mode.rawValue)
-                context.insert(new)
-                return new
-            }()
-        entry.stepIndex = player.isFinished ? 0 : player.index
-        entry.updatedAt = .now
-        if player.isFinished { entry.completedAt = .now }
+        if case .lesson(let number, let mode) = request {
+            let entry = progress.first { $0.lessonNumber == number && $0.mode == mode.rawValue }
+                ?? {
+                    let new = LessonProgress(lessonNumber: number, mode: mode.rawValue)
+                    context.insert(new)
+                    return new
+                }()
+            entry.stepIndex = player.isFinished ? 0 : player.index
+            entry.updatedAt = .now
+            if player.isFinished { entry.completedAt = .now }
+        }
 
         let seconds = player.playedSeconds
         guard seconds > 0 else { return }
@@ -232,21 +343,22 @@ struct PlayerView: View {
 }
 
 private struct SentenceRow: View {
-    let clip: AudioClip
-    let text: SentenceText?
+    let step: SessionStep
     let isCurrent: Bool
     let showTranslation: Bool
     let isMarked: Bool
 
+    private var text: SentenceText? { step.sentenceText }
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(clip.n.map(String.init) ?? "–")
+            Text(step.sentenceNumber.map(String.init) ?? "–")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(width: 18, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(text?.es ?? "Phrase \(clip.n ?? 0)")
+                Text(text?.es ?? fallback)
                     .font(.body)
                     .foregroundStyle(text == nil ? .secondary : .primary)
 
@@ -282,5 +394,10 @@ private struct SentenceRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(isCurrent ? Color.accentColor.opacity(0.14) : .clear)
         }
+    }
+
+    private var fallback: String {
+        let n = step.sentenceNumber ?? 0
+        return step.isExercise ? "Exercice \(n)" : "Phrase \(n)"
     }
 }

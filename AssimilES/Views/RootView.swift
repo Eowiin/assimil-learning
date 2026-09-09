@@ -21,6 +21,9 @@ struct RootView: View {
 struct TodayView: View {
     @EnvironmentObject private var settings: AppSettings
     @Query private var days: [StudyDay]
+    @Query private var marks: [DifficultSentence]
+
+    private var due: [DifficultSentence] { ReviewSchedule.due(in: marks) }
 
     private var lesson: Lesson? { Manifest.shared.lesson(settings.currentLesson) }
     private var activeLesson: Lesson? { SessionBuilder.activeLesson(for: settings.currentLesson) }
@@ -31,7 +34,7 @@ struct TodayView: View {
                 if let lesson {
                     Section {
                         NavigationLink {
-                            PlayerView(lesson: lesson, mode: defaultMode)
+                            PlayerView(request: .lesson(number: lesson.number, mode: defaultMode))
                         } label: {
                             SessionCard(lesson: lesson,
                                         mode: defaultMode,
@@ -51,11 +54,27 @@ struct TodayView: View {
                     Section("Autres modes") {
                         ForEach(otherModes, id: \.self) { mode in
                             NavigationLink {
-                                PlayerView(lesson: lesson, mode: mode)
+                                PlayerView(request: .lesson(number: lesson.number, mode: mode))
                             } label: {
                                 ModeRow(mode: mode)
                             }
                         }
+                    }
+                }
+
+                if !due.isEmpty {
+                    Section {
+                        NavigationLink {
+                            PlayerView(request: .review)
+                        } label: {
+                            Label("Revoir \(due.count) phrase\(due.count > 1 ? "s" : "")",
+                                  systemImage: "flag")
+                        }
+                    } footer: {
+                        // La séance du jour est ce qui fait avancer ; la révision
+                        // est ce qui empêche de reperdre. Elle a sa place ici,
+                        // pas seulement dans son onglet.
+                        Text("Les phrases marquées reviennent à intervalle croissant.")
                     }
                 }
 
