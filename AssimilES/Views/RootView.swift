@@ -53,9 +53,8 @@ struct TodayView: View {
                             NavigationLink {
                                 PlayerView(lesson: lesson, mode: mode)
                             } label: {
-                                ModeRow(mode: mode, available: isAvailable(mode, for: lesson))
+                                ModeRow(mode: mode)
                             }
-                            .disabled(!isAvailable(mode, for: lesson))
                         }
                     }
                 }
@@ -81,10 +80,6 @@ struct TodayView: View {
 
     private var otherModes: [StudyMode] {
         StudyMode.allCases.filter { $0 != defaultMode }
-    }
-
-    private func isAvailable(_ mode: StudyMode, for lesson: Lesson) -> Bool {
-        !mode.requiresTranslation || LessonTextStore.hasTranslation(for: lesson.number)
     }
 }
 
@@ -113,16 +108,14 @@ private struct SessionCard: View {
 
 private struct ModeRow: View {
     let mode: StudyMode
-    let available: Bool
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: mode.symbol)
                 .frame(width: 26)
-                .foregroundStyle(available ? .primary : .tertiary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(mode.title)
-                Text(available ? mode.subtitle : "Nécessite le texte de la leçon")
+                Text(mode.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -255,17 +255,15 @@ et sans quitter la machine.
   signal, juste une absence. Le redressement les a récupérées et a corrigé les
   accents au passage.
 
-**L'app fonctionne sans ce texte.** Les modes écoute passive, répétition et vague
-n'utilisent que l'audio ; seul le thème inversé exige la traduction française et
-se grise tant qu'elle manque. La saisie peut donc suivre l'avancement des leçons
-sans jamais bloquer l'usage.
+**L'app fonctionne sans ce texte.** Les trois modes n'utilisent que l'audio. La
+saisie du livre peut donc suivre l'avancement des leçons sans jamais bloquer
+l'usage : elle ajoute la traduction sous la phrase, la prononciation figurée et les
+notes, elle ne conditionne rien.
 
-Attention au piège que la transcription a révélé : le thème inversé se gardait sur
-`hasText`, vrai dès qu'un fichier texte existe. Avec l'espagnol transcrit, tous les
-fichiers existent — le mode se serait affiché disponible pour ne produire *aucune*
-étape, puisqu'il n'énonce que les phrases ayant un `fr`. Il se garde donc désormais
-sur `hasTranslation`, et la liste des leçons distingue trois états : « audio seul »,
-« espagnol seul », complet.
+La liste des leçons distingue toujours trois états — « audio seul », « espagnol
+seul », complet — sur `hasText` et `hasTranslation`. Ce n'est plus une question de
+mode disponible, mais de ce que l'écran de lecture peut montrer : sans `fr`, il n'y
+a pas de traduction à révéler sous la phrase.
 
 ## Construire l'app
 

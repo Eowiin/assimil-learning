@@ -9,7 +9,7 @@ import AVFoundation
 /// 6 secondes en mode minuteur suffirait à faire mourir la séance dans la poche.
 /// En diffusant du silence, le flux ne s'interrompt jamais et l'app reste vivante.
 @MainActor
-final class SessionPlayer: NSObject, ObservableObject {
+final class SessionPlayer: ObservableObject {
 
     @Published private(set) var steps: [SessionStep] = []
     @Published private(set) var index = 0
@@ -35,7 +35,6 @@ final class SessionPlayer: NSObject, ObservableObject {
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
-    private let synthesizer = AVSpeechSynthesizer()
 
     /// Format avec lequel le graphe est actuellement connecté.
     private var connectedFormat: AVAudioFormat?
@@ -44,12 +43,9 @@ final class SessionPlayer: NSObject, ObservableObject {
     private var silenceFormat: AVAudioFormat?
     /// Invalide les callbacks des étapes annulées par un saut ou une pause.
     private var generation = 0
-    private var speechToken = 0
     private var stepStartedAt: Date?
 
-    override init() {
-        super.init()
-        synthesizer.delegate = self
+    init() {
         engine.attach(node)
         engine.attach(timePitch)
     }
@@ -182,8 +178,6 @@ final class SessionPlayer: NSObject, ObservableObject {
         let token = generation
 
         switch step.kind {
-        case .speakFrench(let text):
-            speak(text, token: token)
         case .pause:
             scheduleSilence(seconds: step.duration, token: token)
         default:
@@ -231,18 +225,9 @@ final class SessionPlayer: NSObject, ObservableObject {
         node.play()
     }
 
-    private func speak(_ text: String, token: Int) {
-        speechToken = token
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "fr-FR")
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * rate
-        utterance.postUtteranceDelay = 0
-        synthesizer.speak(utterance)
-    }
-
-    /// Le format audio doit être connu avant la première pause, or une séance de
-    /// thème inversé commence par de la synthèse vocale : sans ça, la pause
-    /// serait silencieusement sautée faute de format pour fabriquer le silence.
+    /// Le format audio doit être connu avant la première pause : sans ça, une
+    /// pause tombant avant tout fichier serait silencieusement sautée, faute de
+    /// format pour fabriquer le silence.
     private func adoptFormatFromFirstClip() {
         guard let url = steps.compactMap(\.url).first,
               let file = try? AVAudioFile(forReading: url)
@@ -275,9 +260,6 @@ final class SessionPlayer: NSObject, ObservableObject {
     private func cancelScheduled() {
         generation &+= 1
         node.stop()
-        if synthesizer.isSpeaking {
-            synthesizer.stopSpeaking(at: .immediate)
-        }
     }
 
     // MARK: - Moteur
@@ -316,17 +298,6 @@ final class SessionPlayer: NSObject, ObservableObject {
             try session.setActive(true)
         } catch {
             print("session audio indisponible : \(error)")
-        }
-    }
-}
-
-// MARK: - Synthèse vocale française
-
-extension SessionPlayer: AVSpeechSynthesizerDelegate {
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                       didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in
-            self.advance(token: self.speechToken)
         }
     }
 }

@@ -48,8 +48,7 @@ struct SettingsView: View {
                 } footer: {
                     Text("Usage strictement personnel. L'espagnol vient de la transcription "
                          + "des enregistrements ; la traduction, la prononciation figurée et "
-                         + "les notes viennent du livre et se complètent leçon par leçon. "
-                         + "Le thème inversé attend la traduction, les autres modes non.")
+                         + "les notes viennent du livre et se complètent leçon par leçon.")
                 }
             }
             .navigationTitle("Réglages")

@@ -30,9 +30,9 @@ struct LessonText: Decodable, Hashable {
     func sentence(_ n: Int) -> SentenceText? { sentences.first { $0.n == n } }
     func exerciseSentence(_ n: Int) -> SentenceText? { exercise.first { $0.n == n } }
 
-    /// Le texte espagnol seul suffit à lire en écoutant, mais pas au thème inversé,
-    /// qui part du français. Sans ce distinguo, le mode s'affichait disponible dès
-    /// qu'un fichier texte existait et ne produisait aucune étape.
+    /// Distingue une leçon saisie depuis le livre d'une leçon seulement transcrite
+    /// depuis l'audio : `hasText` est vrai pour les 100, `hasTranslation` seulement
+    /// là où le français existe et peut donc se révéler sous la phrase.
     var hasTranslation: Bool { sentences.contains { !($0.fr ?? "").isEmpty } }
 }
 
