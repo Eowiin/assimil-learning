@@ -1,0 +1,26 @@
+# Contenu Assimil — usage strictement personnel, jamais versionné ni distribué
+audio-source/
+Resources/audio/
+scans/
+content/
+*.mp3
+*.m4a
+
+# Le texte espagnol des 100 leçons. Régénérable en ~3 min pour les leçons
+# transcrites (transcribe.swift puis asr-to-text.py) ; L001 à L005 sont saisies à
+# la main depuis le livre et ne se régénèrent pas — les sauvegarder hors dépôt.
+# Resources/manifest.json reste versionné : durées et noms de fichiers seulement,
+# aucun texte Assimil.
+Resources/text/
+
+# Python
+__pycache__/
+
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
