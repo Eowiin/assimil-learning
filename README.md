@@ -317,8 +317,17 @@ les cas que le pipeline avait documentés : `¡Hola, Laura!` contre `Hola Laura.
 signale rien, `XH 553` contre `XH553` non plus, `Yujú` contre `Youjú` non plus — et
 `Ejem...` comme la troncature `A ver.` ressortent bien.
 
-La reconnaissance est celle de `tools/transcribe.swift` : `SpeechTranscriber`, modèle
-es-ES installé une fois, **rien ne sort du téléphone**. Il s'agit ici de la voix
+**Deux moteurs, selon l'appareil.** `SpeechTranscriber` — celui qui a transcrit le
+corpus — expose `isAvailable` : il demande un appareil capable d'Apple Intelligence,
+ce que l'iPhone 11 (A13) n'est pas. `DictationTranscriber` n'a pas cette condition et
+rend la même chose. L'app prend le premier quand il est là, le second sinon, et
+affiche en petit lequel a parlé. Dans les deux cas, l'app doit **réserver** la locale
+auprès d'`AssetInventory` avant d'en toucher les assets : sans cette souscription, le
+système refuse jusqu'à dire où en est le téléchargement. Le portage direct de
+`tools/transcribe.swift`, qui n'y est pas soumis en ligne de commande, échouait sur
+les deux points.
+
+Modèle es-ES installé une fois, **rien ne sort du téléphone**. Il s'agit ici de la voix
 d'Ethan, ce qui est une raison de plus de rester hors ligne. Les prises vivent dans
 `Documents/voice/`, une par phrase, nommées comme la clé de marquage (`L012-S04`).
 

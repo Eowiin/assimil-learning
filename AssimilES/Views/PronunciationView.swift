@@ -193,6 +193,14 @@ struct PronunciationView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+
+                // Lequel des deux moteurs a parlé : l'iPhone 11 n'a pas celui du
+                // corpus, et ça se voit dans les résultats.
+                if let engine = speech.engine {
+                    Text("Reconnu par \(engine.label)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
     }
