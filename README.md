@@ -334,6 +334,55 @@ d'Ethan, ce qui est une raison de plus de rester hors ligne. Les prises vivent d
 Cet écran demande **iOS 26** (`SpeechTranscriber`), d'où la cible de déploiement.
 L'iPhone de test est en 26.6 ; l'app est personnelle et n'a qu'un appareil.
 
+### La mélodie, mesurée
+
+Après l'enregistrement, l'écran superpose **deux courbes d'intonation** : celle du
+natif et la tienne, alignées dans le temps et ramenées chacune au registre de son
+locuteur. Un chiffre dit de combien ça s'écarte, la courbe dit où — une montée de
+question qu'on a aplatie se voit d'un coup d'œil.
+
+C'est la seule des deux questions posées (accent, intonation) à laquelle on puisse
+répondre honnêtement en local et sans payer. L'évaluation d'accent au phonème
+n'existe ni chez Apple, ni en auto-hébergé calibré pour l'espagnol.
+
+**La hauteur est calculée ici, pas empruntée.** `SFVoiceAnalytics` d'Apple donne une
+courbe de pitch, mais par le chemin de la reconnaissance vocale — or il faut la même
+mesure sur les deux enregistrements, celui d'Ethan *et* le clip Assimil.
+`PitchTrack` fait donc sa propre détection, comme le reste du pipeline fait ses
+propres mesures.
+
+**Trois choses ont dû être corrigées, chacune visible dans les données :**
+
+- **L'autocorrélation normalisée attrapait les harmoniques.** Une voix réellement à
+  ~95 Hz ressortait en 95, 180, 260 et 365 Hz selon les trames — des multiples. Une
+  voix grave encodée en AAC 64 k a un fondamental faible devant ses harmoniques.
+  Remplacée par **YIN**, dont la différence normalisée cumulée pénalise les
+  décalages trop courts et retient le *premier* creux, pas le meilleur.
+- **Le seuil de voisement est calibré, pas repris de l'article.** Sur 4 364 trames
+  non silencieuses de quatre leçons, la valeur d'origine 0,15 ne retenait que 36 %
+  des trames ; 0,25 en retient 51 %, l'ordre attendu pour de la parole.
+- **Le DTW libre ne mesurait rien.** Sans contrainte, il apparie une trame contre
+  vingt et rapproche n'importe quoi : deux phrases différentes ne sortaient qu'à
+  1,7 demi-ton. Une bande de Sakoe-Chiba à 20 % de la diagonale interdit de
+  s'écarter au-delà de ce qui reste la même phrase dite autrement.
+
+**Les seuils du verdict sont mesurés.** Deux distributions sur 12 clips de 4 leçons :
+
+| | médiane | p90 | max |
+|---|---|---|---|
+| Même phrase, débit ×0,8 ou +3 demi-tons | 0,11 | 0,22 | 0,46 |
+| Phrases différentes | 0,55 | 1,19 | 2,18 |
+
+Au p90 du premier groupe (0,22), **98 % des paires de phrases différentes sont
+au-dessus** : la mesure sépare « la même mélodie autrement dite » de « une autre
+mélodie ». Les bornes du verdict sont ces trois nombres. Mes premiers seuils,
+inventés (1, 2, 4 demi-tons), classaient deux phrases sans rapport comme conformes —
+l'échelle réelle est quatre fois plus resserrée.
+
+Ce qu'aucun corpus ne donne : une phrase dite par Ethan tombe *entre* les deux
+groupes, et savoir où demanderait ses propres enregistrements. Les seuils sont donc
+posés sur ce qui est mesuré, pas sur ce qu'on voudrait qu'ils disent.
+
 ## Construire l'app
 
 ```bash

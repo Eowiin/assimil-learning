@@ -18,6 +18,8 @@ struct PronunciationView: View {
 
     @State private var verdicts: [WordVerdict] = []
     @State private var myDuration: Double = 0
+    @State private var intonation: Intonation?
+    @State private var intonationFailed = false
 
     private var reference: String? { step.sentenceText?.es }
     private var key: String? { step.markKey }
@@ -35,6 +37,10 @@ struct PronunciationView: View {
                     if !verdicts.isEmpty || speech.status != .idle {
                         Divider()
                         result
+                    }
+                    if intonation != nil || intonationFailed {
+                        Divider()
+                        melody
                     }
                     Divider()
                     disclaimer
@@ -205,6 +211,30 @@ struct PronunciationView: View {
         }
     }
 
+    // MARK: - La mélodie
+
+    @ViewBuilder
+    private var melody: some View {
+        if let intonation {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(intonation.verdict)
+                    .font(.headline)
+
+                IntonationChart(intonation: intonation)
+
+                Text(String(format: "Écart médian : %.2f demi-ton", intonation.gapSemitones))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Label("Pas assez de voix pour lire la mélodie — la phrase est trop courte, "
+                  + "ou l'enregistrement trop faible.",
+                  systemImage: "waveform.slash")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var understoodLabel: String {
         let ok = verdicts.filter(\.isUnderstood).count
         let total = verdicts.count
@@ -235,12 +265,27 @@ struct PronunciationView: View {
 
     // MARK: - Actions
 
+    /// Le calcul de hauteur est du signal, pas de l'interface : il part sur une
+    /// tâche détachée pour ne pas figer l'écran le temps de la phrase.
+    private func compareMelody(mine url: URL) async {
+        guard let nativeURL = step.url else { intonationFailed = true; return }
+        let result = await Task.detached(priority: .userInitiated) { () -> Intonation? in
+            guard let native = PitchTracker.track(nativeURL),
+                  let mine = PitchTracker.track(url)
+            else { return nil }
+            return IntonationComparer.compare(native: native, mine: mine)
+        }.value
+        intonation = result
+        intonationFailed = result == nil
+    }
+
     private func toggleRecording() async {
         guard let key, let reference else { return }
 
         if recorder.isRecording {
             guard let url = recorder.stopRecording() else { return }
             myDuration = VoiceRecorder.duration(of: url)
+            await compareMelody(mine: url)
             if let heard = await speech.recognize(url) {
                 verdicts = SpanishMatch.compare(reference: reference, heard: heard)
             } else {
@@ -248,6 +293,8 @@ struct PronunciationView: View {
             }
         } else {
             verdicts = []
+            intonation = nil
+            intonationFailed = false
             speech.reset()
             await recorder.startRecording(key: key)
         }
