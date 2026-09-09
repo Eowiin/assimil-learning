@@ -28,13 +28,16 @@ final class SpeechCheck: ObservableObject {
 
     @Published private(set) var status: Status = .idle
 
-    private let locale = Locale(identifier: "es-ES")
+    private let wanted = Locale(identifier: "es-ES")
+    /// La locale effectivement réservée, une fois la préparation faite : on ne
+    /// refait pas le travail à chaque phrase.
+    private var reserved: Locale?
 
     /// `nil` quand la reconnaissance n'a rien rendu — un silence, ou un échec.
     @discardableResult
     func recognize(_ url: URL) async -> String? {
         do {
-            try await installModelIfNeeded()
+            let locale = try await prepareModel()
             status = .working
 
             let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
@@ -61,22 +64,75 @@ final class SpeechCheck: ObservableObject {
             status = .done(text)
             return text
         } catch {
-            status = .failed("Reconnaissance impossible : \(error.localizedDescription)")
+            status = .failed(message(for: error))
             return nil
         }
     }
 
     func reset() { status = .idle }
 
-    /// Le modèle espagnol se télécharge une fois, puis reste sur l'appareil.
-    private func installModelIfNeeded() async throws {
-        let installed = await SpeechTranscriber.installedLocales.contains {
+    // MARK: - Le modèle espagnol
+
+    /// Prépare le modèle et rend la locale exacte à employer.
+    ///
+    /// **Une app doit d'abord « réserver » la locale.** Sans cette souscription, le
+    /// système refuse jusqu'à dire où en est le téléchargement — « is not subscribed
+    /// to transcription.es ». L'outil en ligne de commande (`tools/transcribe.swift`)
+    /// n'y était pas soumis, une app l'est : c'est la seule différence entre les deux
+    /// usages du même moteur.
+    private func prepareModel() async throws -> Locale {
+        if let ready = reserved { return ready }
+
+        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) else {
+            throw Failure.unsupportedLocale
+        }
+
+        let already = await AssetInventory.reservedLocales.contains {
             $0.identifier(.bcp47) == locale.identifier(.bcp47)
         }
-        let probe = SpeechTranscriber(locale: locale, preset: .transcription)
-        guard let request = try await AssetInventory.assetInstallationRequest(supporting: [probe])
-        else { return }
-        if !installed { status = .installingModel }
-        try await request.downloadAndInstall()
+        if !already {
+            guard try await AssetInventory.reserve(locale: locale) else {
+                throw Failure.cannotReserve
+            }
+        }
+
+        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        switch await AssetInventory.status(forModules: [transcriber]) {
+        case .installed:
+            break
+        case .unsupported:
+            throw Failure.unsupportedLocale
+        case .supported, .downloading:
+            // Le modèle se télécharge une fois, puis reste sur l'appareil.
+            status = .installingModel
+            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                try await request.downloadAndInstall()
+            }
+        @unknown default:
+            break
+        }
+
+        reserved = locale
+        return locale
+    }
+
+    private enum Failure: LocalizedError {
+        case unsupportedLocale
+        case cannotReserve
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedLocale:
+                "L'espagnol n'est pas disponible pour la reconnaissance sur cet appareil."
+            case .cannotReserve:
+                "Impossible de réserver le modèle espagnol "
+                    + "(\(AssetInventory.maximumReservedLocales) langues au maximum)."
+            }
+        }
+    }
+
+    private func message(for error: Error) -> String {
+        (error as? Failure)?.errorDescription
+            ?? "Reconnaissance impossible : \(error.localizedDescription)"
     }
 }
