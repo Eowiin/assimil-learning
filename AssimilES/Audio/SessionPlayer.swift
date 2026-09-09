@@ -98,6 +98,15 @@ final class SessionPlayer: ObservableObject {
 
     func togglePlayPause() { isPlaying ? pause() : play() }
 
+    /// Rend la sortie audio à autre chose — l'essai de prononciation, qui a besoin
+    /// du micro et donc d'une autre catégorie de session. Le moteur est arrêté et
+    /// son format oublié : il se reconnecte tout seul à la lecture suivante.
+    func releaseAudio() {
+        pause()
+        if engine.isRunning { engine.stop() }
+        connectedFormat = nil
+    }
+
     func stop() {
         isPlaying = false
         cancelScheduled()

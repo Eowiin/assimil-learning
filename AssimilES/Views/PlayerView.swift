@@ -20,6 +20,8 @@ struct PlayerView: View {
     @Query private var progress: [LessonProgress]
 
     @State private var showTranslation = false
+    /// La phrase sur laquelle on veut s'essayer. Ouvre l'écran de prononciation.
+    @State private var pronunciationStep: SessionStep?
     /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
     /// ne doit pas repousser son échéance une seconde fois.
     @State private var reviewed: Set<UUID> = []
@@ -39,6 +41,17 @@ struct PlayerView: View {
         // hauteur dont le texte a besoin.
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
+            // Volontairement dans la barre du haut, pas dans les commandes du
+            // bas : s'enregistrer suppose de s'arrêter, ce n'est pas un geste à
+            // faire au pouce en marchant.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    pronunciationStep = player.currentNavigableStep
+                } label: {
+                    Label("Prononciation", systemImage: "mic")
+                }
+                .disabled(player.currentNavigableStep?.sentenceNumber == nil)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showTranslation.toggle()
@@ -47,6 +60,9 @@ struct PlayerView: View {
                           systemImage: showTranslation ? "eye" : "eye.slash")
                 }
             }
+        }
+        .sheet(item: $pronunciationStep) { step in
+            PronunciationView(step: step)
         }
         .onAppear {
             showTranslation = settings.revealTranslation

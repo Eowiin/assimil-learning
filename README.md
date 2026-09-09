@@ -293,6 +293,38 @@ Une phrase compte comme revue dès qu'elle est **jouée** : c'est de l'avoir
 réentendue et redite qui la révise. La rejouer dans la même séance ne repousse pas
 son échéance une seconde fois.
 
+## S'enregistrer et se comparer au natif
+
+Sur l'écran de lecture, le micro de la barre du haut ouvre l'essai de prononciation
+pour la phrase en cours : entendre le natif, s'enregistrer, se réécouter, et voir ce
+que la reconnaissance a compris.
+
+**Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
+*passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
+L'écran affiche donc trois choses vérifiables — les mots de la phrase, ceux qui ne
+sont pas passés en orange ; ce que la machine a compris, mot pour mot ; et le tempo,
+qui compare deux durées. Pour l'accent, c'est la réécoute côte à côte qui tranche,
+pas une note.
+
+C'est le même signal que sur le corpus : c'est ce contrôle qui avait fait ressortir
+`Ejem` comme le seul mot manqué sur les cinq leçons de contrôle.
+
+La comparaison applique **exactement la règle du pipeline** (`SpanishMatch`, portée
+de `tools/verify-clips.py`) : le texte replié sur ses lettres et ses chiffres —
+minuscules, sans accents, sans ponctuation **et sans espaces** — puis comparé
+caractère par caractère, et remonté aux mots seulement pour l'affichage. Vérifié sur
+les cas que le pipeline avait documentés : `¡Hola, Laura!` contre `Hola Laura.` ne
+signale rien, `XH 553` contre `XH553` non plus, `Yujú` contre `Youjú` non plus — et
+`Ejem...` comme la troncature `A ver.` ressortent bien.
+
+La reconnaissance est celle de `tools/transcribe.swift` : `SpeechTranscriber`, modèle
+es-ES installé une fois, **rien ne sort du téléphone**. Il s'agit ici de la voix
+d'Ethan, ce qui est une raison de plus de rester hors ligne. Les prises vivent dans
+`Documents/voice/`, une par phrase, nommées comme la clé de marquage (`L012-S04`).
+
+Cet écran demande **iOS 26** (`SpeechTranscriber`), d'où la cible de déploiement.
+L'iPhone de test est en 26.6 ; l'app est personnelle et n'a qu'un appareil.
+
 ## Construire l'app
 
 ```bash
@@ -316,7 +348,18 @@ Pour des mises à jour sans fil sur la durée, passer par TestFlight.
 Le projet utilise les *synchronized file groups* de Xcode 16+ : tout fichier
 ajouté sous `AssimilES/` est pris en compte sans toucher au projet.
 
-## Trois décisions non évidentes
+## Quatre décisions non évidentes
+
+**L'enregistrement est un moment à l'arrêt, pas une greffe sur la pause de
+répétition.** Capter la voix pendant le silence de répétition serait élégant — zéro
+geste, la prise se ferait toute seule. Mais enregistrer impose la catégorie de
+session `.playAndRecord`, alors que toute la séance repose sur `.playback` et sur un
+flux qui ne s'interrompt jamais : changer de catégorie au milieu d'une leçon, c'est
+risquer exactement la suspension que le silence diffusé évite, et pour toutes les
+séances, y compris celles où on ne s'enregistre pas. L'essai de prononciation prend
+donc la sortie audio explicitement (`SessionPlayer.releaseAudio()`) et la rend en
+sortant. Il suppose de toute façon d'être à l'arrêt.
+
 
 **C'est l'étape qui porte sa leçon, jamais la séance.** Une séance n'est pas « une
 leçon dans un mode » : la vague en enchaîne deux (la leçon du jour puis celle d'il y
