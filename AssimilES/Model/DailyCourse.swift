@@ -70,8 +70,7 @@ struct DailyPlan: Hashable {
 enum Curriculum {
     /// Site d'Assimil : la « phase active » commence à la leçon 50, où l'on restitue
     /// les leçons depuis la première. D'où le décalage de 49 : leçon 50 → leçon 1.
-    /// Le livre l'imprime au bas de chaque leçon à partir de la 50 ; ces pages ne
-    /// sont pas encore numérisées, le décalage reste donc à confirmer sur le papier.
+    /// Confirmé sur le livre : le bas de la leçon 51 indique « Deuxième vague : 2e leçon ».
     static let waveStartLesson = 50
     static var waveOffset: Int { waveStartLesson - 1 }
 

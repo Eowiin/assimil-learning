@@ -291,7 +291,8 @@ que des étapes, pas de minuteur.
 
 ### Ce que le livre demande dans les exercices
 
-Relu dans l'OCR des leçons 1 à 5, et identique sur les cinq :
+Relu dans l'OCR des leçons 1 à 5, identique sur les cinq, et encore le même en
+leçon 51 — la deuxième vague n'ajoute aucun type d'exercice :
 
 - **« Ejercicio 1 – Traduzca / Exercice 1 – Traduisez »** : l'énoncé est en
   **espagnol**, le corrigé en **français**. L'audio `T01…` dit l'énoncé. On lit ou
@@ -418,8 +419,10 @@ l'onglet **À revoir**, qui reste la file des phrases marquées.
 
 Le site d'Assimil place la **phase active à la leçon 50** : on restitue la langue à
 partir du français, réponses cachées. Le décalage de 49 (leçon 50 → leçon 1) est celui
-qu'avait déjà l'app. **Le livre l'imprime au bas des leçons à partir de la 50, pages
-non numérisées : il reste à le vérifier sur le papier** (`Curriculum.waveStartLesson`).
+qu'avait déjà l'app, et **le livre le confirme** : le bas de la leçon 51 indique
+« Deuxième vague : 2e leçon » (`Curriculum.waveStartLesson`). La vague n'apporte pas
+d'exercice à elle : la leçon du jour garde sa traduction et ses phrases à compléter,
+et l'ancienne leçon se restitue depuis son français.
 
 À partir de la leçon 50, la séance gagne une étape : le français de l'ancienne leçon,
 l'espagnol caché, « Voir l'espagnol » qui l'affiche et le fait entendre, puis
