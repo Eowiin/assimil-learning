@@ -17,8 +17,10 @@ final class SessionPlayer: ObservableObject {
     /// Ce qui est joué. Le lecteur ne connaît plus « la leçon en cours » : une
     /// séance peut en traverser plusieurs, et c'est l'étape qui porte la sienne.
     @Published private(set) var request: SessionRequest?
-    /// Temps réellement écouté, pour alimenter la série de jours.
+    /// Temps réellement écouté dans la séance en cours.
     @Published private(set) var playedSeconds: Double = 0
+    /// Temps écouté pas encore versé à la série de jours, toutes séances confondues.
+    private var ledger = PlayTimeLedger()
 
     @Published var rate: Float = 1.0 {
         didSet { timePitch.rate = max(0.5, min(2.0, rate)) }
@@ -60,7 +62,9 @@ final class SessionPlayer: ObservableObject {
     private var silenceFormat: AVAudioFormat?
     /// Invalide les callbacks des étapes annulées par un saut ou une pause.
     private var generation = 0
-    private var stepStartedAt: Date?
+    /// Début de la phrase en cours — sa première répétition, pas l'étape : c'est à
+    /// la phrase que s'applique « elle vient de commencer ».
+    private var sentenceStartedAt: Date?
 
     init() {
         engine.attach(node)
@@ -98,6 +102,13 @@ final class SessionPlayer: ObservableObject {
 
     func togglePlayPause() { isPlaying ? pause() : play() }
 
+    /// Le temps écouté depuis le dernier appel. Chaque seconde n'est rendue qu'une
+    /// fois : un écran qui disparaît puis réapparaît sur la même séance ne la
+    /// recompte pas.
+    func takeUnrecordedSeconds() -> Double {
+        ledger.takeUnrecorded()
+    }
+
     /// Rend la sortie audio à autre chose — l'essai de prononciation, qui a besoin
     /// du micro et donc d'une autre catégorie de session. Le moteur est arrêté et
     /// son format oublié : il se reconnecte tout seul à la lecture suivante.
@@ -128,9 +139,10 @@ final class SessionPlayer: ObservableObject {
     /// en cours, sauf si elle vient de commencer — auquel cas on remonte à la
     /// précédente. Au casque, la triple pression tombe donc naturellement sur
     /// « refais-la moi », qui est le geste le plus fréquent en répétition.
+    /// Avec plusieurs répétitions, la phrase repart de sa première.
     func previousOrReplay() {
         guard !steps.isEmpty else { return }
-        let elapsed = stepStartedAt.map { Date.now.timeIntervalSince($0) } ?? 0
+        let elapsed = sentenceStartedAt.map { Date.now.timeIntervalSince($0) } ?? 0
         let atStart = elapsed < 1.5
 
         if atStart, let previous = navigableIndex(before: startOfCurrentSentence()) {
@@ -168,29 +180,15 @@ final class SessionPlayer: ObservableObject {
     /// Première étape de la phrase en cours : depuis une pause, on remonte à la
     /// phrase qu'elle suit plutôt que de rejouer du silence.
     private func startOfCurrentSentence() -> Int {
-        var i = min(index, steps.count - 1)
-        while i > 0, !steps[i].isNavigable { i -= 1 }
-        return i
+        SessionNavigation.startOfSentence(at: index, in: steps)
     }
 
     private func navigableIndex(after i: Int) -> Int? {
-        var j = i + 1
-        while j < steps.count {
-            if steps[j].isNavigable, steps[j].sentenceNumber != steps[i].sentenceNumber || !steps[i].isNavigable {
-                return j
-            }
-            j += 1
-        }
-        return nil
+        SessionNavigation.navigableIndex(after: i, in: steps)
     }
 
     private func navigableIndex(before i: Int) -> Int? {
-        var j = i - 1
-        while j >= 0 {
-            if steps[j].isNavigable { return j }
-            j -= 1
-        }
-        return nil
+        SessionNavigation.navigableIndex(before: i, in: steps)
     }
 
     // MARK: - Diffusion
@@ -201,7 +199,7 @@ final class SessionPlayer: ObservableObject {
             return
         }
 
-        stepStartedAt = .now
+        if step.isNavigable { sentenceStartedAt = .now }
         onStepChanged?(step)
         let token = generation
 
@@ -269,6 +267,7 @@ final class SessionPlayer: ObservableObject {
 
         if let step = currentStep, !step.isPause {
             playedSeconds += step.duration
+            ledger.add(step.duration)
         }
         index += 1
         if index >= steps.count {
@@ -327,5 +326,55 @@ final class SessionPlayer: ObservableObject {
         } catch {
             print("session audio indisponible : \(error)")
         }
+    }
+}
+
+/// Le temps écouté, versé une seule fois à la série de jours.
+struct PlayTimeLedger {
+    private(set) var total: Double = 0
+    private var recorded: Double = 0
+
+    mutating func add(_ seconds: Double) {
+        guard seconds > 0 else { return }
+        total += seconds
+    }
+
+    mutating func takeUnrecorded() -> Double {
+        let pending = total - recorded
+        recorded = total
+        return pending
+    }
+}
+
+/// Les sauts de phrase en phrase, sans moteur audio : ce qui se calcule se teste.
+enum SessionNavigation {
+    /// Première étape de la phrase en cours : depuis une pause ou une répétition,
+    /// on remonte à la première écoute de la phrase plutôt que de rejouer du silence.
+    static func startOfSentence(at index: Int, in steps: [SessionStep]) -> Int {
+        guard !steps.isEmpty else { return 0 }
+        var i = min(max(0, index), steps.count - 1)
+        while i > 0, !steps[i].isNavigable { i -= 1 }
+        return i
+    }
+
+    static func navigableIndex(after i: Int, in steps: [SessionStep]) -> Int? {
+        guard steps.indices.contains(i) else { return nil }
+        var j = i + 1
+        while j < steps.count {
+            if steps[j].isNavigable, !steps[j].isSameSentence(as: steps[i]) || !steps[i].isNavigable {
+                return j
+            }
+            j += 1
+        }
+        return nil
+    }
+
+    static func navigableIndex(before i: Int, in steps: [SessionStep]) -> Int? {
+        var j = min(i, steps.count) - 1
+        while j >= 0 {
+            if steps[j].isNavigable { return j }
+            j -= 1
+        }
+        return nil
     }
 }

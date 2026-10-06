@@ -78,10 +78,15 @@ final class VoiceRecorder: NSObject, ObservableObject {
     }
 
     func startRecording(key: String) async {
+        await startRecording(at: Self.url(for: key))
+    }
+
+    /// Enregistre vers un fichier choisi : une réponse d'exercice n'a pas à
+    /// remplacer la prise gardée pour l'essai de prononciation.
+    func startRecording(at target: URL) async {
         guard await requestPermission() else { return }
         stopPlayback()
 
-        let target = Self.url(for: key)
         try? FileManager.default.removeItem(at: target)
 
         // Le format du corpus : AAC 44,1 kHz mono. Comparer deux prises encodées

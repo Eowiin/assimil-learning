@@ -41,10 +41,15 @@ enum StudyMode: String, CaseIterable, Identifiable {
 enum SessionRequest: Hashable {
     case lesson(number: Int, mode: StudyMode)
     case review
+    /// Une étape audio de la séance du jour. Elle n'enregistre aucune reprise dans
+    /// `LessonProgress` : c'est la séance qui s'en souvient.
+    case daily(lessonNumber: Int, audio: DailyAudio)
+    /// Une phrase isolée, jouée depuis un exercice.
+    case excerpt(lessonNumber: Int)
 
     var title: String {
         switch self {
-        case .lesson(let number, _): "Leçon \(number)"
+        case .lesson(let number, _), .daily(let number, _), .excerpt(let number): "Leçon \(number)"
         case .review: "À revoir"
         }
     }
@@ -53,7 +58,14 @@ enum SessionRequest: Hashable {
         switch self {
         case .lesson(_, let mode): mode.title
         case .review: "Révision espacée"
+        case .daily(_, .discovery): "Découverte"
+        case .daily(_, .repetition): "Répétition"
+        case .excerpt: "Extrait"
         }
+    }
+
+    var isDaily: Bool {
+        if case .daily = self { true } else { false }
     }
 
     var isReview: Bool {
@@ -65,6 +77,13 @@ enum SessionRequest: Hashable {
     var mode: StudyMode? {
         if case .lesson(_, let mode) = self { mode } else { nil }
     }
+}
+
+enum DailyAudio: Hashable {
+    /// Le dialogue d'un trait, sans pause ni exercice.
+    case discovery
+    /// Chaque phrase `times` fois, chacune suivie de sa pause.
+    case repetition(times: Int)
 }
 
 /// Une étape de la séance. La séance entière est calculée d'avance, ce qui rend
@@ -92,16 +111,28 @@ struct SessionStep: Identifiable, Hashable {
     let isExercise: Bool
     let url: URL?
     let duration: Double
+    /// Rang de la répétition de cette phrase, à partir de 1. Les suivantes rejouent
+    /// le même modèle et restent attachées à la première : une ligne à l'écran, et
+    /// « phrase suivante » saute toutes les répétitions d'un coup.
+    var repetition: Int = 1
 
     var isPause: Bool { kind == .pause }
 
     /// Une étape sur laquelle il est pertinent de s'arrêter quand on saute de
-    /// phrase en phrase — on ne « saute » pas vers un silence.
+    /// phrase en phrase — on ne « saute » ni vers un silence, ni vers la deuxième
+    /// répétition d'une phrase.
     var isNavigable: Bool {
-        switch kind {
-        case .pause: false
-        default: true
-        }
+        kind != .pause && repetition == 1
+    }
+
+    /// Même phrase de la même leçon, et du même côté (dialogue ou exercice) : le seul
+    /// numéro ne suffit pas, la file de révision enchaîne des phrases 3 de leçons
+    /// différentes.
+    func isSameSentence(as other: SessionStep) -> Bool {
+        sentenceNumber != nil
+            && sentenceNumber == other.sentenceNumber
+            && lessonNumber == other.lessonNumber
+            && isExercise == other.isExercise
     }
 
     /// Le texte de cette étape quand il est saisi. Même résolution pour l'écran
@@ -125,6 +156,8 @@ struct SessionSettings {
     var pauseFactor: Double = 1.3
     var includeExercise: Bool = true
     var announceLesson: Bool = false
+    /// Nombre de passages de chaque phrase en répétition.
+    var repetitions: Int = 1
 }
 
 enum SessionBuilder {
@@ -141,7 +174,35 @@ enum SessionBuilder {
             return build(mode: mode, lesson: lesson, manifest: manifest, settings: settings)
         case .review:
             return review(marks, manifest, settings)
+        case .daily(let number, let audio):
+            guard let lesson = manifest.lesson(number) else { return [] }
+            // Les exercices ne suivent jamais le dialogue dans la séance du jour :
+            // on y passe par un geste, à l'écran des exercices.
+            var daily = settings
+            daily.includeExercise = false
+            switch audio {
+            case .discovery:
+                return passive(lesson, manifest, daily)
+            case .repetition(let times):
+                daily.repetitions = max(1, times)
+                return shadowing(lesson, manifest, daily)
+            }
+        case .excerpt:
+            // Une phrase isolée se construit avec `excerpt(_:isExercise:in:)`.
+            return []
         }
+    }
+
+    /// Une phrase seule, sans pause : l'audio d'un énoncé ou d'une réponse.
+    static func excerpt(_ clip: AudioClip, isExercise: Bool, in lesson: Lesson,
+                        manifest: Manifest = .shared) -> [SessionStep] {
+        [self.clip(clip, isExercise ? .exercise : .dialogue, lesson, manifest)].compactMap { $0 }
+    }
+
+    /// Où reprendre dans une séance construite : la première étape de la phrase `n`
+    /// du dialogue.
+    static func index(ofSentence n: Int, in steps: [SessionStep]) -> Int? {
+        steps.firstIndex { $0.isNavigable && !$0.isExercise && $0.sentenceNumber == n }
     }
 
     static func build(mode: StudyMode,
@@ -171,9 +232,14 @@ enum SessionBuilder {
     private static func shadowing(_ lesson: Lesson, _ m: Manifest, _ s: SessionSettings) -> [SessionStep] {
         var steps = header(lesson, m, s)
 
+        // Chaque passage rejoue le modèle puis laisse sa pause : on redit après
+        // l'avoir réentendue, pas de mémoire.
         for c in lesson.dialogue {
-            steps.append(clip(c, .dialogue, lesson, m))
-            steps.append(pause(after: c, lesson: lesson, isExercise: false, settings: s))
+            for repetition in 1...max(1, s.repetitions) {
+                steps.append(clip(c, .dialogue, lesson, m, repetition: repetition))
+                steps.append(pause(after: c, lesson: lesson, isExercise: false, settings: s,
+                                   repetition: repetition))
+            }
         }
 
         if s.includeExercise, !lesson.exercise.isEmpty {
@@ -244,14 +310,15 @@ enum SessionBuilder {
     }
 
     private static func clip(_ c: AudioClip, _ kind: SessionStep.Kind,
-                             _ lesson: Lesson, _ m: Manifest) -> SessionStep? {
+                             _ lesson: Lesson, _ m: Manifest, repetition: Int = 1) -> SessionStep? {
         guard let url = m.url(for: c, in: lesson) else { return nil }
         return SessionStep(kind: kind,
                            lessonNumber: lesson.number,
                            sentenceNumber: c.n,
                            isExercise: kind == .exercise || kind == .exerciseIntro,
                            url: url,
-                           duration: c.duration)
+                           duration: c.duration,
+                           repetition: repetition)
     }
 
     private static func clip(for mark: DifficultSentence, in lesson: Lesson) -> AudioClip? {
@@ -260,12 +327,14 @@ enum SessionBuilder {
     }
 
     private static func pause(after c: AudioClip, lesson: Lesson,
-                              isExercise: Bool, settings: SessionSettings) -> SessionStep {
+                              isExercise: Bool, settings: SessionSettings,
+                              repetition: Int = 1) -> SessionStep {
         SessionStep(kind: .pause,
                     lessonNumber: lesson.number,
                     sentenceNumber: c.n,
                     isExercise: isExercise,
                     url: nil,
-                    duration: max(1.0, c.duration * settings.pauseFactor))
+                    duration: max(1.0, c.duration * settings.pauseFactor),
+                    repetition: repetition)
     }
 }

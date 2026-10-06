@@ -31,6 +31,13 @@ struct Manifest: Decodable {
     let sentenceCount: Int
     let totalDuration: Double
     let lessons: [Lesson]
+    /// Dossier audio hors bundle, pour les tests : les fichiers y sont supposés
+    /// présents. `nil` en usage normal.
+    var audioRoot: URL? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case version, lessonCount, sentenceCount, totalDuration, lessons
+    }
 
     static let shared: Manifest = {
         guard let url = Bundle.main.url(forResource: "manifest", withExtension: "json"),
@@ -52,7 +59,10 @@ struct Manifest: Decodable {
     /// (`audio/L001/S01.m4a`) : les noms se répètent d'une leçon à l'autre, le
     /// sous-dossier est donc indispensable.
     func url(for clip: AudioClip, in lesson: Lesson) -> URL? {
-        Bundle.main.url(
+        if let audioRoot {
+            return audioRoot.appendingPathComponent(lesson.dir).appendingPathComponent(clip.file)
+        }
+        return Bundle.main.url(
             forResource: (clip.file as NSString).deletingPathExtension,
             withExtension: "m4a",
             subdirectory: "audio/\(lesson.dir)"

@@ -9,9 +9,16 @@ final class AppSettings: ObservableObject {
     @AppStorage("includeExercise") var includeExercise: Bool = true
     @AppStorage("announceLesson") var announceLesson: Bool = false
     @AppStorage("revealTranslation") var revealTranslation: Bool = false
-    /// Leçon en cours dans la progression Assimil, pour la séance du jour.
+    /// Ancien réglage manuel de la leçon en cours. Il ne sert plus qu'une fois : à
+    /// placer le point de départ du parcours au premier lancement de la version qui
+    /// le suit (`DailyCourseStore.ensureAnchor`).
     @AppStorage("currentLesson") var currentLesson: Int = 1
+    /// Répétitions de chaque phrase à l'étape Répétition de la séance du jour. Un
+    /// repère pratique, réglable — pas une règle Assimil.
+    @AppStorage("repetitionsPerSentence") var repetitionsPerSentence: Int = 3
 
+    /// Réglages de l'écoute libre : une pause par phrase, comme avant le parcours,
+    /// pour que les reprises enregistrées gardent leur sens.
     var session: SessionSettings {
         SessionSettings(pauseFactor: pauseFactor,
                         includeExercise: includeExercise,

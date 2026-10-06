@@ -1,0 +1,25 @@
+{
+  "number": 1,
+  "titleES": "Lección ficticia",
+  "titleFR": "Leçon fictive",
+  "sentences": [
+    { "n": 1, "es": "Frase de prueba uno.", "fr": "Phrase de test un.", "pron": "frassé dé prouéba ouno", "note": "Note fictive pour la phrase un." },
+    { "n": 2, "es": "Frase de prueba dos.", "fr": "Phrase de test deux.", "pron": "frassé dé prouéba doss", "note": null },
+    { "n": 3, "es": "Frase de prueba tres.", "fr": "Phrase de test trois.", "pron": null, "note": null },
+    { "n": 4, "es": "Frase de prueba cuatro.", "fr": "Phrase de test quatre.", "pron": null, "note": null },
+    { "n": 5, "es": "Frase de prueba cinco.", "fr": "Phrase de test cinq.", "pron": null, "note": null }
+  ],
+  "exercise": [
+    { "n": 1, "es": "Ejercicio ficticio uno.", "fr": "Exercice fictif un." },
+    { "n": 2, "es": "Ejercicio ficticio dos.", "fr": "Exercice fictif deux." },
+    { "n": 3, "es": "Ejercicio ficticio tres.", "fr": "Exercice fictif trois." },
+    { "n": 4, "es": "Ejercicio ficticio cuatro.", "fr": "Exercice fictif quatre." },
+    { "n": 5, "es": "Ejercicio ficticio cinco.", "fr": "Exercice fictif cinq." }
+  ],
+  "exercise2": {
+    "items": [
+      { "n": 1, "fr": "Je suis fictif.", "es": "[Soy] ficticio." },
+      { "n": 2, "fr": "Tu es là ?", "es": "¿[Estás] [aquí|acá]?" }
+    ]
+  }
+}

@@ -265,6 +265,197 @@ seul », complet — sur `hasText` et `hasTranslation`. Ce n'est plus une questi
 mode disponible, mais de ce que l'écran de lecture peut montrer : sans `fr`, il n'y
 a pas de traduction à révéler sous la phrase.
 
+## La séance du jour
+
+Une séance quotidienne, c'est **une nouvelle leçon et ses activités**, validée une
+fois. L'accueil la présente en étapes, et chaque étape se retrouve telle quelle si
+l'app est fermée en route :
+
+1. **Découverte** — le dialogue d'un trait, sans pause.
+2. **Compréhension** — le texte, la traduction, la prononciation et les notes, tout
+   visible, chaque phrase réécoutable.
+3. **Répétition** — chaque phrase rejouée **3 fois** par défaut, chaque passage suivi
+   de sa pause. Un repère pratique, réglable (1 à 6), pas une règle Assimil. « Phrase
+   suivante » saute les répétitions restantes, « Répéter » repart de la première.
+4. **Exercice 1** — traduire.
+5. **Exercice 2** — compléter.
+6. **Fin de séance** — valider.
+
+**Une étape ne se termine que par un geste.** Ni la fin d'une piste, ni un saut à la
+dernière phrase, ni la sortie du lecteur : la fin de l'audio met le bouton « Passer
+aux exercices » en avant, elle ne l'actionne pas. C'est ce qui empêche une écoute de
+valider une leçon — l'ancienne version posait `completedAt` en fin de lecture.
+
+Les pauses restent du silence diffusé par `SessionPlayer` ; la répétition n'ajoute
+que des étapes, pas de minuteur.
+
+### Ce que le livre demande dans les exercices
+
+Relu dans l'OCR des leçons 1 à 5, et identique sur les cinq :
+
+- **« Ejercicio 1 – Traduzca / Exercice 1 – Traduisez »** : l'énoncé est en
+  **espagnol**, le corrigé en **français**. L'audio `T01…` dit l'énoncé. On lit ou
+  écoute, puis on traduit : au micro, ou de tête avant d'afficher le corrigé (voir
+  « Répondre à voix haute »).
+- **« Ejercicio 2 – Complete / Exercice 2 – Complétez »**, *« chaque point représente
+  une lettre ou un caractère »* : la phrase française, l'espagnol amputé de mots, et un
+  corrigé qui ne donne **que les mots manquants**.
+
+**Importé pour les leçons 1 à 5**, lu sur les scans et non sur l'OCR : les pointillés
+y sont illisibles. Chaque gabarit est recoupé avec le corrigé du livre — les mots entre
+crochets sont exactement ceux du corrigé, dans l'ordre — et avec le nombre de points.
+Aucune variante n'est ajoutée, le livre n'en donne pas. Là où le corrigé écrit un seul
+morceau (`– Sí, claro –`) mais que la page imprime la virgule entre deux pointillés,
+le gabarit suit la page : deux trous. Les leçons suivantes attendent leurs scans.
+
+L'exercice 2 se saisit dans le JSON de la leçon, phrase espagnole entière, trous
+entre crochets, variantes admises séparées par `|` (la première est celle du livre
+et règle le nombre de points) :
+
+```json
+"exercise2": {
+  "items": [
+    { "n": 2, "fr": "Je vais bien, merci.", "es": "[Estoy] bien, [gracias]." }
+  ]
+}
+```
+
+**La correction suit une politique écrite, pas une tolérance floue** (`FillInGrader`) :
+
+| | Règle | Pourquoi |
+|---|---|---|
+| Espaces | ignorés aux bords, suites réduites | ce n'est pas du contenu |
+| Ponctuation | non notée | elle est imprimée autour du trou |
+| Majuscules | acceptées, la forme du livre est montrée | elle tient à la place du mot |
+| Accents, ñ | **exigés** — « presque : vérifie les accents » | tú/tu, él/el, sí/si, año/ano |
+| Variantes | seulement celles saisies | rien n'est deviné |
+
+Chaque trou est jugé seul ; une phrase est faite quand tous sont acceptés, ou quand
+la correction a été affichée. Un trou refusé reste modifiable pour réessayer.
+
+`tools/structure.py` extrait désormais du scan **les consignes françaises et les mots
+du corrigé**, par phrase, sous `_exercise2` dans le brouillon. Il laisse le gabarit
+`es` vide : l'OCR lit mal les pointillés, et un trou ne se devine pas. Sur les cinq
+leçons, les leçons 1, 3 et 4 sortent justes. En leçon 5 un numéro cerclé avalé fusionne
+deux corrigés ; en leçon 2, s'y ajoute une consigne passée dans l'autre colonne, et les
+deux pertes se compensent au compte. Le script les signale toutes deux — la seconde
+par le double tiret que laisse le numéro disparu. Le corrigé s'arrête aussi à la
+première ligne sans tiret : sans séparateur `***`, la prose de la page devenait une
+réponse.
+
+### Répondre à voix haute
+
+En traduction comme en deuxième vague, chaque phrase se répond **au micro** ou **de
+tête**. Au micro, la reconnaissance locale — la même que pour la prononciation, en
+français pour la traduction, en espagnol pour la vague — rend ce qui a été dit, et
+`SpokenCheck` le compare à la réponse attendue avec la règle de `SpanishMatch` :
+accents, ponctuation, majuscules et espaces ignorés. Rien ne sort du téléphone.
+
+**L'app dit « identique » ou « pas identique », jamais « même sens ».**
+
+| | Identique | Pas identique |
+|---|---|---|
+| Deuxième vague (→ espagnol) | réussie, sans geste | mots manquants en orange ; réessayer ou « Pas encore » |
+| Traduction (→ français) | réussie, sans geste | ce qui a été entendu, mots du corrigé manquants ; « Même sens » ou « Pas encore » |
+
+Juger le sens n'est pas à la portée de l'appareil. Le corrigé d'Assimil n'est qu'une
+traduction possible — « Comment tu vas ? » vaut « Comment vas-tu ? ». Le modèle de
+langue local d'Apple exige Apple Intelligence, absent de l'iPhone 11. La proximité
+entre phrases de NaturalLanguage tourne sur l'iPhone 11, mais rapproche « je lis » de
+« je ne lis pas » : un verdict tiré de là validerait des contresens. Un service en
+ligne jugerait bien, au prix d'envoyer la voix et le texte hors du téléphone.
+
+Deux règles viennent des données :
+
+- **« né/née »** — seule notation spéciale des corrigés de l'exercice 1 : une barre
+  entre deux mots vaut deux réponses admises.
+- **Les chiffres** — 61 phrases de dialogue en contiennent (`7:00`, `XH553 WB`), que la
+  reconnaissance écrit en lettres. Pour celles-là, la vague ne tranche pas et
+  l'apprenant juge.
+
+Répondre au micro reste facultatif : on ne s'enregistre qu'à l'arrêt, écran en main,
+et la sortie audio est rendue à la séance dès la prise terminée.
+
+### Trois absences à ne pas confondre
+
+- **Absente par conception** : une révision hebdomadaire n'a pas d'exercices. Rien à
+  signaler, les étapes n'existent pas.
+- **Pas encore importée** : pas d'exercice 2 dans le JSON, pas de traduction pour les
+  95 leçons transcrites depuis l'audio. L'écran le dit, montre ce qui existe (l'énoncé
+  espagnol, l'audio) et propose **« J'ai fait cet exercice dans le livre »** — une
+  confirmation explicite, qui seule termine alors l'étape.
+- **Mal saisie** : un gabarit illisible (crochet non fermé, trou vide). L'exercice est
+  refusé en entier et renvoie au livre, plutôt que d'en proposer la moitié.
+
+### La progression
+
+- Le parcours est une suite de **séances numérotées** : 1 à 100 portent une nouvelle
+  leçon, 101 à 149 ne sont plus que la deuxième vague (voir plus bas).
+- La séance suivante se **déduit** de la dernière validée (`DailyCourse`) ; rien n'est
+  incrémenté. Valider deux fois, rouvrir l'écran ou relancer l'app ne peut donc pas
+  avancer deux fois.
+- Une fois validée : « Séance terminée pour aujourd'hui », la leçon de demain, et plus
+  aucun bouton de nouvelle leçon. Les leçons et l'écoute libre restent accessibles.
+- Le lendemain est le **jour calendaire local**, pas 24 heures : validée à 23 h 30, la
+  suivante est là à minuit. `DayClock` suit `NSCalendarDayChanged`, les changements
+  d'heure et le retour au premier plan : l'accueil se met à jour app ouverte.
+- **Jours manqués** : aucune leçon sautée. **Séance inachevée** : reprise, quel que soit
+  le jour. **Difficulté** : « Retravailler cette leçon demain » rouvre la même leçon.
+- L'**écoute libre** (onglet Leçons, bas de l'accueil) garde ses trois modes et sa
+  reprise dans `LessonProgress`, sans effet sur la séance du jour.
+- Le temps étudié n'est compté qu'une fois : le lecteur rend ses secondes une seule
+  fois (`PlayTimeLedger`). Avant, quitter et rouvrir le lecteur les recomptait.
+
+### Les révisions hebdomadaires
+
+Leçons 7, 14… 98 : découverte, compréhension, répétition du dialogue de révision, puis
+validation — sans les deux exercices. La synthèse grammaticale du livre peut se
+saisir sous `"review": { "sections": [{ "title": …, "text": … }] }` ; faute de quoi
+l'écran renvoie au livre. Elles comptent comme la séance du jour. Rien à voir avec
+l'onglet **À revoir**, qui reste la file des phrases marquées.
+
+### La deuxième vague
+
+Le site d'Assimil place la **phase active à la leçon 50** : on restitue la langue à
+partir du français, réponses cachées. Le décalage de 49 (leçon 50 → leçon 1) est celui
+qu'avait déjà l'app. **Le livre l'imprime au bas des leçons à partir de la 50, pages
+non numérisées : il reste à le vérifier sur le papier** (`Curriculum.waveStartLesson`).
+
+À partir de la leçon 50, la séance gagne une étape : le français de l'ancienne leçon,
+l'espagnol caché, « Voir l'espagnol » qui l'affiche et le fait entendre, puis
+l'auto-évaluation. Sans traduction importée — le cas de toutes les leçons après la 5 —
+l'écran renvoie à la restitution dans le livre et propose l'écoute de l'ancienne leçon.
+
+Après la leçon 100, la vague continue seule (leçons 52 à 100), une par jour, pour ne
+laisser aucune leçon sans deuxième vague. Le mode « La vague » de l'écoute libre ne
+change pas.
+
+### Stockage et migration
+
+- `DailySession` : une séance, son avancement en JSON (étape, reprise audio par
+  phrase, réponses), sa date de validation. `CourseAnchor` : le point de départ.
+- Ajouter ces deux entités est une migration légère. Au premier lancement, le parcours
+  part de l'ancien réglage manuel `currentLesson` ; une ancienne fin d'écoute ne vaut
+  pas validation.
+- **`LessonProgress` est unique par leçon, pas par mode.** Enregistrer la reprise d'un
+  second mode ne créait pas de doublon : SwiftData *remplaçait* la ligne existante. Le
+  lecteur met donc à jour la ligne de la leçon ; le test `lessonProgressIsUniquePerLesson`
+  le vérifie. Changer la contrainte aurait demandé une migration de schéma pour rien.
+
+### Vérifier
+
+```bash
+xcodebuild test -project AssimilES.xcodeproj -scheme AssimilES \
+  -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:AssimilESTests
+xcodebuild test -project AssimilES.xcodeproj -scheme AssimilES \
+  -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:AssimilESUITests
+```
+
+Les tests n'utilisent que des données fictives. Les tests d'interface parcourent la
+séance dans le simulateur grâce à trois variables lues **en Debug seulement** :
+`ASSIMIL_STORE` (stockage isolé), `ASSIMIL_TEXT_DIR` (textes fictifs) et
+`ASSIMIL_DAY_OFFSET` (décaler « aujourd'hui » pour vérifier le lendemain).
+
 ## La révision des phrases marquées
 
 Pendant l'écoute, le drapeau met une phrase de côté. Ces phrases reviennent

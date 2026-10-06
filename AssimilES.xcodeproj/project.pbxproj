@@ -12,19 +12,54 @@
 		AA0000000000000000000021 /* text in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000020 /* text */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		BB0000000000000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000004;
+			remoteInfo = AssimilES;
+		};
+		CC0000000000000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000004;
+			remoteInfo = AssimilES;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		AA0000000000000000000005 /* AssimilES.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AssimilES.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000010 /* audio */ = {isa = PBXFileReference; lastKnownFileType = folder; name = audio; path = Resources/audio; sourceTree = "<group>"; };
 		AA0000000000000000000012 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = Resources/manifest.json; sourceTree = "<group>"; };
 		AA0000000000000000000020 /* text */ = {isa = PBXFileReference; lastKnownFileType = folder; name = text; path = Resources/text; sourceTree = "<group>"; };
+		BB0000000000000000000001 /* AssimilESTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssimilESTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC0000000000000000000001 /* AssimilESUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssimilESUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA0000000000000000000009 /* AssimilES */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = AssimilES; sourceTree = "<group>"; };
+		BB0000000000000000000002 /* AssimilESTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = AssimilESTests; sourceTree = "<group>"; };
+		CC0000000000000000000002 /* AssimilESUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (Fixtures, ); path = AssimilESUITests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		AA0000000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB0000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC0000000000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -38,6 +73,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000009 /* AssimilES */,
+				BB0000000000000000000002 /* AssimilESTests */,
+				CC0000000000000000000002 /* AssimilESUITests */,
 				AA0000000000000000000012 /* manifest.json */,
 				AA0000000000000000000020 /* text */,
 				AA0000000000000000000010 /* audio */,
@@ -49,6 +86,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000005 /* AssimilES.app */,
+				BB0000000000000000000001 /* AssimilESTests.xctest */,
+				CC0000000000000000000001 /* AssimilESUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,6 +115,48 @@
 			productReference = AA0000000000000000000005 /* AssimilES.app */;
 			productType = "com.apple.product-type.application";
 		};
+		BB0000000000000000000003 /* AssimilESTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BB0000000000000000000009 /* Build configuration list for PBXNativeTarget "AssimilESTests" */;
+			buildPhases = (
+				BB0000000000000000000004 /* Sources */,
+				BB0000000000000000000005 /* Frameworks */,
+				BB0000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BB0000000000000000000008 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BB0000000000000000000002 /* AssimilESTests */,
+			);
+			name = AssimilESTests;
+			productName = AssimilESTests;
+			productReference = BB0000000000000000000001 /* AssimilESTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		CC0000000000000000000003 /* AssimilESUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC0000000000000000000009 /* Build configuration list for PBXNativeTarget "AssimilESUITests" */;
+			buildPhases = (
+				CC0000000000000000000004 /* Sources */,
+				CC0000000000000000000005 /* Frameworks */,
+				CC0000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CC0000000000000000000008 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CC0000000000000000000002 /* AssimilESUITests */,
+			);
+			name = AssimilESUITests;
+			productName = AssimilESUITests;
+			productReference = CC0000000000000000000001 /* AssimilESUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -88,6 +169,14 @@
 				TargetAttributes = {
 					AA0000000000000000000004 = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					BB0000000000000000000003 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = AA0000000000000000000004;
+					};
+					CC0000000000000000000003 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = AA0000000000000000000004;
 					};
 				};
 			};
@@ -106,6 +195,8 @@
 			projectRoot = "";
 			targets = (
 				AA0000000000000000000004 /* AssimilES */,
+				BB0000000000000000000003 /* AssimilESTests */,
+				CC0000000000000000000003 /* AssimilESUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -121,6 +212,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BB0000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC0000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -131,7 +236,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BB0000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC0000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BB0000000000000000000008 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000004 /* AssimilES */;
+			targetProxy = BB0000000000000000000007 /* PBXContainerItemProxy */;
+		};
+		CC0000000000000000000008 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000004 /* AssimilES */;
+			targetProxy = CC0000000000000000000007 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		AA0000000000000000000016 /* Debug */ = {
@@ -186,7 +318,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Assimil ES";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour t'enregistrer sur une phrase et la comparer au natif. Les prises restent sur le téléphone.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour t'enregistrer quand tu réponds à voix haute ou compares ta prononciation au natif. Les prises restent sur le téléphone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Pour reconnaître, en local, les mots que tu viens de dire.";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -215,7 +347,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Assimil ES";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour t'enregistrer sur une phrase et la comparer au natif. Les prises restent sur le téléphone.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour t'enregistrer quand tu réponds à voix haute ou compares ta prononciation au natif. Les prises restent sur le téléphone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Pour reconnaître, en local, les mots que tu viens de dire.";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -229,6 +361,72 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BB000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WM42CA5NH5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ethansaux.AssimilESTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AssimilES.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AssimilES";
+			};
+			name = Debug;
+		};
+		BB000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WM42CA5NH5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ethansaux.AssimilESTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AssimilES.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AssimilES";
+			};
+			name = Release;
+		};
+		CC000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WM42CA5NH5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ethansaux.AssimilESUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = AssimilES;
+			};
+			name = Debug;
+		};
+		CC000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WM42CA5NH5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ethansaux.AssimilESUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = AssimilES;
 			};
 			name = Release;
 		};
@@ -249,6 +447,24 @@
 			buildConfigurations = (
 				AA0000000000000000000018 /* Debug */,
 				AA0000000000000000000019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB0000000000000000000009 /* Build configuration list for PBXNativeTarget "AssimilESTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB000000000000000000000A /* Debug */,
+				BB000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC0000000000000000000009 /* Build configuration list for PBXNativeTarget "AssimilESUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC000000000000000000000A /* Debug */,
+				CC000000000000000000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

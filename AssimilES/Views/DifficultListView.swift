@@ -4,6 +4,8 @@ import SwiftData
 /// Les phrases marquées d'un geste pendant l'écoute, et leur retour programmé.
 /// Une liste que l'usage remplit tout seul, sans effort de saisie.
 struct DifficultListView: View {
+    let onChooseLesson: () -> Void
+
     @Environment(\.modelContext) private var context
     @Query(sort: \DifficultSentence.markedAt, order: .reverse)
     private var marks: [DifficultSentence]
@@ -17,11 +19,28 @@ struct DifficultListView: View {
         NavigationStack {
             Group {
                 if marks.isEmpty {
-                    ContentUnavailableView(
-                        "Aucune phrase marquée",
-                        systemImage: "flag",
-                        description: Text("Pendant l'écoute, le drapeau met de côté une phrase qui résiste.")
-                    )
+                    VStack(spacing: 20) {
+                        Image(systemName: "flag")
+                            .font(.system(size: 34, weight: .medium))
+                            .foregroundStyle(StudyStyle.accent)
+                            .frame(width: 88, height: 88)
+                            .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 28))
+                        VStack(spacing: 10) {
+                            Text("Les phrases à garder")
+                                .font(.title2.weight(.bold))
+                            Text("Une phrase te résiste ? Marque-la avec le drapeau pendant l’écoute. Tu la retrouveras ici pour la retravailler.")
+                                .font(.body).foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        Button(action: onChooseLesson) {
+                            Text("Choisir une leçon")
+                        }
+                        .buttonStyle(StudyPrimaryButtonStyle())
+                        .padding(.top, 8)
+                    }
+                    .padding(28)
+                    .frame(maxWidth: 460)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
                         Section {
@@ -54,9 +73,13 @@ struct DifficultListView: View {
                             }
                         }
                     }
+                    .listStyle(.plain)
+                    .studyListBackground()
                 }
             }
-            .navigationTitle("À revoir")
+            .background(StudyStyle.paper)
+            .navigationTitle("Réviser")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -82,7 +105,7 @@ private struct ReviewCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 12)
     }
 }
 
@@ -90,9 +113,10 @@ private struct MarkRow: View {
     let mark: DifficultSentence
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(spanish ?? "Leçon \(mark.lessonNumber), phrase \(mark.sentenceNumber)")
-                .lineLimit(2)
+                .font(.body)
+                .lineLimit(3)
             HStack(spacing: 6) {
                 Text("Leçon \(mark.lessonNumber)")
                 Text("·")

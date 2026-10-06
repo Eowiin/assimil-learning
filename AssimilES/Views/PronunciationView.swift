@@ -33,20 +33,24 @@ struct PronunciationView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     sentence
-                    buttons
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("Enregistrement")
+                            .font(.headline)
+                        buttons
+                    }
+                    .studySection()
                     if !verdicts.isEmpty || speech.status != .idle {
-                        Divider()
-                        result
+                        result.studySection()
                     }
                     if intonation != nil || intonationFailed {
-                        Divider()
-                        melody
+                        melody.studySection()
                     }
                     Divider()
                     disclaimer
                 }
                 .padding(24)
             }
+            .background(StudyStyle.paper)
             .navigationTitle("Prononciation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -77,7 +81,7 @@ struct PronunciationView: View {
 
             if let reference {
                 Text(reference)
-                    .font(.title3)
+                    .font(.title2.weight(.medium))
             } else {
                 Text("Texte non disponible pour cette phrase.")
                     .foregroundStyle(.secondary)
@@ -127,12 +131,13 @@ struct PronunciationView: View {
             } label: {
                 Image(systemName: recorder.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 64))
-                    .foregroundStyle(recorder.isRecording ? Color.red : Color.accentColor)
+                    .foregroundStyle(recorder.isRecording ? Color.red : StudyStyle.accent)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(recorder.isRecording ? "Arrêter l’enregistrement" : "Enregistrer ma voix")
             .disabled(reference == nil || key == nil)
 
-            Text(recorder.isRecording ? "J'écoute" : "Enregistrer")
+            Text(recorder.isRecording ? "Arrêter" : "Enregistrer")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -148,6 +153,7 @@ struct PronunciationView: View {
                     .background(Circle().fill(.quaternary))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(symbol == "stop.fill" ? "Arrêter : \(title)" : "Écouter : \(title)")
             .disabled(!enabled)
 
             Text(title)
@@ -256,9 +262,8 @@ struct PronunciationView: View {
     }
 
     private var disclaimer: some View {
-        Text("La reconnaissance dit si tes mots **passent**, pas si ton accent est bon : "
-             + "aucune évaluation de prononciation n'existe côté Apple. Pour l'accent, "
-             + "c'est la réécoute côte à côte qui tranche.")
+        Text("Les mots reconnus t’aident à repérer ce qui passe. Pour travailler ton accent, "
+             + "compare ta voix à celle du natif en les réécoutant.")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -301,8 +306,9 @@ struct PronunciationView: View {
     }
 }
 
-/// Les mots à la suite, qui reviennent à la ligne comme un texte.
-private struct FlowText: View {
+/// Les mots à la suite, qui reviennent à la ligne comme un texte. Ceux qui ne sont pas
+/// passés en orange — ici comme dans les réponses dites aux exercices.
+struct FlowText: View {
     let verdicts: [WordVerdict]
 
     var body: some View {

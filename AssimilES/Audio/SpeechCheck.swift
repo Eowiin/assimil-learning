@@ -2,7 +2,8 @@ import Foundation
 import Speech
 import AVFoundation
 
-/// Repasse une prise dans la reconnaissance vocale espagnole, en local.
+/// Repasse une prise dans la reconnaissance vocale, en local : l'espagnol pour la
+/// prononciation et la deuxième vague, le français pour l'exercice de traduction.
 ///
 /// **Deux moteurs, et le second n'est pas un pis-aller théorique.**
 /// `SpeechTranscriber` est celui qui a transcrit le corpus
@@ -49,10 +50,23 @@ final class SpeechCheck: ObservableObject {
     /// qu'on sache lequel a parlé.
     @Published private(set) var engine: Engine?
 
-    private let wanted = Locale(identifier: "es-ES")
+    private let wanted: Locale
     /// Moteur et locale retenus une fois la préparation faite : on ne refait pas
     /// ce travail à chaque phrase.
     private var prepared: (engine: Engine, locale: Locale)?
+
+    /// L'espagnol pour la prononciation et la deuxième vague, le français pour
+    /// l'exercice de traduction. Chaque langue a son modèle, réservé et installé une
+    /// fois.
+    init(locale: Locale = Locale(identifier: "es-ES")) {
+        wanted = locale
+    }
+
+    /// « espagnol », « français » : pour les messages.
+    private var languageName: String {
+        Locale(identifier: "fr_FR").localizedString(forLanguageCode: wanted.language.languageCode?.identifier ?? "")
+            ?? wanted.identifier
+    }
 
     /// `nil` quand la reconnaissance n'a rien rendu — un silence, ou un échec.
     @discardableResult
@@ -113,7 +127,7 @@ final class SpeechCheck: ObservableObject {
         }
     }
 
-    // MARK: - Le modèle espagnol
+    // MARK: - Le modèle de la langue
 
     private func prepare() async throws -> (Engine, Locale) {
         if let prepared { return (prepared.engine, prepared.locale) }
@@ -131,7 +145,7 @@ final class SpeechCheck: ObservableObject {
             guard await requestSpeechAuthorization() else { throw Failure.notAuthorized }
             locale = await DictationTranscriber.supportedLocale(equivalentTo: wanted)
         }
-        guard let locale else { throw Failure.localeUnsupported(engine) }
+        guard let locale else { throw Failure.localeUnsupported(engine, languageName) }
 
         // Une app doit « souscrire » à la locale : sans réservation, le système
         // refuse jusqu'à dire où en est le téléchargement.
@@ -140,7 +154,7 @@ final class SpeechCheck: ObservableObject {
         }
         if !already {
             guard try await AssetInventory.reserve(locale: locale) else {
-                throw Failure.cannotReserve
+                throw Failure.cannotReserve(languageName)
             }
         }
 
@@ -160,7 +174,7 @@ final class SpeechCheck: ObservableObject {
         case .installed:
             return
         case .unsupported:
-            throw Failure.assetsUnsupported(engine)
+            throw Failure.assetsUnsupported(engine, languageName)
         case .supported, .downloading:
             // Le modèle se télécharge une fois, puis reste sur l'appareil.
             status = .installingModel
@@ -190,19 +204,19 @@ final class SpeechCheck: ObservableObject {
     /// Chaque cause a son message : « pas disponible » sans dire pourquoi obligeait
     /// à deviner lequel des trois obstacles on venait de heurter.
     private enum Failure: LocalizedError {
-        case localeUnsupported(Engine)
-        case assetsUnsupported(Engine)
-        case cannotReserve
+        case localeUnsupported(Engine, String)
+        case assetsUnsupported(Engine, String)
+        case cannotReserve(String)
         case notAuthorized
 
         var errorDescription: String? {
             switch self {
-            case .localeUnsupported(let engine):
-                "L'espagnol n'est pas dans les langues de \(engine.label) sur cet appareil."
-            case .assetsUnsupported(let engine):
-                "Le modèle espagnol de \(engine.label) n'est pas installable sur cet appareil."
-            case .cannotReserve:
-                "Impossible de réserver le modèle espagnol "
+            case .localeUnsupported(let engine, let language):
+                "Le \(language) n'est pas dans les langues de \(engine.label) sur cet appareil."
+            case .assetsUnsupported(let engine, let language):
+                "Le modèle \(language) de \(engine.label) n'est pas installable sur cet appareil."
+            case .cannotReserve(let language):
+                "Impossible de réserver le modèle \(language) "
                     + "(\(AssetInventory.maximumReservedLocales) langues au maximum)."
             case .notAuthorized:
                 "La reconnaissance vocale n'est pas autorisée pour l'app "

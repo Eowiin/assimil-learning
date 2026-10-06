@@ -1,7 +1,16 @@
 import Foundation
 import SwiftData
 
-/// Reprise exacte : où en était la leçon quand elle a été quittée.
+/// Reprise exacte de l'écoute libre : où en était la leçon quand elle a été quittée.
+///
+/// **Une ligne par leçon**, et non par leçon et par mode : la contrainte d'unicité
+/// porte sur `lessonNumber`. Insérer une seconde ligne pour un autre mode ne créait
+/// pas de doublon, elle *remplaçait* la première — la reprise d'un mode écrasait
+/// celle de l'autre sans le dire. La ligne garde donc le mode de sa reprise, et une
+/// reprise ne s'applique qu'à ce mode. Modifier la contrainte aurait demandé une
+/// migration de schéma pour un gain nul.
+///
+/// Rien ici ne concerne le parcours quotidien, qui vit dans `DailySession`.
 @Model
 final class LessonProgress {
     #Unique<LessonProgress>([\.lessonNumber])
@@ -11,6 +20,9 @@ final class LessonProgress {
     /// permet de reprendre au milieu d'une pause ou d'un exercice.
     var stepIndex: Int = 0
     var mode: String = ""
+    /// Fin d'écoute enregistrée par les versions précédentes. Conservée pour ne pas
+    /// toucher au schéma, plus écrite ni lue : arriver au bout d'une piste ne dit
+    /// pas qu'une leçon est travaillée.
     var completedAt: Date?
     var updatedAt: Date = Date.now
 
@@ -109,6 +121,95 @@ final class StudyDay {
     init(day: Date, seconds: Double = 0) {
         self.day = day
         self.seconds = seconds
+    }
+}
+
+enum StudyTime {
+    /// Ajoute du temps écouté au jour en cours. L'appelant passe ce que le lecteur
+    /// n'a pas encore rendu (`SessionPlayer.takeUnrecordedSeconds`) : rouvrir un
+    /// écran ne recompte rien.
+    @MainActor
+    static func record(_ seconds: Double, in context: ModelContext, now: Date = .now,
+                       calendar: Calendar = .current) {
+        guard seconds > 0 else { return }
+        let today = calendar.startOfDay(for: now)
+        let existing = (try? context.fetch(FetchDescriptor<StudyDay>()))?.first {
+            calendar.isDate($0.day, inSameDayAs: today)
+        }
+        if let existing {
+            existing.seconds += seconds
+        } else {
+            context.insert(StudyDay(day: today, seconds: seconds))
+        }
+    }
+}
+
+/// Une séance du parcours quotidien : une nouvelle leçon et ses activités, la
+/// deuxième vague quand elle a commencé.
+///
+/// Une séance n'est jamais modifiée par l'écoute libre. Sa validation est une date,
+/// posée une fois ; la progression se déduit des séances validées (`DailyCourse`),
+/// elle n'est jamais incrémentée.
+@Model
+final class DailySession {
+    #Unique<DailySession>([\.key])
+
+    /// « U012-1 » : séance 12, premier essai. Une leçon retravaillée le lendemain
+    /// ouvre un second essai.
+    var key: String = ""
+    var unit: Int = 0
+    var attempt: Int = 1
+    var startedAt: Date = Date.now
+    var updatedAt: Date = Date.now
+    var completedAt: Date?
+    /// Retravailler la même leçon le lendemain, en cas de difficulté.
+    var repeatTomorrow: Bool = false
+    /// `DailyProgress` en JSON : l'avancement évolue plus vite que le schéma, et un
+    /// champ ajouté plus tard ne demande pas de migration.
+    var progressData: Data = Data()
+
+    init(unit: Int, attempt: Int, startedAt: Date, stages: [DailyStage]) {
+        self.key = Self.makeKey(unit: unit, attempt: attempt)
+        self.unit = unit
+        self.attempt = attempt
+        self.startedAt = startedAt
+        self.updatedAt = startedAt
+        self.progressData = (try? JSONEncoder().encode(DailyProgress(stages: stages))) ?? Data()
+    }
+
+    var progress: DailyProgress {
+        get {
+            (try? JSONDecoder().decode(DailyProgress.self, from: progressData))
+                ?? DailyProgress(stages: Curriculum.plan(unit: unit)?.stages ?? [])
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue), data != progressData else { return }
+            progressData = data
+            updatedAt = .now
+        }
+    }
+
+    var isValidated: Bool { completedAt != nil }
+
+    static func makeKey(unit: Int, attempt: Int) -> String {
+        String(format: "U%03d-%d", unit, attempt)
+    }
+}
+
+/// Le point de départ du parcours. Créé au premier lancement depuis l'ancien réglage
+/// manuel, déplacé seulement par un repositionnement explicite.
+@Model
+final class CourseAnchor {
+    #Unique<CourseAnchor>([\.key])
+
+    var key: String = "course"
+    var unit: Int = 1
+    /// Les séances validées avant cette date ne comptent plus pour la suite.
+    var setAt: Date = Date.distantPast
+
+    init(unit: Int, setAt: Date) {
+        self.unit = unit
+        self.setAt = setAt
     }
 }
 

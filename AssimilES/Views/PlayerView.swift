@@ -11,6 +11,13 @@ import UIKit
 /// phrases marquées).
 struct PlayerView: View {
     let request: SessionRequest
+    /// Pour une étape de la séance du jour : la phrase où reprendre, et qui prévenir
+    /// quand la phrase change. La séance se souvient elle-même de sa reprise.
+    var resumeSentence: Int? = nil
+    var onSentenceChange: ((Int?) -> Void)? = nil
+    /// Le passage à l'étape suivante. Toujours un geste : la fin de l'audio le met
+    /// en avant, elle ne le déclenche pas.
+    var stageAction: StageAction? = nil
 
     @EnvironmentObject private var player: SessionPlayer
     @EnvironmentObject private var settings: AppSettings
@@ -20,6 +27,7 @@ struct PlayerView: View {
     @Query private var progress: [LessonProgress]
 
     @State private var showTranslation = false
+    @State private var showSpeed = false
     /// La phrase sur laquelle on veut s'essayer. Ouvre l'écran de prononciation.
     @State private var pronunciationStep: SessionStep?
     /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
@@ -32,33 +40,23 @@ struct PlayerView: View {
     var body: some View {
         VStack(spacing: 0) {
             transcript
-            Divider()
             controls
         }
+        .background(StudyStyle.paper)
         .navigationTitle(request.title)
         .navigationBarTitleDisplayMode(.inline)
         // Pendant une séance, la barre d'onglets ne sert à rien et prend la
         // hauteur dont le texte a besoin.
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
-            // Volontairement dans la barre du haut, pas dans les commandes du
-            // bas : s'enregistrer suppose de s'arrêter, ce n'est pas un geste à
-            // faire au pouce en marchant.
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    pronunciationStep = player.currentNavigableStep
-                } label: {
-                    Label("Prononciation", systemImage: "mic")
-                }
-                .disabled(player.currentNavigableStep?.sentenceNumber == nil)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showTranslation.toggle()
                 } label: {
-                    Label("Traduction",
-                          systemImage: showTranslation ? "eye" : "eye.slash")
+                    Label("Traduction", systemImage: "translate")
+                        .labelStyle(.titleAndIcon)
                 }
+                .accessibilityValue(showTranslation ? "Visible" : "Masquée")
             }
         }
         .sheet(item: $pronunciationStep) { step in
@@ -78,6 +76,9 @@ struct PlayerView: View {
         }
         .onChange(of: player.index) {
             recordReviewIfNeeded()
+            if isCurrentSession {
+                onSentenceChange?(player.currentNavigableStep?.sentenceNumber)
+            }
         }
     }
 
@@ -134,7 +135,12 @@ struct PlayerView: View {
                         }
                         rowView(row)
                             .id(row.stepIndex)
+                            .contentShape(Rectangle())
                             .onTapGesture { player.seek(to: row.stepIndex) }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityAction { player.seek(to: row.stepIndex) }
+                            .accessibilityHint("Écouter à partir de cette phrase")
                     }
 
                     if rows.isEmpty {
@@ -167,14 +173,14 @@ struct PlayerView: View {
         case .title:
             Text(LessonTextStore.text(for: row.step.lessonNumber)?.titleES
                  ?? "Leçon \(row.step.lessonNumber)")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(isCurrent ? Color.accentColor : .primary)
+                .font(.title.weight(.bold))
+                .foregroundStyle(isCurrent ? StudyStyle.accent : .primary)
                 .padding(.bottom, 4)
 
         case .exerciseIntro:
             Text("Exercice")
                 .font(.headline)
-                .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
+                .foregroundStyle(isCurrent ? StudyStyle.accent : .secondary)
                 .padding(.top, 6)
 
         default:
@@ -194,60 +200,149 @@ struct PlayerView: View {
     /// Seulement pour une leçon : en révision, les phrases viennent de partout et
     /// une note par leçon manquante serait du bruit.
     private var missingTextNotice: Bool {
-        guard case .lesson(let number, _) = request else { return false }
-        return !LessonTextStore.hasText(for: number)
+        switch request {
+        case .lesson(let number, _), .daily(let number, _):
+            return !LessonTextStore.hasText(for: number)
+        case .review, .excerpt:
+            return false
+        }
     }
 
     // MARK: - Commandes
 
     private var controls: some View {
         VStack(spacing: 16) {
-            if let step = player.currentStep, step.isPause {
-                Label("À toi de répéter", systemImage: "mic")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.tint)
-            } else {
-                Text(positionLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 28) {
-                controlButton("backward.end", size: 26) { player.previousOrReplay() }
-                controlButton("arrow.counterclockwise", size: 26) { player.replayCurrent() }
-                controlButton(player.isPlaying ? "pause.circle.fill" : "play.circle.fill", size: 64) {
-                    player.togglePlayPause()
-                }
-                controlButton("flag", size: 26, filled: isCurrentMarked) { toggleMarkCurrent() }
-                controlButton("forward.end", size: 26) { player.nextSentence() }
+            if let stageAction {
+                stageButton(stageAction)
             }
 
             HStack {
-                Image(systemName: "tortoise")
-                Slider(value: Binding(
-                    get: { Double(player.rate) },
-                    set: { player.rate = Float($0); settings.rate = $0 }
-                ), in: 0.6...1.4, step: 0.05)
-                Image(systemName: "hare")
+                if let step = player.currentStep, step.isPause {
+                    Label(repetitionLabel ?? "À toi de répéter", systemImage: "waveform")
+                        .foregroundStyle(StudyStyle.accent)
+                } else {
+                    // « Écoute » et non « séance » : arriver au bout de l'audio ne
+                    // termine pas une leçon.
+                    Text(player.isFinished ? (request.isReview ? "Révision terminée" : "Écoute terminée") : positionLabel)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
             }
-            .font(.caption)
+            .font(.subheadline.weight(.medium))
+
+            ProgressView(value: player.isFinished ? 1 : Double(player.index) / Double(max(1, player.steps.count)))
+                .accessibilityLabel("Progression de la séance")
+
+            HStack(spacing: 40) {
+                Button { player.previousOrReplay() } label: {
+                    Image(systemName: "backward.end.fill")
+                        .font(.system(size: 24)).frame(width: 52, height: 52)
+                }
+                .accessibilityLabel("Phrase précédente")
+                Button { player.togglePlayPause() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 28, weight: .semibold))
+                        .frame(width: 72, height: 72)
+                        .foregroundStyle(.white)
+                        .background(StudyStyle.button, in: Circle())
+                }
+                .accessibilityLabel(player.isPlaying ? "Mettre en pause" : "Lire")
+                .accessibilityIdentifier("play-pause")
+                Button { player.nextSentence() } label: {
+                    Image(systemName: "forward.end.fill")
+                        .font(.system(size: 24)).frame(width: 52, height: 52)
+                }
+                .accessibilityLabel("Phrase suivante")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(StudyStyle.ink)
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 0) {
+                studyTool("arrow.counterclockwise", label: "Répéter") { player.replayCurrent() }
+                studyTool(isCurrentMarked ? "flag.fill" : "flag",
+                          label: request.isReview ? "Acquise" : "À revoir") { toggleMarkCurrent() }
+                    .disabled(currentMarkKey == nil)
+                    .foregroundStyle(isCurrentMarked ? StudyStyle.accent : .secondary)
+                    .accessibilityLabel(request.isReview ? "Phrase acquise, retirer des révisions" :
+                                        (isCurrentMarked ? "Retirer des phrases à revoir" : "Marquer à revoir"))
+                studyTool("mic", label: "Ma voix") { pronunciationStep = player.currentNavigableStep }
+                    .disabled(player.currentNavigableStep?.sentenceNumber == nil)
+                Button { showSpeed = true } label: {
+                    VStack(spacing: 6) {
+                        Text("\(player.rate, format: .number.precision(.fractionLength(2)))×")
+                            .font(.subheadline.weight(.semibold)).monospacedDigit()
+                            .frame(height: 22)
+                        Text("Vitesse").font(.caption2)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Vitesse de lecture")
+                .popover(isPresented: $showSpeed) {
+                    VStack(alignment: .leading, spacing: 20) {
+                        HStack {
+                            Text("Vitesse de lecture").font(.headline)
+                            Spacer()
+                            Button("Terminé") { showSpeed = false }
+                        }
+                        HStack {
+                            Text("0,6×").font(.caption)
+                            Slider(value: Binding(
+                                get: { Double(player.rate) },
+                                set: { player.rate = Float($0); settings.rate = $0 }
+                            ), in: 0.6...1.4, step: 0.05)
+                            .accessibilityLabel("Vitesse de lecture")
+                            Text("1,4×").font(.caption)
+                        }
+                        Text("\(player.rate, format: .number.precision(.fractionLength(2)))×")
+                            .monospacedDigit().frame(maxWidth: .infinity)
+                    }
+                    .padding(24)
+                    .presentationCompactAdaptation(.sheet)
+                    .presentationDetents([.height(210)])
+                }
+            }
+            .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 18)
-        .background(.bar)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+        .background(StudyStyle.paper)
+        .overlay(alignment: .top) { Divider() }
     }
 
-    private func controlButton(_ symbol: String, size: CGFloat,
-                               filled: Bool = false,
-                               action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: filled ? "\(symbol).fill" : symbol)
-                .font(.system(size: size))
-                .frame(width: max(44, size), height: max(44, size))
-                .contentShape(.rect)
+    @ViewBuilder
+    private func stageButton(_ action: StageAction) -> some View {
+        if isCurrentSession && player.isFinished {
+            Button(action: action.perform) {
+                Label(action.title, systemImage: action.symbol)
+            }
+            .buttonStyle(StudyPrimaryButtonStyle())
+            .accessibilityIdentifier("stage-action")
+        } else {
+            Button(action: action.perform) {
+                Label(action.title, systemImage: action.symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("stage-action")
         }
-        .buttonStyle(.plain)
+    }
+
+    private func studyTool(_ symbol: String, label: String,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: symbol).font(.system(size: 19)).frame(height: 22)
+                Text(label).font(.caption2)
+            }
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(label)
     }
 
     // MARK: - État
@@ -265,7 +360,19 @@ struct PlayerView: View {
         if request.isReview {
             return "Leçon \(step.lessonNumber), phrase \(step.sentenceNumber ?? 0) · \(position)"
         }
+        if let repetitionLabel {
+            return "Phrase \(position) · \(repetitionLabel.lowercased())"
+        }
         return step.isExercise ? "Exercice \(position)" : "Phrase \(position)"
+    }
+
+    /// « Répétition 2 sur 3 », à l'étape Répétition de la séance du jour.
+    private var repetitionLabel: String? {
+        guard isCurrentSession,
+              case .daily(_, .repetition(let times)) = request, times > 1,
+              let step = player.currentStep, step.sentenceNumber != nil
+        else { return nil }
+        return "Répétition \(step.repetition) sur \(times)"
     }
 
     private var currentMarkKey: String? {
@@ -284,17 +391,24 @@ struct PlayerView: View {
         let steps = SessionBuilder.build(request,
                                          marks: ReviewSchedule.due(in: marks),
                                          settings: settings.session)
-        player.start(request, steps: steps, from: resumeIndex)
+        player.start(request, steps: steps, from: resumeIndex(in: steps))
         recordReviewIfNeeded()
     }
 
     /// La révision ne se reprend pas : la file est reconstruite à chaque fois, à
-    /// partir de ce qui est dû au moment où on la lance.
-    private var resumeIndex: Int {
-        guard case .lesson(let number, let mode) = request else { return 0 }
-        return progress.first {
-            $0.lessonNumber == number && $0.mode == mode.rawValue
-        }?.stepIndex ?? 0
+    /// partir de ce qui est dû au moment où on la lance. L'étape du jour reprend à
+    /// sa phrase, que le nombre de répétitions ait changé ou non.
+    private func resumeIndex(in steps: [SessionStep]) -> Int {
+        switch request {
+        case .lesson(let number, let mode):
+            return progress.first {
+                $0.lessonNumber == number && $0.mode == mode.rawValue
+            }?.stepIndex ?? 0
+        case .daily:
+            return resumeSentence.flatMap { SessionBuilder.index(ofSentence: $0, in: steps) } ?? 0
+        case .review, .excerpt:
+            return 0
+        }
     }
 
     /// En révision, le drapeau **retire** la phrase de la file et passe à la
@@ -329,33 +443,33 @@ struct PlayerView: View {
         marks.first { $0.key == key }?.recordReview()
     }
 
-    /// Sauvegarde la reprise et le temps écouté en quittant l'écran.
+    /// Sauvegarde la reprise et le temps écouté en quittant l'écran. Arriver au
+    /// bout ne marque rien comme terminé : c'est la séance du jour qui valide.
     private func recordSession() {
-        if case .lesson(let number, let mode) = request {
-            let entry = progress.first { $0.lessonNumber == number && $0.mode == mode.rawValue }
+        if case .lesson(let number, let mode) = request, isCurrentSession {
+            // Une ligne par leçon (voir LessonProgress) : on reprend celle qui existe,
+            // quel que soit son mode, au lieu d'en insérer une seconde qui la
+            // remplacerait en silence.
+            let entry = progress.first { $0.lessonNumber == number }
                 ?? {
-                    let new = LessonProgress(lessonNumber: number, mode: mode.rawValue)
+                    let new = LessonProgress(lessonNumber: number)
                     context.insert(new)
                     return new
                 }()
+            entry.mode = mode.rawValue
             entry.stepIndex = player.isFinished ? 0 : player.index
             entry.updatedAt = .now
-            if player.isFinished { entry.completedAt = .now }
         }
 
-        let seconds = player.playedSeconds
-        guard seconds > 0 else { return }
-        let today = Calendar.current.startOfDay(for: .now)
-        let descriptor = FetchDescriptor<StudyDay>()
-        let existing = (try? context.fetch(descriptor))?.first {
-            Calendar.current.isDate($0.day, inSameDayAs: today)
-        }
-        if let existing {
-            existing.seconds += seconds
-        } else {
-            context.insert(StudyDay(day: today, seconds: seconds))
-        }
+        StudyTime.record(player.takeUnrecordedSeconds(), in: context)
     }
+}
+
+/// Un bouton de passage à l'étape suivante, fourni par la séance du jour.
+struct StageAction {
+    let title: String
+    let symbol: String
+    let perform: () -> Void
 }
 
 private struct SentenceRow: View {
@@ -373,15 +487,16 @@ private struct SentenceRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 18, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(text?.es ?? fallback)
-                    .font(.body)
+                    .font(.title3)
+                    .lineSpacing(4)
                     .foregroundStyle(text == nil ? .secondary : .primary)
 
                 if let pron = text?.pron, isCurrent {
                     Text(pron)
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
                 if showTranslation, let fr = text?.fr {
                     Text(fr)
@@ -404,11 +519,16 @@ private struct SentenceRow: View {
                     .foregroundStyle(.orange)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 16)
         .background {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(isCurrent ? Color.accentColor.opacity(0.14) : .clear)
+            Rectangle()
+                .fill(isCurrent ? StudyStyle.accent.opacity(0.05) : .clear)
+        }
+        .overlay(alignment: .leading) {
+            if isCurrent {
+                Capsule().fill(StudyStyle.accent).frame(width: 3).padding(.vertical, 16)
+            }
         }
     }
 

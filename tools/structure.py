@@ -464,6 +464,13 @@ def build(name: str, manifest: dict) -> dict:
         "fr": capitalize(french(clean(exo_fr[i]))) if i < len(exo_fr) else "",
     } for i in range(n_exo)]
 
+    exercise2 = None
+    exercise2_raw = None
+    if not lesson["isReview"]:
+        exercise2, exo2_review = draft_exercise2(left.get("exo2_es", []), right.get("exo2_fr", []))
+        exercise2_raw = {"es": left.get("exo2_es", []), "fr": right.get("exo2_fr", [])}
+        review.extend(exo2_review)
+
     # Assimil éclate les notes : le bloc « Notes » de la page de gauche, mais aussi
     # la fin du bloc « Remarques de prononciation » de la page de droite, où les
     # remarques de langue suivent celles de prononciation sans intertitre. Les deux
@@ -475,16 +482,99 @@ def build(name: str, manifest: dict) -> dict:
     if not notes_raw and not remarks_raw and n_dial:
         review.append("aucune note reconnue — vérifier l'ancre « Notes »")
 
-    return {
+    draft = {
         "number": number,
         "titleES": title_es,
         "titleFR": title_fr,
         "sentences": sentences,
         "exercise": exercise,
-        "_notesRaw": notes_raw,
-        "_remarksRaw": remarks_raw,
-        "_review": review,
     }
+    if exercise2 is not None:
+        # Sous « _exercise2 » et non « exercise2 » : le gabarit espagnol reste à
+        # composer, et un brouillon promu tel quel ne doit pas passer pour importé.
+        draft["_exercise2"] = exercise2
+        draft["_exercise2Raw"] = exercise2_raw
+    draft.update({"_notesRaw": notes_raw, "_remarksRaw": remarks_raw, "_review": review})
+    return draft
+
+# --- Exercice 2 -------------------------------------------------------------
+# « Ejercicio 2 – Complete » : la phrase française, puis l'espagnol amputé de mots
+# en pointillés ; le corrigé ne donne que les mots manquants, les parties
+# imprimées remplacées par des tirets :  ① – estás  ② Estoy – gracias  …
+#
+# L'OCR lit bien le français et le corrigé, mal les gabarits : les pointillés
+# ressortent en « •• », « i...? », « (.. », et une ligne de gabarit passe parfois
+# dans l'autre colonne. Le script rend donc les consignes et les réponses par
+# phrase, et laisse le gabarit « es » vide : c'est lui qu'on compose à la main,
+# trous entre crochets (voir LessonText.swift). Aucun trou n'est deviné.
+FRENCH_PROMPT_WORDS = re.compile(
+    r"(?<!\w)(je|tu|il|elle|nous|vous|ils|en|et|mon|ma|mes|ton|ta|très|oui|non)(?!\w)",
+    re.IGNORECASE)
+FRENCH_ONLY = re.compile(r"[àâçèêëîïôûùœ]|\s[?!:;]$", re.IGNORECASE)
+ITEM_MARK = re.compile(r"(?:(?<=\s)|^)(?:[•®©@◦*✳]+|\d{1,2}|[OE0])(?=\s|[-–])")
+DASH = re.compile(r"\s*[-–—]\s*")
+
+def is_french_prompt(line: str) -> bool:
+    text = LEADING.sub("", line.strip())
+    if ".." in text or "…" in text or re.search(r"[¿¡•]", text):
+        return False  # un gabarit : pointillés ou ponctuation espagnole
+    if not re.search(r"[^\W\d_]{2,}", text):
+        return False
+    return bool(FRENCH_WORDS.search(text) or FRENCH_PROMPT_WORDS.search(text)
+                or FRENCH_ONLY.search(text))
+
+def split_answers(block: list[str]) -> list[list[str]]:
+    """
+    Les mots manquants, par phrase : ce qui n'est pas un tiret dans le corrigé.
+
+    Le corrigé s'écrit tout en tirets ; la prose qui le suit sur la page n'en a pas
+    et n'est pas toujours séparée par « *** » (leçons 2 et 3). On s'arrête donc à la
+    première ligne sans tiret, faute de quoi un paragraphe devenait une réponse.
+    """
+    lines = []
+    for line in block:
+        if lines and not DASH.search(line):
+            break
+        lines.append(line)
+    text = re.sub(r"\s+", " ", " ".join(lines)).strip()
+    items = [part for part in ITEM_MARK.split(text) if part.strip()]
+    return [[a for a in (s.strip(" .,;") for s in DASH.split(item)) if a] for item in items]
+
+def lost_marks(block: list[str]) -> bool:
+    """
+    Deux tirets de suite dans le corrigé : la fin d'une phrase et le début de la
+    suivante, dont le numéro cerclé a disparu (leçon 2 : « es de - - dónde eres »).
+    """
+    return bool(re.search(r"[-–]\s+[-–]", " ".join(block)))
+
+def draft_exercise2(es_lines: list[str], fr_lines: list[str]) -> tuple[dict, list[str]]:
+    prompts = [french(clean(LEADING.sub("", l.strip()))) for l in es_lines if is_french_prompt(l)]
+    answers = split_answers(fr_lines)
+    review = []
+    if not prompts and not answers:
+        review.append("exercice 2 introuvable — vérifier l'ancre « Ejercicio 2 »")
+    elif len(prompts) != len(answers):
+        review.append(f"exercice 2 : {len(prompts)} consignes françaises pour "
+                      f"{len(answers)} corrigés — l'OCR a fusionné ou perdu une phrase")
+    # Deux pertes peuvent se compenser (leçon 2 : une consigne passée dans l'autre
+    # colonne, un numéro cerclé avalé) : un corrigé vide ou chargé est suspect.
+    suspicious = [i + 1 for i, a in enumerate(answers) if not a or len(a) > 3]
+    if suspicious:
+        review.append(f"exercice 2 : corrigé douteux pour les phrases {suspicious}")
+    if lost_marks(fr_lines):
+        review.append("exercice 2 : « - - » dans le corrigé, un numéro de phrase a été "
+                      "avalé — les réponses sont décalées")
+    if prompts or answers:
+        review.append("exercice 2 : gabarits espagnols à composer à la main depuis "
+                      "le livre (trous entre crochets), puis renommer « _exercise2 » "
+                      "en « exercise2 »")
+    items = [{
+        "n": i + 1,
+        "fr": prompts[i] if i < len(prompts) else "",
+        "es": "",
+        "_answers": answers[i] if i < len(answers) else [],
+    } for i in range(max(len(prompts), len(answers)))]
+    return {"items": items}, review
 
 # --- Contrôle contre les leçons relues -----------------------------------
 WORD = re.compile(r"[a-záéíóúüñ]+", re.IGNORECASE)
