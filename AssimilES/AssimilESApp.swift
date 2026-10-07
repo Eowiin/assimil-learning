@@ -29,6 +29,7 @@ struct AssimilESApp: App {
         }
         .modelContainer(container)
         .onChange(of: scenePhase) {
+            AudioLog.info("scène : \(String(describing: scenePhase))")
             if scenePhase == .active { clock.refresh() }
             if scenePhase == .background { try? container.mainContext.save() }
         }

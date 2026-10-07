@@ -53,6 +53,7 @@ struct DailySessionView: View {
         .background(StudyStyle.paper)
         .toolbar(.hidden, for: .tabBar)
         .onDisappear {
+            AudioLog.info("\(#fileID) disparaît")
             player.pause()
             StudyTime.record(player.takeUnrecordedSeconds(), in: context, now: clock.now())
             store.save()

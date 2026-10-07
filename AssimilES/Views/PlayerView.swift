@@ -72,6 +72,7 @@ struct PlayerView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             recordSession()
+            AudioLog.info("\(#fileID) disparaît")
             player.pause()
         }
         .onChange(of: player.index) {
