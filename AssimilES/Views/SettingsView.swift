@@ -60,7 +60,9 @@ struct SettingsView: View {
                         }
                     }
                     .foregroundStyle(.primary)
-                    LabeledContent("Série") { Text("\(Streak.current(from: days)) jour(s)") }
+                    LabeledContent("Série") {
+                        Text("\(Streak.current(validatedOn: sessions.compactMap(\.completedAt), today: clock.today)) jour(s)")
+                    }
                     LabeledContent("Temps total") { Text(totalLabel) }
                 }
 
