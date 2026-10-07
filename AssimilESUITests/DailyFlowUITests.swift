@@ -209,8 +209,8 @@ final class DailyFlowUITests: XCTestCase {
     func testWeeklyReviewWithoutExercises() throws {
         let app = launch(store: newStore(), lesson: 7)
         XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["Traduction"].exists)
-        XCTAssertFalse(app.staticTexts["À compléter"].exists)
+        // Trois étapes, sans les deux exercices.
+        XCTAssertEqual(app.otherElements["stage-progress"].value as? String, "Étape 1 sur 3 · Découverte")
         snapshot(app, "11-revision-accueil")
 
         tap(app.buttons["start-session"])
