@@ -173,11 +173,11 @@ struct TodayView: View {
             switch status {
             case .ready(let plan):
                 planHeader(plan)
-                stageChips(plan, progress: nil)
+                stageProgress(plan, progress: nil)
                 startButton("Commencer la séance")
             case .inProgress(let session, let plan):
                 planHeader(plan)
-                stageChips(plan, progress: session.progress)
+                stageProgress(plan, progress: session.progress)
                 startButton("Reprendre : \(session.progress.current.title.lowercased())")
             case .doneToday(let session, let plan, let tomorrow):
                 done(session, plan: plan, tomorrow: tomorrow)
@@ -225,24 +225,34 @@ struct TodayView: View {
         return "Leçon \(number) · \(count) phrases" + (plan.isWeeklyReview ? " · révision" : "")
     }
 
-    private func stageChips(_ plan: DailyPlan, progress: DailyProgress?) -> some View {
-        FlowLayout(spacing: 8, lineSpacing: 8) {
-            ForEach(plan.stages.filter { $0 != .finish }) { stage in
-                let done = progress?.completed.contains(stage) ?? false
-                let current = progress?.current == stage
-                Label {
-                    Text(stage.title)
-                } icon: {
-                    Image(systemName: done ? "checkmark.circle.fill" : (current ? "circle.inset.filled" : "circle"))
-                        .foregroundStyle(done || current ? StudyStyle.accent : .secondary)
+    /// La progression en une ligne : une barre segmentée et l'étape en cours. Les
+    /// pastilles d'avant redisaient ce que la séance montre déjà, et ne menaient
+    /// nulle part.
+    private func stageProgress(_ plan: DailyPlan, progress: DailyProgress?) -> some View {
+        let stages = plan.stages.filter { $0 != .finish }
+        let current = progress?.current ?? stages.first
+        let index = current.flatMap { stages.firstIndex(of: $0) }
+        let label = index.map { "Étape \($0 + 1) sur \(stages.count) · \(stages[$0].title)" }
+            ?? "Toutes les étapes sont faites · reste à valider"
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                ForEach(stages) { stage in
+                    let done = progress?.completed.contains(stage) ?? false
+                    Capsule()
+                        .fill(done ? StudyStyle.button
+                              : stage == current ? StudyStyle.button.opacity(0.4)
+                              : Color(uiColor: .tertiarySystemFill))
+                        .frame(height: 6)
                 }
-                .font(.caption)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(StudyStyle.paper, in: Capsule())
-                .accessibilityValue(done ? "Terminée" : (current ? "En cours" : "À faire"))
             }
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Progression de la séance")
+        .accessibilityValue(label)
+        .accessibilityIdentifier("stage-progress")
     }
 
     private func startButton(_ title: String) -> some View {
