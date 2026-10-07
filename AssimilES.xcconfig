@@ -1,0 +1,7 @@
+// Réglages de l'app communs à Debug et Release.
+//
+// L'icône : « AppIcon », le « ñ » versionné. Local.xcconfig, hors dépôt, peut en
+// désigner une autre, gardée elle aussi hors dépôt (voir README, « L'icône »).
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+
+#include? "Local.xcconfig"

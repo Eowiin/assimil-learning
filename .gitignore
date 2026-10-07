@@ -13,6 +13,11 @@ content/
 # aucun texte Assimil.
 Resources/text/
 
+# L'icône Assimil (marque d'Assimil) et le réglage qui la choisit : sur ce Mac
+# seulement, le dépôt public garde l'icône « ñ ».
+AssimilES/Assets.xcassets/AppIconAssimil.appiconset/
+Local.xcconfig
+
 # Python
 __pycache__/
 
