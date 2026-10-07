@@ -116,6 +116,14 @@ final class DailyFlowUITests: XCTestCase {
         let blank = app.textFields["blank-2-0"]
         tap(blank)
         blank.typeText("estas")
+        // Le trou en cours et la vérification de sa phrase restent au-dessus de la
+        // barre d'accents, sans avoir à fermer le clavier (#2).
+        XCTAssertTrue(app.buttons["accent-á"].waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 1)
+        let accentBarTop = app.buttons["accent-á"].frame.minY
+        XCTAssertLessThanOrEqual(blank.frame.maxY, accentBarTop, "trou sous la barre d'accents")
+        XCTAssertLessThanOrEqual(app.buttons["check-2"].frame.maxY, accentBarTop, "« Vérifier » sous la barre d'accents")
+        snapshot(app, "06a-completer-saisie")
         tap(app.textFields["blank-2-1"])
         app.textFields["blank-2-1"].typeText("aca")
         tap(app.buttons["check-2"])
