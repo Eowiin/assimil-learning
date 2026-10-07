@@ -480,7 +480,9 @@ struct BookConfirmation: View {
 
 /// Lire le texte, les traductions et les notes — tout visible d'un coup, contrairement
 /// au lecteur qui ne montre les notes que de la phrase en cours.
-private struct ComprehensionView: View {
+/// Le texte complet d'une leçon : l'étape Compréhension de la séance, et la page
+/// d'une leçon dans l'onglet Leçons.
+struct ComprehensionView: View {
     let lesson: Lesson
     let text: LessonText?
     let content: ActivityContent

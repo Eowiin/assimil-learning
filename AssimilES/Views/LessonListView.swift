@@ -29,49 +29,104 @@ struct LessonListView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    // L'écoute libre : ses trois modes, sans effet sur la séance du jour.
-                    VStack(alignment: .leading, spacing: 10) {
-                        Picker("Mode d’écoute", selection: $settings.freeListeningMode) {
-                            Text("Écoute").tag(StudyMode.passive)
-                            Text("Répétition").tag(StudyMode.shadowing)
-                            Text("La vague").tag(StudyMode.wave)
+            ScrollViewReader { proxy in
+                List {
+                    Section {
+                        // L'écoute libre : ses trois modes, sans effet sur la séance du jour.
+                        VStack(alignment: .leading, spacing: 10) {
+                            Picker("Mode d’écoute", selection: $settings.freeListeningMode) {
+                                Text("Écoute").tag(StudyMode.passive)
+                                Text("Répétition").tag(StudyMode.shadowing)
+                                Text("La vague").tag(StudyMode.wave)
+                            }
+                            .pickerStyle(.segmented)
+                            .accessibilityIdentifier("listening-mode")
+                            Text(settings.freeListeningMode.subtitle)
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("\(completed.count) \(completed.count > 1 ? "leçons validées" : "leçon validée") sur \(Manifest.shared.lessonCount)")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                                .padding(.top, 6)
                         }
-                        .pickerStyle(.segmented)
-                        .accessibilityIdentifier("listening-mode")
-                        Text(settings.freeListeningMode.subtitle)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("\(completed.count) \(completed.count > 1 ? "leçons validées" : "leçon validée") sur \(Manifest.shared.lessonCount)")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                            .padding(.top, 6)
+                        .padding(.vertical, 10)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
-                    .padding(.vertical, 10)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                    Section {
+                        // Consultation libre : ouvrir une leçon d'ici ne touche pas au parcours.
+                        ForEach(Manifest.shared.lessons) { lesson in
+                            NavigationLink {
+                                LessonPage(lesson: lesson, canResume: canResume(lesson.number))
+                            } label: {
+                                LessonRow(lesson: lesson,
+                                          isCompleted: completed.contains(lesson.number),
+                                          isCurrent: lesson.number == currentLesson,
+                                          canResume: canResume(lesson.number),
+                                          waveLesson: settings.freeListeningMode == .wave
+                                            ? SessionBuilder.activeLesson(for: lesson.number)?.number : nil)
+                            }
+                            .id(lesson.number)
+                        }
+                    }
                 }
-                Section {
-                    // Consultation libre : ouvrir une leçon d'ici ne touche pas au parcours.
-                    ForEach(Manifest.shared.lessons) { lesson in
-                        NavigationLink {
-                            PlayerView(request: .lesson(number: lesson.number, mode: settings.freeListeningMode))
-                        } label: {
-                            LessonRow(lesson: lesson,
-                                      isCompleted: completed.contains(lesson.number),
-                                      isCurrent: lesson.number == currentLesson,
-                                      canResume: canResume(lesson.number),
-                                      waveLesson: settings.freeListeningMode == .wave
-                                        ? SessionBuilder.activeLesson(for: lesson.number)?.number : nil)
+                .listStyle(.plain)
+                .studyListBackground()
+                .navigationTitle("Leçons")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    // Cent leçons : un geste pour retrouver celle du parcours.
+                    if let currentLesson {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                withAnimation { proxy.scrollTo(currentLesson, anchor: .center) }
+                            } label: {
+                                Label("Aller à la leçon en cours", systemImage: "scope")
+                            }
+                            .accessibilityIdentifier("jump-current")
                         }
                     }
                 }
             }
-            .listStyle(.plain)
-            .studyListBackground()
-            .navigationTitle("Leçons")
-            .navigationBarTitleDisplayMode(.inline)
         }
+    }
+}
+
+/// La page d'une leçon : son texte complet — espagnol, prononciation, traduction,
+/// notes —, chaque phrase réécoutable, et l'écoute de la leçon dans le mode choisi.
+/// Avant, une leçon ouvrait directement le lecteur, et ce texte n'existait que
+/// pendant l'étape Compréhension de la séance du jour.
+struct LessonPage: View {
+    let lesson: Lesson
+    let canResume: Bool
+
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var player: SessionPlayer
+
+    var body: some View {
+        let text = LessonTextStore.text(for: lesson.number)
+        let mode = settings.freeListeningMode
+        ComprehensionView(lesson: lesson,
+                          text: text,
+                          content: LessonContent.comprehension(text),
+                          reviewContent: LessonContent.reviewSummary(lesson, text))
+            .safeAreaBar(edge: .bottom) {
+                NavigationLink {
+                    PlayerView(request: .lesson(number: lesson.number, mode: mode))
+                } label: {
+                    Label("\(canResume ? "Reprendre" : "Écouter") · \(mode.title)", systemImage: "headphones")
+                }
+                .buttonStyle(StudyPrimaryButtonStyle())
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .accessibilityIdentifier("lesson-listen")
+            }
+            .background(StudyStyle.paper)
+            .navigationTitle("Leçon \(lesson.number)")
+            .navigationBarTitleDisplayMode(.inline)
+            .onDisappear {
+                // Une phrase lancée d'ici ne continue pas une fois la page quittée.
+                if case .excerpt = player.request { player.pause() }
+            }
     }
 }
 

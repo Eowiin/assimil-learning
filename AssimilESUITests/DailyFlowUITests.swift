@@ -188,6 +188,8 @@ final class DailyFlowUITests: XCTestCase {
         var app = launch(store: store, lesson: 1)
         app.tabBars.buttons["Leçons"].tap()
         tap(app.staticTexts["Lección ficticia"])
+        // La page de la leçon, puis son écoute.
+        tap(app.buttons["lesson-listen"])
         // Le titre ouvre la leçon et ne se marque pas : on passe à la phrase 1.
         tap(app.buttons["Phrase suivante"])
         app.buttons["play-pause"].tap()
