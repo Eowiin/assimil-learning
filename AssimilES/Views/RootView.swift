@@ -36,7 +36,6 @@ struct TodayView: View {
     @Query private var marks: [DifficultSentence]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
-    @State private var showLessonPicker = false
     @State private var openedSession: DailySession?
 
     private var store: DailyCourseStore { DailyCourseStore(context: context) }
@@ -57,12 +56,13 @@ struct TodayView: View {
                 // Une rangée de jours, compacte, puis la séance : la seule chose à faire
                 // en ouvrant l'app. La série se lit dans le sous-titre, avec la date.
                 VStack(alignment: .leading, spacing: 20) {
+                    header
                     weeklyActivity
                     dailyCard
                     reviews
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 8)
+                .padding(.top, 12)
                 .padding(.bottom, 28)
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
@@ -71,45 +71,11 @@ struct TodayView: View {
             // La séance vient d'être validée : on le sent au retour sur l'accueil.
             .sensoryFeedback(.success, trigger: validatedDates.count)
             .navigationTitle("Aujourd'hui")
-            .navigationSubtitle(clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                // La série, à la flamme : visible d'un coup d'œil sans prendre de place
-                // dans la page.
-                ToolbarItem(placement: .topBarTrailing) {
-                    Label("\(streak)", systemImage: "flame.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(streak > 0 ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Série")
-                        .accessibilityValue("\(streak) \(streak > 1 ? "jours" : "jour") de suite")
-                        .accessibilityIdentifier("streak")
-                }
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                // Replacer le parcours est rare et lourd (une séance commencée est
-                // abandonnée) : un menu discret, plus à côté du bouton du jour.
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            showLessonPicker = true
-                        } label: {
-                            Label("Changer de leçon…", systemImage: "arrow.left.arrow.right")
-                        }
-                    } label: {
-                        Label("Plus", systemImage: "ellipsis")
-                    }
-                    .accessibilityIdentifier("today-menu")
-                }
-            }
+            // L'en-tête est dans la page : la flamme s'aligne sur le titre, et la barre
+            // n'a plus rien à porter. Les écrans ouverts d'ici gardent la leur.
+            .toolbarVisibility(.hidden, for: .navigationBar)
             .navigationDestination(item: $openedSession) { session in
                 DailySessionView(session: session)
-            }
-            .sheet(isPresented: $showLessonPicker) {
-                CoursePositionSheet(lesson: status.plan?.headlineLesson ?? 1) { lesson in
-                    store.reposition(toLesson: lesson, now: clock.now(), legacyLesson: settings.currentLesson)
-                }
             }
         }
     }
@@ -119,6 +85,31 @@ struct TodayView: View {
     private var validatedDates: [Date] { sessions.compactMap(\.completedAt) }
     private var streak: Int { Streak.current(validatedOn: validatedDates, today: clock.today) }
 
+
+    /// « Aujourd'hui » et la date, la série à la flamme sur la ligne du titre. Changer
+    /// de leçon, rare et lourd, se fait dans Réglages › Leçon du jour.
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Aujourd'hui")
+                    .font(.largeTitle.weight(.bold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Label("\(streak)", systemImage: "flame.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.title2.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(streak > 0 ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Série")
+                .accessibilityValue("\(streak) \(streak > 1 ? "jours" : "jour") de suite")
+                .accessibilityIdentifier("streak")
+        }
+    }
 
     /// Le cercle d'un jour suit la taille du texte, dans la limite de ce que sept
     /// colonnes laissent sur un iPhone.
