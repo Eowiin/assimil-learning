@@ -155,6 +155,7 @@ struct FillInExerciseView<Footer: View>: View {
                     .buttonStyle(VerifyButtonStyle(prominent: !attempt.revealed))
                     .disabled(typed.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
                     .accessibilityIdentifier("check-\(item.n)")
+                    .tint(StudyStyle.button)
 
                     if !attempt.revealed {
                         Button {

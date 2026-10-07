@@ -2,6 +2,11 @@ import SwiftUI
 import UIKit
 
 /// Un même vocabulaire de couleurs et de commandes dans tous les parcours.
+///
+/// Deux bleus, deux rôles : `accent` pour le texte et les icônes, éclairci en
+/// sombre pour rester lisible sur le noir ; `button` pour les fonds des actions,
+/// sous un libellé blanc, assez soutenu dans les deux modes (≥ 5:1). Un fond
+/// d'action teinté par `accent` tombait à 2,3:1 en sombre.
 enum StudyStyle {
     static let accent = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
@@ -19,7 +24,17 @@ enum StudyStyle {
             : UIColor(red: 0.95, green: 0.96, blue: 0.99, alpha: 1)
     })
     static let yellow = Color(red: 1, green: 0.80, blue: 0.28)
-    static let button = Color(red: 0.20, green: 0.31, blue: 0.83)
+    static let button = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.25, green: 0.37, blue: 0.92, alpha: 1)
+            : UIColor(red: 0.20, green: 0.31, blue: 0.83, alpha: 1)
+    })
+    /// Le fond de la phrase en cours. À 5 % d'accent, il disparaissait en sombre.
+    static let highlight = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.53, green: 0.64, blue: 1, alpha: 0.16)
+            : UIColor(red: 0.20, green: 0.31, blue: 0.83, alpha: 0.07)
+    })
 }
 
 struct StudyPrimaryButtonStyle: ButtonStyle {

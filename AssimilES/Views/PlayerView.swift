@@ -544,7 +544,7 @@ private struct SentenceRow: View {
         .padding(.vertical, 16)
         .background {
             Rectangle()
-                .fill(isCurrent ? StudyStyle.accent.opacity(0.05) : .clear)
+                .fill(isCurrent ? StudyStyle.highlight : .clear)
         }
         .overlay(alignment: .leading) {
             if isCurrent {

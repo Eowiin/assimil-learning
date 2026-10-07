@@ -226,7 +226,7 @@ struct RevealExerciseView: View {
                 .frame(maxWidth: .infinity, minHeight: 34)
         }
         .buttonStyle(.borderedProminent)
-        .tint(recording ? .red : StudyStyle.accent)
+        .tint(recording ? .red : StudyStyle.button)
         .disabled(listener.isBusy && !recording)
         .accessibilityIdentifier("answer-mic-\(item.n)")
     }
