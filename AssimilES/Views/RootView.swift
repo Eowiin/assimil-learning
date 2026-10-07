@@ -9,7 +9,7 @@ struct RootView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             TodayView()
-                .tabItem { Label("Apprendre", systemImage: "headphones") }
+                .tabItem { Label("Aujourd'hui", systemImage: "headphones") }
                 .tag(0)
             LessonListView()
                 .tabItem { Label("Leçons", systemImage: "books.vertical") }
@@ -54,13 +54,16 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    weeklyActivity
+                // La séance d'abord : c'est la seule chose à faire en ouvrant l'app.
+                // La semaine suit, comme un repère.
+                VStack(alignment: .leading, spacing: 24) {
                     dailyCard
                     reviews
+                    weeklyActivity
+                        .padding(.top, 8)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 16)
+                .padding(.top, 8)
                 .padding(.bottom, 28)
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
@@ -68,8 +71,25 @@ struct TodayView: View {
             .background(StudyStyle.paper)
             // La séance vient d'être validée : on le sent au retour sur l'accueil.
             .sensoryFeedback(.success, trigger: validatedDates.count)
-            .navigationTitle("Espagnol")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Aujourd'hui")
+            .navigationSubtitle(clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                // Replacer le parcours est rare et lourd (une séance commencée est
+                // abandonnée) : un menu discret, plus à côté du bouton du jour.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showLessonPicker = true
+                        } label: {
+                            Label("Changer de leçon…", systemImage: "arrow.left.arrow.right")
+                        }
+                    } label: {
+                        Label("Plus", systemImage: "ellipsis")
+                    }
+                    .accessibilityIdentifier("today-menu")
+                }
+            }
             .navigationDestination(item: $openedSession) { session in
                 DailySessionView(session: session)
             }
@@ -144,17 +164,6 @@ struct TodayView: View {
 
     private var dailyCard: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Text("Ta séance").font(.title2.weight(.bold))
-                Spacer()
-                Button { showLessonPicker = true } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.title3.weight(.medium)).frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Changer la leçon en cours")
-            }
-
             switch status {
             case .ready(let plan):
                 planHeader(plan)
@@ -281,25 +290,42 @@ struct TodayView: View {
         }
     }
 
+    /// Les phrases dues : toute la ligne mène à la révision. Sans rien de dû, une
+    /// ligne calme qui dit où elles reviendront.
+    @ViewBuilder
     private var reviews: some View {
+        if due.isEmpty {
+            reviewsRow(title: "Révisions à jour",
+                       detail: "Tes phrases marquées reviendront ici.",
+                       symbol: "checkmark.circle")
+        } else {
+            NavigationLink { PlayerView(request: .review) } label: {
+                HStack(spacing: 14) {
+                    reviewsRow(title: "\(due.count) phrase\(due.count > 1 ? "s" : "") à revoir",
+                               detail: "Chacune suivie d'une pause pour la redire.",
+                               symbol: "flag")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-reviews")
+        }
+    }
+
+    private func reviewsRow(title: String, detail: String, symbol: String) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: due.isEmpty ? "checkmark.circle" : "flag")
+            Image(systemName: symbol)
                 .font(.title2).foregroundStyle(StudyStyle.accent)
                 .frame(width: 44, height: 44)
                 .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 4) {
-                Text(due.isEmpty ? "Révisions à jour" : "\(due.count) phrase\(due.count > 1 ? "s" : "") à revoir")
-                    .font(.headline)
-                Text(due.isEmpty ? "Tes phrases marquées reviendront ici." : "Retrouve les phrases mises de côté.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(title).font(.headline)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if !due.isEmpty {
-                NavigationLink { PlayerView(request: .review) } label: {
-                    Image(systemName: "play.fill").frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Commencer les révisions")
-            }
         }
     }
 
