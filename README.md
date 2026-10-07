@@ -275,8 +275,8 @@ l'app est fermée en route :
 2. **Compréhension** — le texte, la traduction, la prononciation et les notes, tout
    visible, chaque phrase réécoutable.
 3. **Répétition** — chaque phrase rejouée **3 fois** par défaut, chaque passage suivi
-   de sa pause. Un repère pratique, réglable (1 à 6), pas une règle Assimil. « Phrase
-   suivante » saute les répétitions restantes, « Répéter » repart de la première.
+   de sa pause. Un repère pratique, réglable (1 à 6), pas une règle Assimil. ⏭ saute
+   les répétitions restantes, ⏮ repart de la première.
 4. **Exercice 1** — traduire.
 5. **Exercice 2** — compléter.
 

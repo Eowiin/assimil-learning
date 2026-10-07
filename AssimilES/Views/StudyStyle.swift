@@ -29,12 +29,6 @@ enum StudyStyle {
             ? UIColor(red: 0.25, green: 0.37, blue: 0.92, alpha: 1)
             : UIColor(red: 0.20, green: 0.31, blue: 0.83, alpha: 1)
     })
-    /// Le fond de la phrase en cours. À 5 % d'accent, il disparaissait en sombre.
-    static let highlight = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.53, green: 0.64, blue: 1, alpha: 0.16)
-            : UIColor(red: 0.20, green: 0.31, blue: 0.83, alpha: 0.07)
-    })
 }
 
 /// L'action principale d'un écran : le bouton système en verre, pleine largeur,
