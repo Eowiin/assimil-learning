@@ -71,20 +71,6 @@ struct SettingsView: View {
                     }
                     LabeledContent("Temps total") { Text(totalLabel) }
                 }
-
-                Section {
-                    LabeledContent("Leçons", value: "\(Manifest.shared.lessonCount)")
-                    LabeledContent("Phrases", value: "\(Manifest.shared.sentenceCount)")
-                    LabeledContent("Audio", value: durationLabel(Manifest.shared.totalDuration))
-                    LabeledContent("Leçons avec texte espagnol", value: "\(lessonsWithText)")
-                    LabeledContent("Leçons avec traduction", value: "\(lessonsWithTranslation)")
-                } header: {
-                    Text("Contenu embarqué")
-                } footer: {
-                    Text("Usage strictement personnel. L'espagnol vient de la transcription "
-                         + "des enregistrements ; la traduction, la prononciation figurée et "
-                         + "les notes viennent du livre et se complètent leçon par leçon.")
-                }
             }
             .studyListBackground()
             .navigationTitle("Réglages")
@@ -96,14 +82,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-
-    private var lessonsWithText: Int {
-        Manifest.shared.lessons.count { LessonTextStore.hasText(for: $0.number) }
-    }
-
-    private var lessonsWithTranslation: Int {
-        Manifest.shared.lessons.count { LessonTextStore.hasTranslation(for: $0.number) }
     }
 
     private var totalLabel: String {
