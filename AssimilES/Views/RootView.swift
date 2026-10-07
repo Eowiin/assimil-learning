@@ -66,6 +66,8 @@ struct TodayView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(StudyStyle.paper)
+            // La séance vient d'être validée : on le sent au retour sur l'accueil.
+            .sensoryFeedback(.success, trigger: validatedDates.count)
             .navigationTitle("Espagnol")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $openedSession) { session in
