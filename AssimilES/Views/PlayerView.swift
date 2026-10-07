@@ -22,6 +22,7 @@ struct PlayerView: View {
     @EnvironmentObject private var player: SessionPlayer
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
 
     @Query private var marks: [DifficultSentence]
     @Query private var progress: [LessonProgress]
@@ -73,6 +74,11 @@ struct PlayerView: View {
             UIApplication.shared.isIdleTimerDisabled = false
             recordSession()
             player.pause()
+        }
+        .onChange(of: scenePhase) {
+            // La séance continue en arrière-plan : la reprise et le temps écouté
+            // sont mis à l'abri au cas où l'app serait fermée depuis là.
+            if scenePhase == .background { recordSession() }
         }
         .onChange(of: player.index) {
             recordReviewIfNeeded()
@@ -156,7 +162,12 @@ struct PlayerView: View {
                 }
                 .padding(20)
             }
-            .onChange(of: player.index) {
+            .onChange(of: scenePhase) {
+            // La séance continue en arrière-plan : la reprise et le temps écouté
+            // sont mis à l'abri au cas où l'app serait fermée depuis là.
+            if scenePhase == .background { recordSession() }
+        }
+        .onChange(of: player.index) {
                 guard let target = player.currentNavigableIndex else { return }
                 withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo(target, anchor: .center)
@@ -428,6 +439,7 @@ struct PlayerView: View {
                                              sentenceNumber: n,
                                              isExercise: step.isExercise))
         }
+        save()
     }
 
     /// Une phrase compte comme revue dès qu'elle est jouée : c'est de l'avoir
@@ -441,6 +453,7 @@ struct PlayerView: View {
 
         reviewed.insert(step.id)
         marks.first { $0.key == key }?.recordReview()
+        save()
     }
 
     /// Sauvegarde la reprise et le temps écouté en quittant l'écran. Arriver au
@@ -462,6 +475,13 @@ struct PlayerView: View {
         }
 
         StudyTime.record(player.takeUnrecordedSeconds(), in: context)
+        save()
+    }
+
+    /// Chaque geste est enregistré aussitôt : attendre l'autosave ou le passage en
+    /// arrière-plan perdait un drapeau à la moindre fermeture brutale.
+    private func save() {
+        try? context.save()
     }
 }
 
