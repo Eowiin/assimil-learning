@@ -600,6 +600,23 @@ Pour des mises à jour sans fil sur la durée, passer par TestFlight.
 Le projet utilise les *synchronized file groups* de Xcode 16+ : tout fichier
 ajouté sous `AssimilES/` est pris en compte sans toucher au projet.
 
+**La lecture en arrière-plan tient à `AssimilES-Info.plist`**, à la racine et non
+sous `AssimilES/` (le groupe synchronisé le copierait dans l'app en plus). Il ne
+contient que `UIBackgroundModes = audio` ; Xcode le fusionne avec l'Info.plist
+qu'il génère. Le réglage `INFOPLIST_KEY_UIBackgroundModes` qui le déclarait avant
+n'existe pas : Xcode l'ignorait sans rien dire, et l'iPhone suspendait l'app dès
+le retour à l'accueil. Le simulateur, lui, continuait de jouer — c'est sur
+l'appareil que ça se vérifie :
+
+```bash
+plutil -p <chemin>/AssimilES.app/Info.plist | grep -A2 UIBackgroundModes
+```
+
+Le journal audio (`AudioLog` : lecture, pauses, passages en arrière-plan,
+interruptions, changements de sortie) se lit dans Console.app, sous-système
+`com.ethansaux.AssimilES`. En Debug, il sort aussi sur la console de
+`xcrun devicectl device process launch --console`.
+
 ## Quatre décisions non évidentes
 
 **L'enregistrement est un moment à l'arrêt, pas une greffe sur la pause de

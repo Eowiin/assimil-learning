@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import os
 
 /// Joue une séance étape par étape.
 ///
@@ -69,6 +70,27 @@ final class SessionPlayer: ObservableObject {
     init() {
         engine.attach(node)
         engine.attach(timePitch)
+        observeSystem()
+    }
+
+    private func observeSystem() {
+        let center = NotificationCenter.default
+        center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { note in
+            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
+                .flatMap(AVAudioSession.InterruptionType.init)
+            let reason = note.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt
+            AudioLog.info("interruption \(type == .began ? "début" : "fin"), motif \(reason.map(String.init) ?? "–")")
+        }
+        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { note in
+            let reason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            AudioLog.info("sortie changée, motif \(reason.map(String.init) ?? "–")")
+        }
+        center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { _ in
+            AudioLog.info("configuration du moteur changée")
+        }
+        center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { _ in
+            AudioLog.error("services audio réinitialisés")
+        }
     }
 
     // MARK: - Cycle de vie d'une séance
@@ -89,6 +111,7 @@ final class SessionPlayer: ObservableObject {
 
     func play() {
         guard !steps.isEmpty, !isFinished else { return }
+        AudioLog.info("lecture, étape \(self.index) sur \(self.steps.count)")
         activateSession()
         isPlaying = true
         scheduleCurrentStep()
@@ -96,6 +119,7 @@ final class SessionPlayer: ObservableObject {
 
     func pause() {
         guard isPlaying else { return }
+        AudioLog.info("pause, étape \(self.index)")
         isPlaying = false
         cancelScheduled()
     }
@@ -270,6 +294,7 @@ final class SessionPlayer: ObservableObject {
             ledger.add(step.duration)
         }
         index += 1
+        AudioLog.info("étape suivante : \(self.index)")
         if index >= steps.count {
             finish()
         } else {
@@ -278,6 +303,7 @@ final class SessionPlayer: ObservableObject {
     }
 
     private func finish() {
+        AudioLog.info("fin de séance")
         isPlaying = false
         cancelScheduled()
         index = steps.count
@@ -311,7 +337,7 @@ final class SessionPlayer: ObservableObject {
             try engine.start()
             return true
         } catch {
-            print("moteur audio indisponible : \(error)")
+            AudioLog.error("moteur audio indisponible : \(error)")
             return false
         }
     }
@@ -324,7 +350,7 @@ final class SessionPlayer: ObservableObject {
             try session.setCategory(.playback, mode: .spokenAudio)
             try session.setActive(true)
         } catch {
-            print("session audio indisponible : \(error)")
+            AudioLog.error("session audio indisponible : \(error)")
         }
     }
 }
@@ -376,5 +402,26 @@ enum SessionNavigation {
             j -= 1
         }
         return nil
+    }
+}
+
+/// Le journal audio, lisible dans Console.app sur l'iPhone branché : c'est ce qui
+/// permet de savoir pourquoi une séance s'est arrêtée sans être devant l'écran. En
+/// Debug, il sort aussi sur la console de `devicectl … --console`.
+enum AudioLog {
+    private static let logger = Logger(subsystem: "com.ethansaux.AssimilES", category: "audio")
+
+    static func info(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+        #if DEBUG
+        print("[audio] \(message)")
+        #endif
+    }
+
+    static func error(_ message: String) {
+        logger.error("\(message, privacy: .public)")
+        #if DEBUG
+        print("[audio] ⚠︎ \(message)")
+        #endif
     }
 }
