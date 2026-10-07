@@ -136,15 +136,17 @@ struct FillInExerciseView<Footer: View>: View {
                     } label: {
                         Text("Vérifier").frame(maxWidth: .infinity, minHeight: 34)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(VerifyButtonStyle(prominent: !attempt.revealed))
                     .disabled(typed.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
                     .accessibilityIdentifier("check-\(item.n)")
 
                     if !attempt.revealed {
                         Button {
                             var updated = attempt
-                            updated.revealed = true
+                            updated.reveal()
                             progress.setFillIn(item.n, updated)
+                            drafts[item.n] = nil
+                            focus = nil
                         } label: {
                             Text("Voir la correction").frame(maxWidth: .infinity, minHeight: 34)
                         }
@@ -310,6 +312,23 @@ struct FillInExerciseView<Footer: View>: View {
             }
         }
         return tokens
+    }
+}
+
+/// « Vérifier » mène tant que la phrase est à chercher ; une fois la correction
+/// vue, retaper pour s'en assurer reste possible, mais ce n'est plus l'action
+/// attendue.
+private struct VerifyButtonStyle: PrimitiveButtonStyle {
+    let prominent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if prominent {
+            Button(role: configuration.role, action: configuration.trigger) { configuration.label }
+                .buttonStyle(.borderedProminent)
+        } else {
+            Button(role: configuration.role, action: configuration.trigger) { configuration.label }
+                .buttonStyle(.bordered)
+        }
     }
 }
 
