@@ -140,7 +140,15 @@ final class DailyFlowUITests: XCTestCase {
         let second = app.textFields["blank-2-1"]
         second.clearAndType("acá")
         tap(app.buttons["check-2"])
+        // Une erreur, puis la correction : le verdict d'avant disparaît (#3).
+        let first = app.textFields["blank-1-0"]
+        tap(first)
+        first.typeText("soi\n")
+        tap(app.buttons["check-1"])
+        let stale = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'corrige les autres'"))
+        XCTAssertTrue(stale.firstMatch.waitForExistence(timeout: 3))
         tap(app.buttons["reveal-fill-1"])
+        XCTAssertFalse(stale.firstMatch.waitForExistence(timeout: 1), "verdict d'avant toujours affiché")
         snapshot(app, "07-completer-corrige")
         waitEnabled(app.buttons["stage-footer"])
         tap(app.buttons["stage-footer"])

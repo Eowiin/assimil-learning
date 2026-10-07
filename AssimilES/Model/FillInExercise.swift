@@ -224,6 +224,8 @@ enum FillInGrader {
 /// Où en est une phrase à compléter. Sauvegardé dans l'avancement de la séance.
 struct FillInAttempt: Codable, Equatable {
     var typed: [String] = []
+    /// Vérifications depuis la dernière correction affichée : c'est ce qui dit s'il
+    /// y a un verdict à montrer.
     var checks = 0
     var solved = false
     /// La correction a été affichée : la phrase compte comme travaillée, et peut
@@ -231,6 +233,14 @@ struct FillInAttempt: Codable, Equatable {
     var revealed = false
 
     var isDone: Bool { solved || revealed }
+
+    /// Affiche la correction. Le verdict d'avant ne vaut plus : la phrase est faite,
+    /// et redire « corrige les autres » à côté de la réponse du livre contredirait
+    /// l'écran. Ce qui a été tapé reste, pour le comparer ou le retaper.
+    mutating func reveal() {
+        revealed = true
+        checks = 0
+    }
 
     @discardableResult
     mutating func check(_ answers: [String], item: FillInItem) -> [BlankVerdict] {
