@@ -25,41 +25,57 @@ struct FillInExerciseView<Footer: View>: View {
     /// Sans ¿ ni ¡ : la ponctuation est imprimée autour des trous et n'est pas notée.
     private static var accents: [String] { ["á", "é", "í", "ó", "ú", "ü", "ñ"] }
 
+    /// Hauteur de la barre d'accents qui flotte au-dessus du clavier. Le défilement
+    /// automatique ne connaît que le clavier : sans cette marge, la vérification de
+    /// la phrase en cours passait sous la barre.
+    @ScaledMetric private var accentBarClearance: CGFloat = 72
+
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Exercice 2 · Complétez").font(.title3.weight(.bold))
-                        if let instruction = exercise?.instruction {
-                            Text(instruction).font(.subheadline)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Exercice 2 · Complétez").font(.title3.weight(.bold))
+                            if let instruction = exercise?.instruction {
+                                Text(instruction).font(.subheadline)
+                            }
+                            Text("Chaque point représente une lettre ou un caractère. Les accents comptent ; "
+                                 + "la ponctuation, déjà imprimée, et les majuscules ne sont pas notées.")
+                                .font(.subheadline).foregroundStyle(.secondary)
                         }
-                        Text("Chaque point représente une lettre ou un caractère. Les accents comptent ; "
-                             + "la ponctuation, déjà imprimée, et les majuscules ne sont pas notées.")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }
 
-                    if let notice = content.notice {
-                        BookNotice(text: notice)
-                    }
+                        if let notice = content.notice {
+                            BookNotice(text: notice)
+                        }
 
-                    if let exercise {
-                        ForEach(exercise.items) { item in
-                            card(item)
+                        if let exercise {
+                            ForEach(exercise.items) { item in
+                                card(item)
+                                    .id(item.n)
+                            }
+                        }
+
+                        if content.needsBook {
+                            BookConfirmation(stage: .completion,
+                                             label: "J'ai fait cet exercice dans le livre",
+                                             progress: $progress)
                         }
                     }
-
-                    if content.needsBook {
-                        BookConfirmation(stage: .completion,
-                                         label: "J'ai fait cet exercice dans le livre",
-                                         progress: $progress)
+                    .padding(20)
+                    .frame(maxWidth: 600, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .contentMargins(.bottom, focus == nil ? 0 : accentBarClearance, for: .scrollContent)
+                .onChange(of: focus) {
+                    // La phrase entière, vérification comprise, au-dessus de la barre.
+                    guard let item = focus?.item else { return }
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo(item, anchor: .bottom)
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: 600, alignment: .leading)
-                .frame(maxWidth: .infinity)
             }
-            .scrollDismissesKeyboard(.interactively)
 
             // La barre d'accents flotte au-dessus du clavier, à la hauteur du bouton
             // d'étape : il s'efface le temps de la saisie.
