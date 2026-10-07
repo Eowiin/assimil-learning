@@ -153,7 +153,7 @@ final class DailyFlowUITests: XCTestCase {
         tap(first)
         first.typeText("soi\n")
         tap(app.buttons["check-1"])
-        let stale = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'corrige les autres'"))
+        let stale = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'vérifie à nouveau'"))
         XCTAssertTrue(stale.firstMatch.waitForExistence(timeout: 3))
         tap(app.buttons["reveal-fill-1"])
         XCTAssertFalse(stale.firstMatch.waitForExistence(timeout: 1), "verdict d'avant toujours affiché")
