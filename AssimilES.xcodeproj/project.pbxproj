@@ -320,7 +320,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour t'enregistrer quand tu réponds à voix haute ou compares ta prononciation au natif. Les prises restent sur le téléphone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Pour reconnaître, en local, les mots que tu viens de dire.";
-				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_FILE = "AssimilES-Info.plist";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -349,7 +349,7 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour t'enregistrer quand tu réponds à voix haute ou compares ta prononciation au natif. Les prises restent sur le téléphone.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Pour reconnaître, en local, les mots que tu viens de dire.";
-				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_FILE = "AssimilES-Info.plist";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
