@@ -16,6 +16,13 @@ final class AppSettings: ObservableObject {
     /// Répétitions de chaque phrase à l'étape Répétition de la séance du jour. Un
     /// repère pratique, réglable — pas une règle Assimil.
     @AppStorage("repetitionsPerSentence") var repetitionsPerSentence: Int = 3
+    /// Le mode d'écoute libre choisi dans Leçons, gardé d'une fois sur l'autre.
+    @AppStorage("freeListeningMode") private var freeListeningModeRaw = StudyMode.shadowing.rawValue
+
+    var freeListeningMode: StudyMode {
+        get { StudyMode(rawValue: freeListeningModeRaw) ?? .shadowing }
+        set { freeListeningModeRaw = newValue.rawValue }
+    }
 
     /// Réglages de l'écoute libre : une pause par phrase, comme avant le parcours,
     /// pour que les reprises enregistrées gardent leur sens.
