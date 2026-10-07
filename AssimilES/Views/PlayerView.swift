@@ -352,9 +352,12 @@ struct PlayerView: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            // En verre clair tant que la piste joue : l'étape suivante est à portée,
+            // sans prendre le pas sur le transport. Elle passe en avant à la fin.
+            .buttonStyle(.glass)
+            .controlSize(.large)
             .accessibilityIdentifier("stage-action")
         }
     }
