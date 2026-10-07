@@ -614,6 +614,19 @@ refonte d'octobre 2026 :
 - Les captures se font par un test d'interface sur les textes fictifs ; on vérifie en
   clair, en sombre et en taille « accessibilité XL ».
 
+### L'icône
+
+L'icône versionnée est un « ñ » dont le tilde est une onde, sur le bleu des actions
+(`AppIcon`, régénérée par `tools/make-icon.swift`). Sur le Mac de travail, l'app porte
+l'icône d'Assimil aux couleurs de l'Espagne (`AppIconAssimil`) : c'est la marque
+d'Assimil, elle reste donc **hors dépôt** comme le reste du contenu, et `Local.xcconfig`
+(hors dépôt lui aussi) la choisit. `AssimilES.xcconfig` vaut `AppIcon` par défaut et
+inclut `Local.xcconfig` s'il existe : un clone du dépôt compile avec le « ñ ».
+
+`tools/assimil-icon.swift` fabrique l'icône locale à partir de celle de l'app Assimil
+(App Store, 1024 × 1024) : le drapeau en bandes parallèles à la coupure du logo, aux
+couleurs officielles (#AA151B, #F1BF00).
+
 ## Construire l'app
 
 ```bash
