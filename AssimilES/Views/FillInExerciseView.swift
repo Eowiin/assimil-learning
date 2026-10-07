@@ -139,6 +139,7 @@ struct FillInExerciseView<Footer: View>: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(typed.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
                     .accessibilityIdentifier("check-\(item.n)")
+                    .tint(StudyStyle.button)
 
                     if !attempt.revealed {
                         Button {
