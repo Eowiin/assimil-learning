@@ -9,7 +9,7 @@ struct RootView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             TodayView()
-                .tabItem { Label("Apprendre", systemImage: "headphones") }
+                .tabItem { Label("Aujourd'hui", systemImage: "headphones") }
                 .tag(0)
             LessonListView()
                 .tabItem { Label("Leçons", systemImage: "books.vertical") }
@@ -33,13 +33,9 @@ struct TodayView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
-    @Query private var days: [StudyDay]
     @Query private var marks: [DifficultSentence]
-    @Query private var progress: [LessonProgress]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
-    @State private var chosenMode: StudyMode?
-    @State private var showLessonPicker = false
     @State private var openedSession: DailySession?
 
     private var store: DailyCourseStore { DailyCourseStore(context: context) }
@@ -54,81 +50,97 @@ struct TodayView: View {
 
     private var due: [DifficultSentence] { ReviewSchedule.due(in: marks) }
 
-    /// La leçon proposée à l'écoute libre : celle du parcours.
-    private var freeLesson: Lesson? {
-        Manifest.shared.lesson(status.plan?.headlineLesson ?? Manifest.shared.lessonCount)
-    }
-    private var activeLesson: Lesson? { freeLesson.flatMap { SessionBuilder.activeLesson(for: $0.number) } }
-    private var mode: StudyMode { chosenMode ?? (activeLesson == nil ? .shadowing : .wave) }
-    private var hasResume: Bool {
-        progress.contains {
-            $0.lessonNumber == freeLesson?.number && $0.mode == mode.rawValue && $0.stepIndex > 0
-        }
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                // Une rangée de jours, compacte, puis la séance : la seule chose à faire
+                // en ouvrant l'app. La série se lit dans le sous-titre, avec la date.
+                VStack(alignment: .leading, spacing: 20) {
+                    header
                     weeklyActivity
                     dailyCard
                     reviews
-                    if let freeLesson {
-                        freeListening(freeLesson)
-                    }
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 16)
+                .padding(.top, 12)
                 .padding(.bottom, 28)
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
             }
             .background(StudyStyle.paper)
-            .navigationTitle("Espagnol")
-            .navigationBarTitleDisplayMode(.inline)
+            // La séance vient d'être validée : on le sent au retour sur l'accueil.
+            .sensoryFeedback(.success, trigger: validatedDates.count)
+            .navigationTitle("Aujourd'hui")
+            // L'en-tête est dans la page : la flamme s'aligne sur le titre, et la barre
+            // n'a plus rien à porter. Les écrans ouverts d'ici gardent la leur.
+            .toolbarVisibility(.hidden, for: .navigationBar)
             .navigationDestination(item: $openedSession) { session in
                 DailySessionView(session: session)
-            }
-            .sheet(isPresented: $showLessonPicker) {
-                CoursePositionSheet(lesson: status.plan?.headlineLesson ?? 1) { lesson in
-                    store.reposition(toLesson: lesson, now: clock.now(), legacyLesson: settings.currentLesson)
-                }
             }
         }
     }
 
-    private var weeklyActivity: some View {
-        VStack(spacing: 14) {
-            HStack {
-                Text("Cette semaine").font(.subheadline.weight(.semibold))
-                Spacer()
-                Label("\(Streak.current(from: days)) j", systemImage: "flame.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(StudyStyle.accent)
-                    .accessibilityLabel("\(Streak.current(from: days)) jours de suite")
+    /// Les séances validées, pas le temps écouté : un jour coché est un jour où la
+    /// séance a été faite jusqu'au bout.
+    private var validatedDates: [Date] { sessions.compactMap(\.completedAt) }
+    private var streak: Int { Streak.current(validatedOn: validatedDates, today: clock.today) }
+
+
+    /// « Aujourd'hui » et la date, la série à la flamme sur la ligne du titre. Changer
+    /// de leçon, rare et lourd, se fait dans Réglages › Leçon du jour.
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Aujourd'hui")
+                    .font(.largeTitle.weight(.bold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
+            Label("\(streak)", systemImage: "flame.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.title2.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(streak > 0 ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Série")
+                .accessibilityValue("\(streak) \(streak > 1 ? "jours" : "jour") de suite")
+                .accessibilityIdentifier("streak")
+        }
+    }
+
+    /// Le cercle d'un jour suit la taille du texte, dans la limite de ce que sept
+    /// colonnes laissent sur un iPhone.
+    @ScaledMetric(relativeTo: .caption) private var dayCircle: CGFloat = 28
+
+    private var weeklyActivity: some View {
+        let validated = Streak.days(validatedOn: validatedDates)
+        return VStack(spacing: 0) {
             HStack(spacing: 0) {
                 ForEach(weekDays, id: \.self) { date in
-                    let studied = days.contains {
-                        Calendar.current.isDate($0.day, inSameDayAs: date) && $0.seconds > 0
-                    }
+                    let studied = validated.contains(Calendar.current.startOfDay(for: date))
                     let today = Calendar.current.isDate(date, inSameDayAs: clock.today)
-                    VStack(spacing: 7) {
+                    VStack(spacing: 5) {
                         Text(date, format: .dateTime.weekday(.narrow))
-                            .font(.caption.weight(today ? .bold : .regular))
+                            .font(.caption2.weight(today ? .bold : .regular))
                             .foregroundStyle(.secondary)
                         ZStack {
-                            Circle().fill(studied ? StudyStyle.accent : StudyStyle.surface)
+                            Circle().fill(studied ? StudyStyle.button : StudyStyle.surface)
                             Circle().strokeBorder(today ? StudyStyle.accent : .clear, lineWidth: 1.5)
                             if studied {
-                                Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.white)
+                                Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(.white)
                             } else {
                                 Text(date, format: .dateTime.day())
-                                    .font(.caption.weight(today ? .bold : .medium))
+                                    .font(.caption2.weight(today ? .bold : .medium))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.5)
+                                    .padding(2)
                                     .foregroundStyle(today ? StudyStyle.accent : .secondary)
                             }
                         }
-                        .frame(width: 32, height: 32)
+                        .frame(width: min(dayCircle, 46), height: min(dayCircle, 46))
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityElement(children: .ignore)
@@ -149,25 +161,14 @@ struct TodayView: View {
 
     private var dailyCard: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Text("Ta séance").font(.title2.weight(.bold))
-                Spacer()
-                Button { showLessonPicker = true } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.title3.weight(.medium)).frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Changer la leçon en cours")
-            }
-
             switch status {
             case .ready(let plan):
                 planHeader(plan)
-                stageChips(plan, progress: nil)
+                stageProgress(plan, progress: nil)
                 startButton("Commencer la séance")
             case .inProgress(let session, let plan):
                 planHeader(plan)
-                stageChips(plan, progress: session.progress)
+                stageProgress(plan, progress: session.progress)
                 startButton("Reprendre : \(session.progress.current.title.lowercased())")
             case .doneToday(let session, let plan, let tomorrow):
                 done(session, plan: plan, tomorrow: tomorrow)
@@ -215,24 +216,34 @@ struct TodayView: View {
         return "Leçon \(number) · \(count) phrases" + (plan.isWeeklyReview ? " · révision" : "")
     }
 
-    private func stageChips(_ plan: DailyPlan, progress: DailyProgress?) -> some View {
-        FlowLayout(spacing: 8, lineSpacing: 8) {
-            ForEach(plan.stages.filter { $0 != .finish }) { stage in
-                let done = progress?.completed.contains(stage) ?? false
-                let current = progress?.current == stage
-                Label {
-                    Text(stage.title)
-                } icon: {
-                    Image(systemName: done ? "checkmark.circle.fill" : (current ? "circle.inset.filled" : "circle"))
-                        .foregroundStyle(done || current ? StudyStyle.accent : .secondary)
+    /// La progression en une ligne : une barre segmentée et l'étape en cours. Les
+    /// pastilles d'avant redisaient ce que la séance montre déjà, et ne menaient
+    /// nulle part.
+    private func stageProgress(_ plan: DailyPlan, progress: DailyProgress?) -> some View {
+        let stages = plan.stages.filter { $0 != .finish }
+        let current = progress?.current ?? stages.first
+        let index = current.flatMap { stages.firstIndex(of: $0) }
+        let label = index.map { "Étape \($0 + 1) sur \(stages.count) · \(stages[$0].title)" }
+            ?? "Toutes les étapes sont faites · reste à valider"
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                ForEach(stages) { stage in
+                    let done = progress?.completed.contains(stage) ?? false
+                    Capsule()
+                        .fill(done ? StudyStyle.button
+                              : stage == current ? StudyStyle.button.opacity(0.4)
+                              : Color(uiColor: .tertiarySystemFill))
+                        .frame(height: 6)
                 }
-                .font(.caption)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(StudyStyle.paper, in: Capsule())
-                .accessibilityValue(done ? "Terminée" : (current ? "En cours" : "À faire"))
             }
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Progression de la séance")
+        .accessibilityValue(label)
+        .accessibilityIdentifier("stage-progress")
     }
 
     private func startButton(_ title: String) -> some View {
@@ -276,66 +287,45 @@ struct TodayView: View {
         }
     }
 
+    /// Les phrases dues : toute la ligne mène à la révision. Sans rien de dû, une
+    /// ligne calme qui dit où elles reviendront.
+    @ViewBuilder
     private var reviews: some View {
-        HStack(spacing: 14) {
-            Image(systemName: due.isEmpty ? "checkmark.circle" : "flag")
-                .font(.title2).foregroundStyle(StudyStyle.accent)
-                .frame(width: 44, height: 44)
-                .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 14))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(due.isEmpty ? "Révisions à jour" : "\(due.count) phrase\(due.count > 1 ? "s" : "") à revoir")
-                    .font(.headline)
-                Text(due.isEmpty ? "Tes phrases marquées reviendront ici." : "Retrouve les phrases mises de côté.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            if !due.isEmpty {
-                NavigationLink { PlayerView(request: .review) } label: {
-                    Image(systemName: "play.fill").frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Commencer les révisions")
-            }
-        }
-    }
-
-    /// L'écoute libre : les trois modes d'avant, sans effet sur la séance du jour.
-    private func freeListening(_ lesson: Lesson) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Divider()
-            Text("Écoute libre").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            Picker("Mode d’écoute", selection: Binding(get: { mode }, set: { chosenMode = $0 })) {
-                Text("Écoute").tag(StudyMode.passive)
-                Text("Répétition").tag(StudyMode.shadowing)
-                Text("La vague").tag(StudyMode.wave)
-            }
-            .pickerStyle(.segmented)
-            Text(mode.subtitle)
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if mode == .wave, let activeLesson {
-                Text("Révision active : leçon \(activeLesson.number)")
-                    .font(.caption).foregroundStyle(StudyStyle.accent)
-            }
-            NavigationLink {
-                PlayerView(request: .lesson(number: lesson.number, mode: mode))
-            } label: {
+        if due.isEmpty {
+            reviewsRow(title: "Révisions à jour",
+                       detail: "Tes phrases marquées reviendront ici.",
+                       symbol: "checkmark.circle")
+        } else {
+            NavigationLink { PlayerView(request: .review) } label: {
                 HStack(spacing: 14) {
-                    LessonCover(number: lesson.number, size: 40)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Leçon \(lesson.number)").font(.caption).foregroundStyle(.secondary)
-                        Text(LessonTextStore.text(for: lesson.number)?.titleES ?? "Leçon \(lesson.number)")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    Spacer()
-                    Text(hasResume ? "Reprendre" : "Écouter").font(.subheadline)
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                    reviewsRow(title: "\(due.count) phrase\(due.count > 1 ? "s" : "") à revoir",
+                               detail: "Chacune suivie d'une pause pour la redire.",
+                               symbol: "flag")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("free-listening")
+            .accessibilityIdentifier("start-reviews")
         }
     }
+
+    private func reviewsRow(title: String, detail: String, symbol: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.title2).foregroundStyle(StudyStyle.accent)
+                .frame(width: 44, height: 44)
+                .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 14))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
 }
 
 /// Replacer le parcours sur une leçon. Rien ne change tant qu'on ne valide pas.

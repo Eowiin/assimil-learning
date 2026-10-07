@@ -275,11 +275,17 @@ l'app est fermée en route :
 2. **Compréhension** — le texte, la traduction, la prononciation et les notes, tout
    visible, chaque phrase réécoutable.
 3. **Répétition** — chaque phrase rejouée **3 fois** par défaut, chaque passage suivi
-   de sa pause. Un repère pratique, réglable (1 à 6), pas une règle Assimil. « Phrase
-   suivante » saute les répétitions restantes, « Répéter » repart de la première.
+   de sa pause. Un repère pratique, réglable (1 à 6), pas une règle Assimil. ⏭ saute
+   les répétitions restantes, ⏮ repart de la première.
 4. **Exercice 1** — traduire.
 5. **Exercice 2** — compléter.
-6. **Fin de séance** — valider.
+
+**La validation est le bouton de la dernière activité.** Quand toutes les autres
+étapes sont faites, il devient « Valider la séance » : il termine l'étape, valide la
+séance et ramène à l'accueil, qui dit « terminée » et propose de retravailler la leçon
+demain. S'il reste une étape en arrière (on peut y revenir par la bande d'étapes), il
+mène à la liste de ce qui manque. L'ancien écran « Fin de séance » ne faisait que
+redire cette liste avant un bouton.
 
 **Une étape ne se termine que par un geste.** Ni la fin d'une piste, ni un saut à la
 dernière phrase, ni la sortie du lecteur : la fin de l'audio met le bouton « Passer
@@ -402,8 +408,13 @@ et la sortie audio est rendue à la séance dès la prise terminée.
   d'heure et le retour au premier plan : l'accueil se met à jour app ouverte.
 - **Jours manqués** : aucune leçon sautée. **Séance inachevée** : reprise, quel que soit
   le jour. **Difficulté** : « Retravailler cette leçon demain » rouvre la même leçon.
-- L'**écoute libre** (onglet Leçons, bas de l'accueil) garde ses trois modes et sa
-  reprise dans `LessonProgress`, sans effet sur la séance du jour.
+- L'**écoute libre** vit dans l'onglet Leçons : ses trois modes en tête de liste (le
+  choix est gardé), ◎ pour aller à la leçon en cours. Une leçon ouvre sa page — le
+  texte complet de l'étape Compréhension, chaque phrase réécoutable — et « Écouter »
+  lance le lecteur dans le mode choisi. « Reprendre » sur les leçons commencées, la
+  reprise dans
+  `LessonProgress`, sans effet sur la séance du jour. L'accueil ne parle plus que de
+  la séance et des révisions.
 - Le temps étudié n'est compté qu'une fois : le lecteur rend ses secondes une seule
   fois (`PlayTimeLedger`). Avant, quitter et rouvrir le lecteur les recomptait.
 
@@ -489,9 +500,15 @@ son échéance une seconde fois.
 
 ## S'enregistrer et se comparer au natif
 
-Sur l'écran de lecture, le micro de la barre du haut ouvre l'essai de prononciation
-pour la phrase en cours : entendre le natif, s'enregistrer, se réécouter, et voir ce
-que la reconnaissance a compris.
+Sur l'écran de lecture, le micro (à droite du transport) **arrête la séance et
+enregistre d'un même geste** ; un second appui termine la prise. Le résultat s'affiche
+au-dessus du transport : les mots de la phrase, ceux qui ne sont pas passés en orange,
+la mélodie en un mot, la réécoute moi / natif. « Reprendre » relance la séance là où
+elle était. La courbe, le tempo et ce que la machine a compris sont à un appui (ⓘ).
+Trois gestes au lieu de six, quand c'était une feuille à part.
+
+La logique de l'essai vit dans `VoiceTrial`, partagé par le panneau du lecteur et la
+feuille de détail (`PronunciationView`).
 
 **Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
 *passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
@@ -600,6 +617,23 @@ Pour des mises à jour sans fil sur la durée, passer par TestFlight.
 Le projet utilise les *synchronized file groups* de Xcode 16+ : tout fichier
 ajouté sous `AssimilES/` est pris en compte sans toucher au projet.
 
+**La lecture en arrière-plan tient à `AssimilES-Info.plist`**, à la racine et non
+sous `AssimilES/` (le groupe synchronisé le copierait dans l'app en plus). Il ne
+contient que `UIBackgroundModes = audio` ; Xcode le fusionne avec l'Info.plist
+qu'il génère. Le réglage `INFOPLIST_KEY_UIBackgroundModes` qui le déclarait avant
+n'existe pas : Xcode l'ignorait sans rien dire, et l'iPhone suspendait l'app dès
+le retour à l'accueil. Le simulateur, lui, continuait de jouer — c'est sur
+l'appareil que ça se vérifie :
+
+```bash
+plutil -p <chemin>/AssimilES.app/Info.plist | grep -A2 UIBackgroundModes
+```
+
+Le journal audio (`AudioLog` : lecture, pauses, passages en arrière-plan,
+interruptions, changements de sortie) se lit dans Console.app, sous-système
+`com.ethansaux.AssimilES`. En Debug, il sort aussi sur la console de
+`xcrun devicectl device process launch --console`.
+
 ## Quatre décisions non évidentes
 
 **L'enregistrement est un moment à l'arrêt, pas une greffe sur la pause de
@@ -609,8 +643,9 @@ session `.playAndRecord`, alors que toute la séance repose sur `.playback` et s
 flux qui ne s'interrompt jamais : changer de catégorie au milieu d'une leçon, c'est
 risquer exactement la suspension que le silence diffusé évite, et pour toutes les
 séances, y compris celles où on ne s'enregistre pas. L'essai de prononciation prend
-donc la sortie audio explicitement (`SessionPlayer.releaseAudio()`) et la rend en
-sortant. Il suppose de toute façon d'être à l'arrêt.
+donc la sortie audio explicitement (`SessionPlayer.releaseAudio()`), au moment où l'on
+touche le micro, et la rend avec « Reprendre ». Il suppose de toute façon d'être à
+l'arrêt, téléphone en main.
 
 
 **C'est l'étape qui porte sa leçon, jamais la séance.** Une séance n'est pas « une

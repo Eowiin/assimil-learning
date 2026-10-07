@@ -116,6 +116,14 @@ final class DailyFlowUITests: XCTestCase {
         let blank = app.textFields["blank-2-0"]
         tap(blank)
         blank.typeText("estas")
+        // Le trou en cours et la vérification de sa phrase restent au-dessus de la
+        // barre d'accents, sans avoir à fermer le clavier (#2).
+        XCTAssertTrue(app.buttons["accent-á"].waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 1)
+        let accentBarTop = app.buttons["accent-á"].frame.minY
+        XCTAssertLessThanOrEqual(blank.frame.maxY, accentBarTop, "trou sous la barre d'accents")
+        XCTAssertLessThanOrEqual(app.buttons["check-2"].frame.maxY, accentBarTop, "« Vérifier » sous la barre d'accents")
+        snapshot(app, "06a-completer-saisie")
         tap(app.textFields["blank-2-1"])
         app.textFields["blank-2-1"].typeText("aca")
         tap(app.buttons["check-2"])
@@ -140,15 +148,20 @@ final class DailyFlowUITests: XCTestCase {
         let second = app.textFields["blank-2-1"]
         second.clearAndType("acá")
         tap(app.buttons["check-2"])
+        // Une erreur, puis la correction : le verdict d'avant disparaît (#3).
+        let first = app.textFields["blank-1-0"]
+        tap(first)
+        first.typeText("soi\n")
+        tap(app.buttons["check-1"])
+        let stale = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'vérifie à nouveau'"))
+        XCTAssertTrue(stale.firstMatch.waitForExistence(timeout: 3))
         tap(app.buttons["reveal-fill-1"])
+        XCTAssertFalse(stale.firstMatch.waitForExistence(timeout: 1), "verdict d'avant toujours affiché")
         snapshot(app, "07-completer-corrige")
+        // Le bouton de la dernière activité valide la séance et ramène à l'accueil (#11).
         waitEnabled(app.buttons["stage-footer"])
+        XCTAssertEqual(app.buttons["stage-footer"].label, "Valider la séance")
         tap(app.buttons["stage-footer"])
-
-        tap(app.buttons["validate-session"])
-        XCTAssertTrue(app.staticTexts["session-done"].waitForExistence(timeout: 5))
-        snapshot(app, "08-seance-validee")
-        tap(app.buttons["Retour à l'accueil"])
 
         XCTAssertTrue(app.staticTexts["today-done"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["tomorrow"].label.hasPrefix("Demain : leçon 2"))
@@ -168,11 +181,35 @@ final class DailyFlowUITests: XCTestCase {
         snapshot(app, "10-lendemain")
     }
 
+    func testMarkSurvivesAbruptQuit() throws {
+        // Une phrase marquée est enregistrée tout de suite : un arrêt brutal juste
+        // après ne la perd pas (#4).
+        let store = newStore()
+        var app = launch(store: store, lesson: 1)
+        app.tabBars.buttons["Leçons"].tap()
+        tap(app.staticTexts["Lección ficticia"])
+        // La page de la leçon, puis son écoute.
+        tap(app.buttons["lesson-listen"])
+        // Le titre ouvre la leçon et ne se marque pas : on passe à la phrase 1.
+        tap(app.buttons["Phrase suivante"])
+        app.buttons["play-pause"].tap()
+        waitEnabled(app.buttons["Marquer à revoir"])
+        tap(app.buttons["Marquer à revoir"])
+        XCTAssertTrue(app.buttons["Retirer des phrases à revoir"].waitForExistence(timeout: 3))
+        app.terminate()
+
+        app = launch(store: store, lesson: 1)
+        app.tabBars.buttons["Réviser"].tap()
+        XCTAssertTrue(app.staticTexts["Frase de prueba uno."].waitForExistence(timeout: 5),
+                      "la phrase marquée a été perdue")
+        snapshot(app, "16-drapeau-apres-relance")
+    }
+
     func testWeeklyReviewWithoutExercises() throws {
         let app = launch(store: newStore(), lesson: 7)
         XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["Traduction"].exists)
-        XCTAssertFalse(app.staticTexts["À compléter"].exists)
+        // Trois étapes, sans les deux exercices.
+        XCTAssertEqual(app.otherElements["stage-progress"].value as? String, "Étape 1 sur 3 · Découverte")
         snapshot(app, "11-revision-accueil")
 
         tap(app.buttons["start-session"])
@@ -182,10 +219,9 @@ final class DailyFlowUITests: XCTestCase {
                       || app.staticTexts["book-notice"].exists)
         snapshot(app, "12-revision-comprehension")
         tap(app.buttons["stage-footer"])
+        XCTAssertEqual(app.buttons["stage-action"].label, "Valider la séance")
         tap(app.buttons["stage-action"])
-        XCTAssertTrue(app.buttons["validate-session"].waitForExistence(timeout: 5))
-        tap(app.buttons["validate-session"])
-        XCTAssertTrue(app.staticTexts["session-done"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["today-done"].waitForExistence(timeout: 5))
         snapshot(app, "13-revision-validee")
     }
 
@@ -207,7 +243,7 @@ final class DailyFlowUITests: XCTestCase {
         snapshot(app, "15-exercice2-non-importe")
         tap(app.buttons["done-in-book"])
         tap(app.buttons["stage-footer"])
-        XCTAssertTrue(app.buttons["validate-session"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["today-done"].waitForExistence(timeout: 5))
     }
 }
 

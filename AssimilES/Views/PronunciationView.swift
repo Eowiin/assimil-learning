@@ -1,48 +1,31 @@
 import SwiftUI
 
-/// L'essai de prononciation sur une phrase : entendre le natif, s'enregistrer, se
-/// réécouter, et voir ce que la reconnaissance a compris.
-///
-/// **Ce que cet écran affirme, et ce qu'il n'affirme pas.** Il ne note pas un
-/// accent — aucune API d'Apple ne le fait. Il dit si les mots passent, ce qui est
-/// vérifiable et déjà utile : c'est le même contrôle qui, sur le corpus, a fait
-/// ressortir `Ejem` comme le seul mot que la machine manque. Le reste est laissé à
-/// l'oreille, d'où la réécoute côte à côte.
+/// Le détail d'un essai de prononciation, ouvert depuis le panneau du lecteur : la
+/// phrase, les mots reconnus, ce que la machine a compris, le tempo et la courbe
+/// d'intonation. C'est le même essai (`VoiceTrial`) que dans le lecteur : on peut s'y
+/// réenregistrer, et le résultat suit en revenant.
 struct PronunciationView: View {
-    let step: SessionStep
+    @ObservedObject var trial: VoiceTrial
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var player: SessionPlayer
-    @StateObject private var recorder = VoiceRecorder()
-    @StateObject private var speech = SpeechCheck()
-
-    @State private var verdicts: [WordVerdict] = []
-    @State private var myDuration: Double = 0
-    @State private var intonation: Intonation?
-    @State private var intonationFailed = false
-
-    private var reference: String? { step.sentenceText?.es }
-    private var key: String? { step.markKey }
-    private var myTake: URL? {
-        guard let key, VoiceRecorder.exists(for: key) else { return nil }
-        return VoiceRecorder.url(for: key)
-    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    sentence
+                    if let step = trial.step {
+                        sentence(step)
+                    }
                     VStack(alignment: .leading, spacing: 18) {
                         Text("Enregistrement")
                             .font(.headline)
                         buttons
                     }
                     .studySection()
-                    if !verdicts.isEmpty || speech.status != .idle {
+                    if trial.phase != .ready {
                         result.studySection()
                     }
-                    if intonation != nil || intonationFailed {
+                    if trial.intonation != nil || trial.intonationFailed {
                         melody.studySection()
                     }
                     Divider()
@@ -51,7 +34,7 @@ struct PronunciationView: View {
                 .padding(24)
             }
             .background(StudyStyle.paper)
-            .navigationTitle("Prononciation")
+            .navigationTitle("Ma voix")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -59,27 +42,17 @@ struct PronunciationView: View {
                 }
             }
         }
-        .onAppear {
-            // La séance rend la sortie audio : le micro a besoin d'une autre
-            // catégorie de session, et deux moteurs ne peuvent pas la partager.
-            player.releaseAudio()
-            recorder.takeOver()
-            myDuration = myTake.map(VoiceRecorder.duration) ?? 0
-        }
-        .onDisappear {
-            recorder.handBack()
-        }
     }
 
     // MARK: - La phrase
 
-    private var sentence: some View {
+    private func sentence(_ step: SessionStep) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Leçon \(step.lessonNumber) · \(step.isExercise ? "exercice" : "phrase") \(step.sentenceNumber ?? 0)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let reference {
+            if let reference = trial.reference {
                 Text(reference)
                     .font(.title2.weight(.medium))
             } else {
@@ -98,28 +71,18 @@ struct PronunciationView: View {
     // MARK: - Les commandes
 
     private var buttons: some View {
-        HStack(spacing: 18) {
+        // Alignés sur leurs libellés : le bouton d'enregistrement, plus grand,
+        // décalait « Enregistrer » sous les deux autres.
+        HStack(alignment: .lastTextBaseline, spacing: 18) {
             actionButton(title: "Le natif",
-                         symbol: recorder.playing == .native ? "stop.fill" : "play.fill",
-                         enabled: step.url != nil) {
-                if recorder.playing == .native {
-                    recorder.stopPlayback()
-                } else if let url = step.url {
-                    recorder.play(url, as: .native)
-                }
-            }
+                         symbol: trial.recorder.playing == .native ? "stop.fill" : "play.fill",
+                         enabled: trial.step?.url != nil) { trial.toggleNative() }
 
             recordButton
 
             actionButton(title: "Moi",
-                         symbol: recorder.playing == .mine ? "stop.fill" : "play.fill",
-                         enabled: myTake != nil) {
-                if recorder.playing == .mine {
-                    recorder.stopPlayback()
-                } else if let url = myTake {
-                    recorder.play(url, as: .mine)
-                }
-            }
+                         symbol: trial.recorder.playing == .mine ? "stop.fill" : "play.fill",
+                         enabled: trial.myTake != nil && !trial.isRecording) { trial.toggleMine() }
         }
         .frame(maxWidth: .infinity)
     }
@@ -127,17 +90,17 @@ struct PronunciationView: View {
     private var recordButton: some View {
         VStack(spacing: 6) {
             Button {
-                Task { await toggleRecording() }
+                Task { await trial.toggleRecording() }
             } label: {
-                Image(systemName: recorder.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                Image(systemName: trial.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 64))
-                    .foregroundStyle(recorder.isRecording ? Color.red : StudyStyle.accent)
+                    .foregroundStyle(trial.isRecording ? Color.red : StudyStyle.accent)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(recorder.isRecording ? "Arrêter l’enregistrement" : "Enregistrer ma voix")
-            .disabled(reference == nil || key == nil)
+            .accessibilityLabel(trial.isRecording ? "Arrêter l’enregistrement" : "Enregistrer ma voix")
+            .disabled(!trial.canRecord || trial.phase == .analysing)
 
-            Text(recorder.isRecording ? "Arrêter" : "Enregistrer")
+            Text(trial.isRecording ? "Arrêter" : "Enregistrer")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -167,40 +130,43 @@ struct PronunciationView: View {
 
     @ViewBuilder
     private var result: some View {
-        switch speech.status {
-        case .idle:
+        switch trial.phase {
+        case .ready:
             EmptyView()
-        case .installingModel:
-            Label("Installation du modèle espagnol…", systemImage: "arrow.down.circle")
+        case .recording:
+            Label("J'écoute…", systemImage: "waveform")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
-        case .working:
-            Label("Reconnaissance…", systemImage: "waveform")
+                .foregroundStyle(.red)
+        case .analysing:
+            Label(trial.speech.status == .installingModel ? "Installation du modèle espagnol…" : "Reconnaissance…",
+                  systemImage: "waveform")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.subheadline)
                 .foregroundStyle(.orange)
-        case .done(let heard):
+        case .done:
             VStack(alignment: .leading, spacing: 14) {
-                Text(understoodLabel)
+                Text(trial.understoodLabel)
                     .font(.headline)
 
                 // Les mots tels qu'ils s'écrivent, ceux qui ne sont pas passés en
                 // orange : c'est là qu'il faut réécouter, pas ailleurs.
-                FlowText(verdicts: verdicts)
+                FlowText(verdicts: trial.verdicts)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("La machine a compris")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("« \(heard) »")
-                        .font(.callout)
-                        .italic()
+                if let heard = trial.heard {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("La machine a compris")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("« \(heard) »")
+                            .font(.callout)
+                            .italic()
+                    }
                 }
 
-                if let tempo = tempoLabel {
+                if let tempo = trial.tempoLabel {
                     Label(tempo, systemImage: "metronome")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -208,7 +174,7 @@ struct PronunciationView: View {
 
                 // Lequel des deux moteurs a parlé : l'iPhone 11 n'a pas celui du
                 // corpus, et ça se voit dans les résultats.
-                if let engine = speech.engine {
+                if let engine = trial.speech.engine {
                     Text("Reconnu par \(engine.label)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -221,7 +187,7 @@ struct PronunciationView: View {
 
     @ViewBuilder
     private var melody: some View {
-        if let intonation {
+        if let intonation = trial.intonation {
             VStack(alignment: .leading, spacing: 12) {
                 Text(intonation.verdict)
                     .font(.headline)
@@ -241,68 +207,11 @@ struct PronunciationView: View {
         }
     }
 
-    private var understoodLabel: String {
-        let ok = verdicts.filter(\.isUnderstood).count
-        let total = verdicts.count
-        if total > 0, ok == total { return "Tous les mots sont passés" }
-        return "\(ok) mot\(ok > 1 ? "s" : "") sur \(total) sont passés"
-    }
-
-    /// Le tempo compare deux durées, ce qui est mesurable — contrairement à un
-    /// jugement sur l'accent. Assimil se dit lentement au début : c'est un repère
-    /// utile, pas une faute.
-    private var tempoLabel: String? {
-        guard myDuration > 0, step.duration > 0 else { return nil }
-        let ratio = myDuration / step.duration
-        let percent = Int(((ratio - 1) * 100).rounded())
-        if abs(percent) <= 15 { return "Même tempo que le natif" }
-        return percent > 0
-            ? "\(percent) % plus lent que le natif"
-            : "\(-percent) % plus rapide que le natif"
-    }
-
     private var disclaimer: some View {
         Text("Les mots reconnus t’aident à repérer ce qui passe. Pour travailler ton accent, "
              + "compare ta voix à celle du natif en les réécoutant.")
             .font(.caption)
             .foregroundStyle(.secondary)
-    }
-
-    // MARK: - Actions
-
-    /// Le calcul de hauteur est du signal, pas de l'interface : il part sur une
-    /// tâche détachée pour ne pas figer l'écran le temps de la phrase.
-    private func compareMelody(mine url: URL) async {
-        guard let nativeURL = step.url else { intonationFailed = true; return }
-        let result = await Task.detached(priority: .userInitiated) { () -> Intonation? in
-            guard let native = PitchTracker.track(nativeURL),
-                  let mine = PitchTracker.track(url)
-            else { return nil }
-            return IntonationComparer.compare(native: native, mine: mine)
-        }.value
-        intonation = result
-        intonationFailed = result == nil
-    }
-
-    private func toggleRecording() async {
-        guard let key, let reference else { return }
-
-        if recorder.isRecording {
-            guard let url = recorder.stopRecording() else { return }
-            myDuration = VoiceRecorder.duration(of: url)
-            await compareMelody(mine: url)
-            if let heard = await speech.recognize(url) {
-                verdicts = SpanishMatch.compare(reference: reference, heard: heard)
-            } else {
-                verdicts = []
-            }
-        } else {
-            verdicts = []
-            intonation = nil
-            intonationFailed = false
-            speech.reset()
-            await recorder.startRecording(key: key)
-        }
     }
 }
 

@@ -56,26 +56,20 @@ struct SettingsView: View {
                         showPosition = true
                     } label: {
                         LabeledContent("Leçon du jour") {
-                            Text(dailyLesson.map(String.init) ?? "Parcours terminé")
+                            HStack(spacing: 6) {
+                                Text(dailyLesson.map(String.init) ?? "Parcours terminé")
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .foregroundStyle(.primary)
-                    LabeledContent("Série") { Text("\(Streak.current(from: days)) jour(s)") }
+                    LabeledContent("Série") {
+                        let streak = Streak.current(validatedOn: sessions.compactMap(\.completedAt), today: clock.today)
+                        Text("\(streak) \(streak > 1 ? "jours" : "jour")")
+                    }
                     LabeledContent("Temps total") { Text(totalLabel) }
-                }
-
-                Section {
-                    LabeledContent("Leçons", value: "\(Manifest.shared.lessonCount)")
-                    LabeledContent("Phrases", value: "\(Manifest.shared.sentenceCount)")
-                    LabeledContent("Audio", value: durationLabel(Manifest.shared.totalDuration))
-                    LabeledContent("Leçons avec texte espagnol", value: "\(lessonsWithText)")
-                    LabeledContent("Leçons avec traduction", value: "\(lessonsWithTranslation)")
-                } header: {
-                    Text("Contenu embarqué")
-                } footer: {
-                    Text("Usage strictement personnel. L'espagnol vient de la transcription "
-                         + "des enregistrements ; la traduction, la prononciation figurée et "
-                         + "les notes viennent du livre et se complètent leçon par leçon.")
                 }
             }
             .studyListBackground()
@@ -88,14 +82,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-
-    private var lessonsWithText: Int {
-        Manifest.shared.lessons.count { LessonTextStore.hasText(for: $0.number) }
-    }
-
-    private var lessonsWithTranslation: Int {
-        Manifest.shared.lessons.count { LessonTextStore.hasTranslation(for: $0.number) }
     }
 
     private var totalLabel: String {

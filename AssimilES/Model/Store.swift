@@ -214,23 +214,31 @@ final class CourseAnchor {
 }
 
 enum Streak {
-    /// Nombre de jours consécutifs d'étude en comptant aujourd'hui, ou hier si
-    /// la séance du jour n'a pas encore eu lieu (sinon la série paraîtrait rompue
-    /// tous les matins).
-    static func current(from days: [StudyDay], calendar: Calendar = .current) -> Int {
-        let studied = Set(days.filter { $0.seconds > 0 }.map { calendar.startOfDay(for: $0.day) })
-        guard !studied.isEmpty else { return 0 }
+    /// Nombre de jours consécutifs avec une séance validée, en comptant aujourd'hui,
+    /// ou hier si la séance du jour n'est pas encore validée (sinon la série
+    /// paraîtrait rompue tous les matins).
+    ///
+    /// La validation, pas le temps écouté : quelques secondes de découverte ne
+    /// font pas une séance, et la série ne doit pas dire le contraire de l'accueil.
+    static func current(validatedOn dates: [Date], today: Date, calendar: Calendar = .current) -> Int {
+        let validated = days(validatedOn: dates, calendar: calendar)
+        guard !validated.isEmpty else { return 0 }
 
-        let today = calendar.startOfDay(for: .now)
-        var cursor = studied.contains(today)
-            ? today
-            : calendar.date(byAdding: .day, value: -1, to: today)!
+        let start = calendar.startOfDay(for: today)
+        var cursor = validated.contains(start)
+            ? start
+            : calendar.date(byAdding: .day, value: -1, to: start)!
 
         var count = 0
-        while studied.contains(cursor) {
+        while validated.contains(cursor) {
             count += 1
             cursor = calendar.date(byAdding: .day, value: -1, to: cursor)!
         }
         return count
+    }
+
+    /// Les jours où une séance a été validée, ramenés à leur début.
+    static func days(validatedOn dates: [Date], calendar: Calendar = .current) -> Set<Date> {
+        Set(dates.map { calendar.startOfDay(for: $0) })
     }
 }

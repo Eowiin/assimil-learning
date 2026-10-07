@@ -25,46 +25,61 @@ struct FillInExerciseView<Footer: View>: View {
     /// Sans ¿ ni ¡ : la ponctuation est imprimée autour des trous et n'est pas notée.
     private static var accents: [String] { ["á", "é", "í", "ó", "ú", "ü", "ñ"] }
 
+    /// Hauteur de la barre d'accents qui flotte au-dessus du clavier. Le défilement
+    /// automatique ne connaît que le clavier : sans cette marge, la vérification de
+    /// la phrase en cours passait sous la barre.
+    @ScaledMetric private var accentBarClearance: CGFloat = 72
+
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Exercice 2 · Complétez").font(.title3.weight(.bold))
-                        if let instruction = exercise?.instruction {
-                            Text(instruction).font(.subheadline)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Exercice 2 · Complétez").font(.title3.weight(.bold))
+                            if let instruction = exercise?.instruction {
+                                Text(instruction).font(.subheadline)
+                            }
+                            Text("Chaque point représente une lettre ou un caractère. Les accents comptent ; "
+                                 + "la ponctuation, déjà imprimée, et les majuscules ne sont pas notées.")
+                                .font(.subheadline).foregroundStyle(.secondary)
                         }
-                        Text("Chaque point représente une lettre ou un caractère. Les accents comptent ; "
-                             + "la ponctuation, déjà imprimée, et les majuscules ne sont pas notées.")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }
 
-                    if let notice = content.notice {
-                        BookNotice(text: notice)
-                    }
+                        if let notice = content.notice {
+                            BookNotice(text: notice)
+                        }
 
-                    if let exercise {
-                        ForEach(exercise.items) { item in
-                            card(item)
+                        if let exercise {
+                            ForEach(exercise.items) { item in
+                                card(item)
+                                    .id(item.n)
+                            }
+                        }
+
+                        if content.needsBook {
+                            BookConfirmation(stage: .completion,
+                                             label: "J'ai fait cet exercice dans le livre",
+                                             progress: $progress)
                         }
                     }
-
-                    if content.needsBook {
-                        BookConfirmation(stage: .completion,
-                                         label: "J'ai fait cet exercice dans le livre",
-                                         progress: $progress)
+                    .padding(20)
+                    .frame(maxWidth: 600, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                // La barre d'accents flotte au-dessus du clavier, à la hauteur du bouton
+                // d'étape : il s'efface le temps de la saisie.
+                .safeAreaBar(edge: .bottom) {
+                    if focus == nil { footer() }
+                }
+                .contentMargins(.bottom, focus == nil ? 0 : accentBarClearance, for: .scrollContent)
+                .onChange(of: focus) {
+                    // La phrase entière, vérification comprise, au-dessus de la barre.
+                    guard let item = focus?.item else { return }
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo(item, anchor: .bottom)
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: 600, alignment: .leading)
-                .frame(maxWidth: .infinity)
-            }
-            .scrollDismissesKeyboard(.interactively)
-
-            // La barre d'accents flotte au-dessus du clavier, à la hauteur du bouton
-            // d'étape : il s'efface le temps de la saisie.
-            if focus == nil {
-                footer()
             }
         }
         .toolbar {
@@ -136,17 +151,20 @@ struct FillInExerciseView<Footer: View>: View {
                     } label: {
                         Text("Vérifier").frame(maxWidth: .infinity, minHeight: 34)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(VerifyButtonStyle(prominent: !attempt.revealed))
                     .disabled(typed.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
                     .accessibilityIdentifier("check-\(item.n)")
+                    .tint(StudyStyle.button)
 
                     if !attempt.revealed {
                         Button {
                             var updated = attempt
-                            updated.revealed = true
+                            updated.reveal()
                             progress.setFillIn(item.n, updated)
+                            drafts[item.n] = nil
+                            focus = nil
                         } label: {
-                            Text("Voir la correction").frame(maxWidth: .infinity, minHeight: 34)
+                            Text("Voir le corrigé").frame(maxWidth: .infinity, minHeight: 34)
                         }
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("reveal-fill-\(item.n)")
@@ -184,9 +202,7 @@ struct FillInExerciseView<Footer: View>: View {
     private func feedback(_ item: FillInItem, attempt: FillInAttempt, verdicts: [BlankVerdict]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if attempt.checks > 0, !attempt.solved {
-                let accepted = verdicts.filter(\.isAccepted).count
-                Text("\(accepted) trou\(accepted > 1 ? "s" : "") sur \(verdicts.count) juste\(accepted > 1 ? "s" : "") "
-                     + "— corrige les autres et vérifie à nouveau.")
+                Text(FillInCopy.retryMessage(accepted: verdicts.filter(\.isAccepted).count, of: verdicts.count))
                     .font(.subheadline)
             }
             ForEach(Array(verdicts.enumerated()), id: \.offset) { index, verdict in
@@ -310,6 +326,38 @@ struct FillInExerciseView<Footer: View>: View {
             }
         }
         return tokens
+    }
+}
+
+/// « Vérifier » mène tant que la phrase est à chercher ; une fois la correction
+/// vue, retaper pour s'en assurer reste possible, mais ce n'est plus l'action
+/// attendue.
+private struct VerifyButtonStyle: PrimitiveButtonStyle {
+    let prominent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if prominent {
+            Button(role: configuration.role, action: configuration.trigger) { configuration.label }
+                .buttonStyle(.borderedProminent)
+        } else {
+            Button(role: configuration.role, action: configuration.trigger) { configuration.label }
+                .buttonStyle(.bordered)
+        }
+    }
+}
+
+/// Les phrases de l'exercice, hors de la vue générique pour se tester seules.
+enum FillInCopy {
+    /// « 0 trou sur 1 juste — corrige les autres » disait faux deux fois : ni
+    /// l'accord, ni « les autres » quand il n'y a qu'un trou.
+    static func retryMessage(accepted: Int, of total: Int) -> String {
+        if total == 1 { return "Pas encore — corrige et vérifie à nouveau." }
+        let head = switch accepted {
+        case 0: "Aucun trou juste"
+        case 1: "1 trou juste sur \(total)"
+        default: "\(accepted) trous justes sur \(total)"
+        }
+        return head + " — corrige les autres et vérifie à nouveau."
     }
 }
 

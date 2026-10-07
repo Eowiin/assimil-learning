@@ -27,6 +27,15 @@ struct RevealExerciseView: View {
     @Binding var progress: DailyProgress
     /// Une leçon à réécouter librement quand le texte manque.
     var listenLesson: Int?
+    /// Une phrase à la fois, dans l'ordre, l'énoncé lu à l'arrivée et la suivante
+    /// ouverte d'elle-même une fois la phrase évaluée. Pour l'exercice 1 : cinq
+    /// cartes actives à la fois, chacune avec son « Répondre », ne disaient pas par
+    /// où commencer et obligeaient à viser en faisant défiler.
+    var oneAtATime = false
+
+    /// La phrase ouverte, choisie à la main ; sinon la première pas encore évaluée.
+    @State private var chosenIndex: Int?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @EnvironmentObject private var player: SessionPlayer
 
@@ -47,8 +56,12 @@ struct RevealExerciseView: View {
                 }
 
                 if !items.isEmpty, content != .notApplicable {
-                    ForEach(items) { item in
-                        card(item)
+                    if oneAtATime {
+                        focused
+                    } else {
+                        ForEach(items) { item in
+                            card(item)
+                        }
                     }
                 }
 
@@ -76,9 +89,94 @@ struct RevealExerciseView: View {
         .onDisappear { listener.cancel() }
     }
 
+    // MARK: - Une phrase à la fois
+
+    private func outcome(_ item: RevealItem) -> RevealOutcome? {
+        progress.reveal(stage, item.n).outcome
+    }
+
+    private var currentIndex: Int {
+        let open = items.firstIndex { outcome($0) == nil } ?? items.count - 1
+        return min(max(0, chosenIndex ?? open), items.count - 1)
+    }
+
+    private var allDone: Bool { items.allSatisfy { outcome($0) != nil } }
+
+    @ViewBuilder
+    private var focused: some View {
+        let index = currentIndex
+        let item = items[index]
+        VStack(alignment: .leading, spacing: 16) {
+            stepper(index)
+            if allDone {
+                Label("Toutes les phrases sont faites", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(StudyStyle.accent)
+            }
+            card(item, large: true)
+                .id(item.n)
+                .transition(.opacity)
+        }
+        // L'énoncé se fait entendre à l'arrivée sur la phrase : c'est par l'oreille
+        // que l'exercice commence.
+        .task(id: item.n) {
+            guard clipIsPrompt, item.clip != nil, outcome(item) == nil, !listener.isBusy else { return }
+            play(item)
+        }
+        // Évaluée, la phrase laisse la place à la suivante après un temps de lecture.
+        .onChange(of: outcome(item)) { _, new in
+            guard new != nil, let next = items.indices.first(where: { $0 > index && outcome(items[$0]) == nil })
+                    ?? items.indices.first(where: { outcome(items[$0]) == nil })
+            else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(700))
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { chosenIndex = next }
+            }
+        }
+    }
+
+    /// Où l'on en est, et de quoi revenir sur une phrase.
+    private func stepper(_ index: Int) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { chosenIndex = index - 1 }
+            } label: {
+                Image(systemName: "chevron.left").frame(width: 36, height: 36)
+            }
+            .disabled(index == 0 || listener.isBusy)
+            .accessibilityLabel("Phrase précédente de l'exercice")
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 4) {
+                    ForEach(items.indices, id: \.self) { i in
+                        Capsule()
+                            .fill(outcome(items[i]) != nil ? StudyStyle.button
+                                  : i == index ? StudyStyle.button.opacity(0.4)
+                                  : Color(uiColor: .tertiarySystemFill))
+                            .frame(height: 5)
+                    }
+                }
+                Text("Phrase \(index + 1) sur \(items.count)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Phrase \(index + 1) sur \(items.count)")
+
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { chosenIndex = index + 1 }
+            } label: {
+                Image(systemName: "chevron.right").frame(width: 36, height: 36)
+            }
+            .disabled(index >= items.count - 1 || listener.isBusy)
+            .accessibilityLabel("Phrase suivante de l'exercice")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(StudyStyle.accent)
+    }
+
     // MARK: - Une phrase
 
-    private func card(_ item: RevealItem) -> some View {
+    private func card(_ item: RevealItem, large: Bool = false) -> some View {
         let state = progress.reveal(stage, item.n)
         let key = "\(stage.rawValue)-\(lesson.number)-\(item.n)"
         let spoken = state.heard.flatMap { heard in
@@ -92,7 +190,7 @@ struct RevealExerciseView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 18, alignment: .trailing)
                 Text(item.prompt ?? promptFallback)
-                    .font(.title3)
+                    .font(large && item.prompt != nil ? .title2.weight(.semibold) : .title3)
                     .foregroundStyle(item.prompt == nil ? .secondary : .primary)
                 Spacer(minLength: 0)
                 if clipIsPrompt, item.clip != nil {
@@ -226,7 +324,7 @@ struct RevealExerciseView: View {
                 .frame(maxWidth: .infinity, minHeight: 34)
         }
         .buttonStyle(.borderedProminent)
-        .tint(recording ? .red : StudyStyle.accent)
+        .tint(recording ? .red : StudyStyle.button)
         .disabled(listener.isBusy && !recording)
         .accessibilityIdentifier("answer-mic-\(item.n)")
     }
