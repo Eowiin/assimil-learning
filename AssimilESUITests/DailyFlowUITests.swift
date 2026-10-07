@@ -168,6 +168,28 @@ final class DailyFlowUITests: XCTestCase {
         snapshot(app, "10-lendemain")
     }
 
+    func testMarkSurvivesAbruptQuit() throws {
+        // Une phrase marquée est enregistrée tout de suite : un arrêt brutal juste
+        // après ne la perd pas (#4).
+        let store = newStore()
+        var app = launch(store: store, lesson: 1)
+        app.tabBars.buttons["Leçons"].tap()
+        tap(app.staticTexts["Lección ficticia"])
+        // Le titre ouvre la leçon et ne se marque pas : on passe à la phrase 1.
+        tap(app.buttons["Phrase suivante"])
+        app.buttons["play-pause"].tap()
+        waitEnabled(app.buttons["Marquer à revoir"])
+        tap(app.buttons["Marquer à revoir"])
+        XCTAssertTrue(app.buttons["Retirer des phrases à revoir"].waitForExistence(timeout: 3))
+        app.terminate()
+
+        app = launch(store: store, lesson: 1)
+        app.tabBars.buttons["Réviser"].tap()
+        XCTAssertTrue(app.staticTexts["Frase de prueba uno."].waitForExistence(timeout: 5),
+                      "la phrase marquée a été perdue")
+        snapshot(app, "16-drapeau-apres-relance")
+    }
+
     func testWeeklyReviewWithoutExercises() throws {
         let app = launch(store: newStore(), lesson: 7)
         XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))

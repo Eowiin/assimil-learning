@@ -85,6 +85,7 @@ struct DifficultListView: View {
 
     private func delete(_ offsets: IndexSet, from list: [DifficultSentence]) {
         offsets.map { list[$0] }.forEach(context.delete)
+        try? context.save()
     }
 }
 
