@@ -98,7 +98,9 @@ struct PronunciationView: View {
     // MARK: - Les commandes
 
     private var buttons: some View {
-        HStack(spacing: 18) {
+        // Alignés sur leurs libellés : le bouton d'enregistrement, plus grand,
+        // décalait « Enregistrer » sous les deux autres.
+        HStack(alignment: .lastTextBaseline, spacing: 18) {
             actionButton(title: "Le natif",
                          symbol: recorder.playing == .native ? "stop.fill" : "play.fill",
                          enabled: step.url != nil) {

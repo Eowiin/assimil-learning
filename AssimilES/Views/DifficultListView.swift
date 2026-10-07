@@ -57,6 +57,8 @@ struct DifficultListView: View {
                         } footer: {
                             Text("Chaque phrase revient à intervalle croissant. "
                                  + "Pendant la révision, le drapeau la retire quand elle est acquise.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
 
                         if !due.isEmpty {

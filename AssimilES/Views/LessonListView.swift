@@ -24,7 +24,7 @@ struct LessonListView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("\(completed.count) leçons validées sur \(Manifest.shared.lessonCount)")
+                        Text("\(completed.count) \(completed.count > 1 ? "leçons validées" : "leçon validée") sur \(Manifest.shared.lessonCount)")
                             .font(.subheadline).foregroundStyle(.secondary)
 
                     }

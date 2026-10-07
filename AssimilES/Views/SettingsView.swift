@@ -56,12 +56,18 @@ struct SettingsView: View {
                         showPosition = true
                     } label: {
                         LabeledContent("Leçon du jour") {
-                            Text(dailyLesson.map(String.init) ?? "Parcours terminé")
+                            HStack(spacing: 6) {
+                                Text(dailyLesson.map(String.init) ?? "Parcours terminé")
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .foregroundStyle(.primary)
                     LabeledContent("Série") {
-                        Text("\(Streak.current(validatedOn: sessions.compactMap(\.completedAt), today: clock.today)) jour(s)")
+                        let streak = Streak.current(validatedOn: sessions.compactMap(\.completedAt), today: clock.today)
+                        Text("\(streak) \(streak > 1 ? "jours" : "jour")")
                     }
                     LabeledContent("Temps total") { Text(totalLabel) }
                 }
