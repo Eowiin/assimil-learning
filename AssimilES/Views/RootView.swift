@@ -54,13 +54,12 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                // La séance d'abord : c'est la seule chose à faire en ouvrant l'app.
-                // La semaine suit, comme un repère.
-                VStack(alignment: .leading, spacing: 24) {
+                // Une rangée de jours, compacte, puis la séance : la seule chose à faire
+                // en ouvrant l'app. La série se lit dans le sous-titre, avec la date.
+                VStack(alignment: .leading, spacing: 20) {
+                    weeklyActivity
                     dailyCard
                     reviews
-                    weeklyActivity
-                        .padding(.top, 8)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
@@ -72,7 +71,7 @@ struct TodayView: View {
             // La séance vient d'être validée : on le sent au retour sur l'accueil.
             .sensoryFeedback(.success, trigger: validatedDates.count)
             .navigationTitle("Aujourd'hui")
-            .navigationSubtitle(clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+            .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 // Replacer le parcours est rare et lourd (une séance commencée est
@@ -106,37 +105,36 @@ struct TodayView: View {
     private var validatedDates: [Date] { sessions.compactMap(\.completedAt) }
     private var streak: Int { Streak.current(validatedOn: validatedDates, today: clock.today) }
 
+    /// La date, et la série quand il y en a une : « mercredi 7 octobre · 3 jours de suite ».
+    private var subtitle: String {
+        let date = clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide))
+        guard streak > 0 else { return date }
+        return "\(date) · \(streak) \(streak > 1 ? "jours" : "jour") de suite"
+    }
+
     /// Le cercle d'un jour suit la taille du texte, dans la limite de ce que sept
     /// colonnes laissent sur un iPhone.
-    @ScaledMetric(relativeTo: .caption) private var dayCircle: CGFloat = 32
+    @ScaledMetric(relativeTo: .caption) private var dayCircle: CGFloat = 28
 
     private var weeklyActivity: some View {
         let validated = Streak.days(validatedOn: validatedDates)
-        return VStack(spacing: 14) {
-            HStack {
-                Text("Cette semaine").font(.subheadline.weight(.semibold))
-                Spacer()
-                Label("\(streak) j", systemImage: "flame.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(StudyStyle.accent)
-                    .accessibilityLabel("\(streak) jours de suite")
-            }
+        return VStack(spacing: 0) {
             HStack(spacing: 0) {
                 ForEach(weekDays, id: \.self) { date in
                     let studied = validated.contains(Calendar.current.startOfDay(for: date))
                     let today = Calendar.current.isDate(date, inSameDayAs: clock.today)
-                    VStack(spacing: 7) {
+                    VStack(spacing: 5) {
                         Text(date, format: .dateTime.weekday(.narrow))
-                            .font(.caption.weight(today ? .bold : .regular))
+                            .font(.caption2.weight(today ? .bold : .regular))
                             .foregroundStyle(.secondary)
                         ZStack {
                             Circle().fill(studied ? StudyStyle.button : StudyStyle.surface)
                             Circle().strokeBorder(today ? StudyStyle.accent : .clear, lineWidth: 1.5)
                             if studied {
-                                Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.white)
+                                Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(.white)
                             } else {
                                 Text(date, format: .dateTime.day())
-                                    .font(.caption.weight(today ? .bold : .medium))
+                                    .font(.caption2.weight(today ? .bold : .medium))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.5)
                                     .padding(2)
