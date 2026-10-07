@@ -64,15 +64,11 @@ struct DailySessionView: View {
         plan.stages.filter { $0 != .finish || session.progress.current == .finish }
     }
 
-    /// L'étape en cours, sous le titre : « Étape 3 sur 5 · Répétition ». Elle remplace
-    /// la bande d'étapes maison, qui défilait et ne montrait jamais toutes les étapes.
-    /// « Étape » en tête : sous le titre, « Répétition · 3 sur 5 » se lisait comme la
-    /// phrase en cours, que le lecteur affiche juste en dessous.
+    /// L'étape en cours, sous le titre. Son nom seul : avec la position (« Étape 3 sur
+    /// 5 · … »), il se tronquait à côté des trois boutons de la barre, et le menu
+    /// Étapes dit déjà où l'on en est.
     private func stageSubtitle(_ plan: DailyPlan) -> String {
-        let current = session.progress.current
-        let stages = plan.stages.filter { $0 != .finish }
-        guard let index = stages.firstIndex(of: current) else { return current.title }
-        return "Étape \(index + 1) sur \(stages.count) · \(current.title)"
+        session.progress.current.title
     }
 
     /// Revenir à une étape déjà ouverte. Les suivantes restent fermées tant que

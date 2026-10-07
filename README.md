@@ -594,6 +594,26 @@ Ce qu'aucun corpus ne donne : une phrase dite par Ethan tombe *entre* les deux
 groupes, et savoir où demanderait ses propres enregistrements. Les seuils sont donc
 posés sur ce qui est mesuré, pas sur ce qu'on voudrait qu'ils disent.
 
+## Interface
+
+L'app suit iOS 26 et ses composants système ; un composant maison ne remplace un
+composant système que pour une raison écrite dans le code. Les règles posées par la
+refonte d'octobre 2026 :
+
+- **Un écran, une action principale, en bas.** Le bouton d'étape est le bouton système
+  en verre (`.glassProminent`, via `StudyPrimaryButtonStyle`) dans une `safeAreaBar` :
+  le contenu défile dessous.
+- **La phrase en cours est la plus grande chose à l'écran** (lecteur « paroles ») : on
+  lit à un mètre, téléphone posé.
+- **Deux bleus, deux rôles.** `StudyStyle.accent` pour le texte et les icônes,
+  `StudyStyle.button` pour les fonds sous un libellé blanc (≥ 5:1 dans les deux modes).
+- **Une seule représentation de la progression par écran.**
+- **Rien d'affiché comme un bouton s'il ne fait rien** (la flamme de la série est un
+  libellé, pas une pastille).
+- **Grand texte : réagencer, pas tronquer** (`isAccessibilitySize`, `@ScaledMetric`).
+- Les captures se font par un test d'interface sur les textes fictifs ; on vérifie en
+  clair, en sombre et en taille « accessibilité XL ».
+
 ## Construire l'app
 
 ```bash
