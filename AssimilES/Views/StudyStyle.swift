@@ -43,6 +43,9 @@ struct StudyPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 54)
             .background(StudyStyle.button, in: RoundedRectangle(cornerRadius: 16))

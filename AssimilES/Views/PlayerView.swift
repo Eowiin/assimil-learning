@@ -29,6 +29,13 @@ struct PlayerView: View {
 
     @State private var showTranslation = false
     @State private var showSpeed = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// Aux tailles d'accessibilité, quatre libellés côte à côte ne tiennent plus :
+    /// les outils passent en icônes seules, nommées pour VoiceOver.
+    private var compactTools: Bool { typeSize.isAccessibilitySize }
+    /// Même hauteur pour les icônes et la vitesse : les libellés restent alignés.
+    @ScaledMetric(relativeTo: .title3) private var toolIconHeight: CGFloat = 24
     /// La phrase sur laquelle on veut s'essayer. Ouvre l'écran de prononciation.
     @State private var pronunciationStep: SessionStep?
     /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
@@ -282,10 +289,16 @@ struct PlayerView: View {
                     .disabled(player.currentNavigableStep?.sentenceNumber == nil)
                 Button { showSpeed = true } label: {
                     VStack(spacing: 6) {
-                        Text("\(player.rate, format: .number.precision(.fractionLength(2)))×")
+                        Text(compactTools
+                             ? "\(player.rate, format: .number.precision(.fractionLength(0...2)))×"
+                             : "\(player.rate, format: .number.precision(.fractionLength(2)))×")
                             .font(.subheadline.weight(.semibold)).monospacedDigit()
-                            .frame(height: 22)
-                        Text("Vitesse").font(.caption2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .frame(height: toolIconHeight)
+                        if !compactTools {
+                            Text("Vitesse").font(.caption2)
+                        }
                     }
                     .frame(maxWidth: .infinity, minHeight: 48)
                     .contentShape(Rectangle())
@@ -337,6 +350,8 @@ struct PlayerView: View {
             Button(action: action.perform) {
                 Label(action.title, systemImage: action.symbol)
                     .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     .frame(maxWidth: .infinity, minHeight: 34)
             }
             .buttonStyle(.bordered)
@@ -348,8 +363,10 @@ struct PlayerView: View {
                            action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 19)).frame(height: 22)
-                Text(label).font(.caption2)
+                Image(systemName: symbol).font(.title3).frame(height: toolIconHeight)
+                if !compactTools {
+                    Text(label).font(.caption2).lineLimit(1).minimumScaleFactor(0.8)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 48)
             .contentShape(Rectangle())

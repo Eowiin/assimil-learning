@@ -101,6 +101,10 @@ struct TodayView: View {
     private var validatedDates: [Date] { sessions.compactMap(\.completedAt) }
     private var streak: Int { Streak.current(validatedOn: validatedDates, today: clock.today) }
 
+    /// Le cercle d'un jour suit la taille du texte, dans la limite de ce que sept
+    /// colonnes laissent sur un iPhone.
+    @ScaledMetric(relativeTo: .caption) private var dayCircle: CGFloat = 32
+
     private var weeklyActivity: some View {
         let validated = Streak.days(validatedOn: validatedDates)
         return VStack(spacing: 14) {
@@ -128,10 +132,13 @@ struct TodayView: View {
                             } else {
                                 Text(date, format: .dateTime.day())
                                     .font(.caption.weight(today ? .bold : .medium))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.5)
+                                    .padding(2)
                                     .foregroundStyle(today ? StudyStyle.accent : .secondary)
                             }
                         }
-                        .frame(width: 32, height: 32)
+                        .frame(width: min(dayCircle, 46), height: min(dayCircle, 46))
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityElement(children: .ignore)
