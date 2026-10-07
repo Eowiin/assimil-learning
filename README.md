@@ -409,7 +409,10 @@ et la sortie audio est rendue à la séance dès la prise terminée.
 - **Jours manqués** : aucune leçon sautée. **Séance inachevée** : reprise, quel que soit
   le jour. **Difficulté** : « Retravailler cette leçon demain » rouvre la même leçon.
 - L'**écoute libre** vit dans l'onglet Leçons : ses trois modes en tête de liste (le
-  choix est gardé), « Reprendre » sur les leçons commencées, la reprise dans
+  choix est gardé), ◎ pour aller à la leçon en cours. Une leçon ouvre sa page — le
+  texte complet de l'étape Compréhension, chaque phrase réécoutable — et « Écouter »
+  lance le lecteur dans le mode choisi. « Reprendre » sur les leçons commencées, la
+  reprise dans
   `LessonProgress`, sans effet sur la séance du jour. L'accueil ne parle plus que de
   la séance et des révisions.
 - Le temps étudié n'est compté qu'une fois : le lecteur rend ses secondes une seule
