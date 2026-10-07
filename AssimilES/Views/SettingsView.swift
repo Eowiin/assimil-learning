@@ -56,7 +56,12 @@ struct SettingsView: View {
                         showPosition = true
                     } label: {
                         LabeledContent("Leçon du jour") {
-                            Text(dailyLesson.map(String.init) ?? "Parcours terminé")
+                            HStack(spacing: 6) {
+                                Text(dailyLesson.map(String.init) ?? "Parcours terminé")
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .foregroundStyle(.primary)

@@ -75,6 +75,17 @@ struct FillInTests {
     }
 }
 
+@Suite("Exercice 2 : le message après une vérification")
+struct FillInCopyTests {
+    @Test("Accord et « les autres » seulement quand il y en a d'autres")
+    func retryMessage() {
+        #expect(FillInCopy.retryMessage(accepted: 0, of: 1) == "Pas encore — corrige et vérifie à nouveau.")
+        #expect(FillInCopy.retryMessage(accepted: 0, of: 2).hasPrefix("Aucun trou juste — "))
+        #expect(FillInCopy.retryMessage(accepted: 1, of: 3).hasPrefix("1 trou juste sur 3 — "))
+        #expect(FillInCopy.retryMessage(accepted: 2, of: 3).hasPrefix("2 trous justes sur 3 — "))
+    }
+}
+
 @Suite("Textes : compatibilité et contenus absents")
 struct LessonTextTests {
     let manifest = Fixture.manifest()

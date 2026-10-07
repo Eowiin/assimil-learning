@@ -146,7 +146,7 @@ struct FillInExerciseView<Footer: View>: View {
                             updated.revealed = true
                             progress.setFillIn(item.n, updated)
                         } label: {
-                            Text("Voir la correction").frame(maxWidth: .infinity, minHeight: 34)
+                            Text("Voir le corrigé").frame(maxWidth: .infinity, minHeight: 34)
                         }
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("reveal-fill-\(item.n)")
@@ -184,9 +184,7 @@ struct FillInExerciseView<Footer: View>: View {
     private func feedback(_ item: FillInItem, attempt: FillInAttempt, verdicts: [BlankVerdict]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if attempt.checks > 0, !attempt.solved {
-                let accepted = verdicts.filter(\.isAccepted).count
-                Text("\(accepted) trou\(accepted > 1 ? "s" : "") sur \(verdicts.count) juste\(accepted > 1 ? "s" : "") "
-                     + "— corrige les autres et vérifie à nouveau.")
+                Text(FillInCopy.retryMessage(accepted: verdicts.filter(\.isAccepted).count, of: verdicts.count))
                     .font(.subheadline)
             }
             ForEach(Array(verdicts.enumerated()), id: \.offset) { index, verdict in
@@ -310,6 +308,21 @@ struct FillInExerciseView<Footer: View>: View {
             }
         }
         return tokens
+    }
+}
+
+/// Les phrases de l'exercice, hors de la vue générique pour se tester seules.
+enum FillInCopy {
+    /// « 0 trou sur 1 juste — corrige les autres » disait faux deux fois : ni
+    /// l'accord, ni « les autres » quand il n'y a qu'un trou.
+    static func retryMessage(accepted: Int, of total: Int) -> String {
+        if total == 1 { return "Pas encore — corrige et vérifie à nouveau." }
+        let head = switch accepted {
+        case 0: "Aucun trou juste"
+        case 1: "1 trou juste sur \(total)"
+        default: "\(accepted) trous justes sur \(total)"
+        }
+        return head + " — corrige les autres et vérifie à nouveau."
     }
 }
 
