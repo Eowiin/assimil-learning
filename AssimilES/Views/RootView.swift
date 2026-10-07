@@ -33,7 +33,6 @@ struct TodayView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
-    @Query private var days: [StudyDay]
     @Query private var marks: [DifficultSentence]
     @Query private var progress: [LessonProgress]
     @Query private var sessions: [DailySession]
@@ -97,21 +96,25 @@ struct TodayView: View {
         }
     }
 
+    /// Les séances validées, pas le temps écouté : un jour coché est un jour où la
+    /// séance a été faite jusqu'au bout.
+    private var validatedDates: [Date] { sessions.compactMap(\.completedAt) }
+    private var streak: Int { Streak.current(validatedOn: validatedDates, today: clock.today) }
+
     private var weeklyActivity: some View {
-        VStack(spacing: 14) {
+        let validated = Streak.days(validatedOn: validatedDates)
+        return VStack(spacing: 14) {
             HStack {
                 Text("Cette semaine").font(.subheadline.weight(.semibold))
                 Spacer()
-                Label("\(Streak.current(from: days)) j", systemImage: "flame.fill")
+                Label("\(streak) j", systemImage: "flame.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(StudyStyle.accent)
-                    .accessibilityLabel("\(Streak.current(from: days)) jours de suite")
+                    .accessibilityLabel("\(streak) jours de suite")
             }
             HStack(spacing: 0) {
                 ForEach(weekDays, id: \.self) { date in
-                    let studied = days.contains {
-                        Calendar.current.isDate($0.day, inSameDayAs: date) && $0.seconds > 0
-                    }
+                    let studied = validated.contains(Calendar.current.startOfDay(for: date))
                     let today = Calendar.current.isDate(date, inSameDayAs: clock.today)
                     VStack(spacing: 7) {
                         Text(date, format: .dateTime.weekday(.narrow))
