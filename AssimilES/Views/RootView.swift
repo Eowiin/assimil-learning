@@ -71,9 +71,23 @@ struct TodayView: View {
             // La séance vient d'être validée : on le sent au retour sur l'accueil.
             .sensoryFeedback(.success, trigger: validatedDates.count)
             .navigationTitle("Aujourd'hui")
-            .navigationSubtitle(subtitle)
+            .navigationSubtitle(clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide)))
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                // La série, à la flamme : visible d'un coup d'œil sans prendre de place
+                // dans la page.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Label("\(streak)", systemImage: "flame.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(streak > 0 ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Série")
+                        .accessibilityValue("\(streak) \(streak > 1 ? "jours" : "jour") de suite")
+                        .accessibilityIdentifier("streak")
+                }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 // Replacer le parcours est rare et lourd (une séance commencée est
                 // abandonnée) : un menu discret, plus à côté du bouton du jour.
                 ToolbarItem(placement: .topBarTrailing) {
@@ -105,12 +119,6 @@ struct TodayView: View {
     private var validatedDates: [Date] { sessions.compactMap(\.completedAt) }
     private var streak: Int { Streak.current(validatedOn: validatedDates, today: clock.today) }
 
-    /// La date, et la série quand il y en a une : « mercredi 7 octobre · 3 jours de suite ».
-    private var subtitle: String {
-        let date = clock.today.formatted(.dateTime.weekday(.wide).day().month(.wide))
-        guard streak > 0 else { return date }
-        return "\(date) · \(streak) \(streak > 1 ? "jours" : "jour") de suite"
-    }
 
     /// Le cercle d'un jour suit la taille du texte, dans la limite de ce que sept
     /// colonnes laissent sur un iPhone.
