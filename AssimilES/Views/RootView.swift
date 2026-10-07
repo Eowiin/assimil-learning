@@ -34,10 +34,8 @@ struct TodayView: View {
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
     @Query private var marks: [DifficultSentence]
-    @Query private var progress: [LessonProgress]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
-    @State private var chosenMode: StudyMode?
     @State private var showLessonPicker = false
     @State private var openedSession: DailySession?
 
@@ -53,18 +51,6 @@ struct TodayView: View {
 
     private var due: [DifficultSentence] { ReviewSchedule.due(in: marks) }
 
-    /// La leçon proposée à l'écoute libre : celle du parcours.
-    private var freeLesson: Lesson? {
-        Manifest.shared.lesson(status.plan?.headlineLesson ?? Manifest.shared.lessonCount)
-    }
-    private var activeLesson: Lesson? { freeLesson.flatMap { SessionBuilder.activeLesson(for: $0.number) } }
-    private var mode: StudyMode { chosenMode ?? (activeLesson == nil ? .shadowing : .wave) }
-    private var hasResume: Bool {
-        progress.contains {
-            $0.lessonNumber == freeLesson?.number && $0.mode == mode.rawValue && $0.stepIndex > 0
-        }
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -72,9 +58,6 @@ struct TodayView: View {
                     weeklyActivity
                     dailyCard
                     reviews
-                    if let freeLesson {
-                        freeListening(freeLesson)
-                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -308,44 +291,6 @@ struct TodayView: View {
         }
     }
 
-    /// L'écoute libre : les trois modes d'avant, sans effet sur la séance du jour.
-    private func freeListening(_ lesson: Lesson) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Divider()
-            Text("Écoute libre").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            Picker("Mode d’écoute", selection: Binding(get: { mode }, set: { chosenMode = $0 })) {
-                Text("Écoute").tag(StudyMode.passive)
-                Text("Répétition").tag(StudyMode.shadowing)
-                Text("La vague").tag(StudyMode.wave)
-            }
-            .pickerStyle(.segmented)
-            Text(mode.subtitle)
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if mode == .wave, let activeLesson {
-                Text("Révision active : leçon \(activeLesson.number)")
-                    .font(.caption).foregroundStyle(StudyStyle.accent)
-            }
-            NavigationLink {
-                PlayerView(request: .lesson(number: lesson.number, mode: mode))
-            } label: {
-                HStack(spacing: 14) {
-                    LessonCover(number: lesson.number, size: 40)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Leçon \(lesson.number)").font(.caption).foregroundStyle(.secondary)
-                        Text(LessonTextStore.text(for: lesson.number)?.titleES ?? "Leçon \(lesson.number)")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    Spacer()
-                    Text(hasResume ? "Reprendre" : "Écouter").font(.subheadline)
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("free-listening")
-        }
-    }
 }
 
 /// Replacer le parcours sur une leçon. Rien ne change tant qu'on ne valide pas.
