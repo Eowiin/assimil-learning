@@ -158,13 +158,10 @@ final class DailyFlowUITests: XCTestCase {
         tap(app.buttons["reveal-fill-1"])
         XCTAssertFalse(stale.firstMatch.waitForExistence(timeout: 1), "verdict d'avant toujours affiché")
         snapshot(app, "07-completer-corrige")
+        // Le bouton de la dernière activité valide la séance et ramène à l'accueil (#11).
         waitEnabled(app.buttons["stage-footer"])
+        XCTAssertEqual(app.buttons["stage-footer"].label, "Valider la séance")
         tap(app.buttons["stage-footer"])
-
-        tap(app.buttons["validate-session"])
-        XCTAssertTrue(app.staticTexts["session-done"].waitForExistence(timeout: 5))
-        snapshot(app, "08-seance-validee")
-        tap(app.buttons["Retour à l'accueil"])
 
         XCTAssertTrue(app.staticTexts["today-done"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["tomorrow"].label.hasPrefix("Demain : leçon 2"))
@@ -220,10 +217,9 @@ final class DailyFlowUITests: XCTestCase {
                       || app.staticTexts["book-notice"].exists)
         snapshot(app, "12-revision-comprehension")
         tap(app.buttons["stage-footer"])
+        XCTAssertEqual(app.buttons["stage-action"].label, "Valider la séance")
         tap(app.buttons["stage-action"])
-        XCTAssertTrue(app.buttons["validate-session"].waitForExistence(timeout: 5))
-        tap(app.buttons["validate-session"])
-        XCTAssertTrue(app.staticTexts["session-done"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["today-done"].waitForExistence(timeout: 5))
         snapshot(app, "13-revision-validee")
     }
 
@@ -245,7 +241,7 @@ final class DailyFlowUITests: XCTestCase {
         snapshot(app, "15-exercice2-non-importe")
         tap(app.buttons["done-in-book"])
         tap(app.buttons["stage-footer"])
-        XCTAssertTrue(app.buttons["validate-session"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["today-done"].waitForExistence(timeout: 5))
     }
 }
 
