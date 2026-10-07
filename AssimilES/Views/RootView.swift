@@ -121,7 +121,7 @@ struct TodayView: View {
                             .font(.caption.weight(today ? .bold : .regular))
                             .foregroundStyle(.secondary)
                         ZStack {
-                            Circle().fill(studied ? StudyStyle.accent : StudyStyle.surface)
+                            Circle().fill(studied ? StudyStyle.button : StudyStyle.surface)
                             Circle().strokeBorder(today ? StudyStyle.accent : .clear, lineWidth: 1.5)
                             if studied {
                                 Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.white)
