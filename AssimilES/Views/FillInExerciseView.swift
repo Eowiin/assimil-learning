@@ -67,6 +67,11 @@ struct FillInExerciseView<Footer: View>: View {
                     .frame(maxWidth: .infinity)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                // La barre d'accents flotte au-dessus du clavier, à la hauteur du bouton
+                // d'étape : il s'efface le temps de la saisie.
+                .safeAreaBar(edge: .bottom) {
+                    if focus == nil { footer() }
+                }
                 .contentMargins(.bottom, focus == nil ? 0 : accentBarClearance, for: .scrollContent)
                 .onChange(of: focus) {
                     // La phrase entière, vérification comprise, au-dessus de la barre.
@@ -75,12 +80,6 @@ struct FillInExerciseView<Footer: View>: View {
                         proxy.scrollTo(item, anchor: .bottom)
                     }
                 }
-            }
-
-            // La barre d'accents flotte au-dessus du clavier, à la hauteur du bouton
-            // d'étape : il s'efface le temps de la saisie.
-            if focus == nil {
-                footer()
             }
         }
         .toolbar {

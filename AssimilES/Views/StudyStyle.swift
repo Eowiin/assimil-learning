@@ -37,21 +37,20 @@ enum StudyStyle {
     })
 }
 
-struct StudyPrimaryButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
+/// L'action principale d'un écran : le bouton système en verre, pleine largeur,
+/// teinté du bleu des actions. Le système donne l'état désactivé, l'appui et
+/// l'adaptation au texte agrandi ; l'ancien style maison les refaisait à la main.
+struct StudyPrimaryButtonStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .background(StudyStyle.button, in: RoundedRectangle(cornerRadius: 16))
-            .opacity(configuration.isPressed ? 0.85 : 1)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+        Button(role: configuration.role, action: configuration.trigger) {
+            configuration.label
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glassProminent)
+        .controlSize(.large)
+        .tint(StudyStyle.button)
     }
 }
 

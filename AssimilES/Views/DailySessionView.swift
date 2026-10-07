@@ -33,21 +33,16 @@ struct DailySessionView: View {
     var body: some View {
         Group {
             if let plan {
-                VStack(spacing: 0) {
-                    // La fin de séance n'est une étape à l'écran que quand on y est : il
-                    // reste alors quelque chose à faire avant de valider.
-                    StageStrip(stages: plan.stages.filter { $0 != .finish || session.progress.current == .finish },
-                               progress: session.progress) { stage in
-                        progress.wrappedValue.open(stage, in: plan.stages)
+                stageView(session.progress.current, plan: plan)
+                    // Une étape = une vue neuve : le lecteur de la découverte
+                    // doit disparaître pour que celui de la répétition démarre.
+                    .id(session.progress.current)
+                    .frame(maxHeight: .infinity)
+                    .navigationTitle(title(plan))
+                    .navigationSubtitle(stageSubtitle(plan))
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) { stageMenu(plan) }
                     }
-                    Divider()
-                    stageView(session.progress.current, plan: plan)
-                        // Une étape = une vue neuve : le lecteur de la découverte
-                        // doit disparaître pour que celui de la répétition démarre.
-                        .id(session.progress.current)
-                        .frame(maxHeight: .infinity)
-                }
-                .navigationTitle(title(plan))
             } else {
                 ContentUnavailableView("Séance introuvable", systemImage: "questionmark.circle")
             }
@@ -61,6 +56,41 @@ struct DailySessionView: View {
             StudyTime.record(player.takeUnrecordedSeconds(), in: context, now: clock.now())
             store.save()
         }
+    }
+
+    /// Les étapes affichées : la fin de séance n'en est une que quand on y est, il
+    /// reste alors quelque chose à faire avant de valider.
+    private func visibleStages(_ plan: DailyPlan) -> [DailyStage] {
+        plan.stages.filter { $0 != .finish || session.progress.current == .finish }
+    }
+
+    /// L'étape en cours, sous le titre : « Répétition · 3 sur 5 ». Elle remplace la
+    /// bande d'étapes maison, qui défilait et ne montrait jamais toutes les étapes.
+    private func stageSubtitle(_ plan: DailyPlan) -> String {
+        let current = session.progress.current
+        let stages = plan.stages.filter { $0 != .finish }
+        guard let index = stages.firstIndex(of: current) else { return current.title }
+        return "\(current.title) · \(index + 1) sur \(stages.count)"
+    }
+
+    /// Revenir à une étape déjà ouverte. Les suivantes restent fermées tant que
+    /// celle d'avant n'est pas faite.
+    private func stageMenu(_ plan: DailyPlan) -> some View {
+        let progress = session.progress
+        return Menu {
+            ForEach(visibleStages(plan)) { stage in
+                Button {
+                    self.progress.wrappedValue.open(stage, in: plan.stages)
+                } label: {
+                    Label(stage.title, systemImage: progress.completed.contains(stage) ? "checkmark.circle.fill"
+                          : stage == progress.current ? "circle.inset.filled" : "circle")
+                }
+                .disabled(!progress.isReachable(stage, in: plan.stages))
+            }
+        } label: {
+            Label("Étapes", systemImage: "list.number")
+        }
+        .accessibilityIdentifier("stage-menu")
     }
 
     private func title(_ plan: DailyPlan) -> String {
@@ -109,8 +139,8 @@ struct DailySessionView: View {
             let text = LessonTextStore.text(for: number)
             let content = LessonContent.comprehension(text)
             let review = LessonContent.reviewSummary(lesson, text)
-            VStack(spacing: 0) {
-                ComprehensionView(lesson: lesson, text: text, content: content, reviewContent: review)
+            ComprehensionView(lesson: lesson, text: text, content: content, reviewContent: review)
+            .safeAreaBar(edge: .bottom) {
                 StageFooter(title: content.needsBook || review.needsBook
                                 ? "Lu dans le livre, passer à la suite"
                                 : nextTitle(after: .comprehension, plan: plan),
@@ -127,19 +157,19 @@ struct DailySessionView: View {
             let text = LessonTextStore.text(for: number)
             let items = LessonContent.translationItems(lesson, text)
             let numbers = items.map(\.n)
-            VStack(spacing: 0) {
-                RevealExerciseView(stage: .translation,
-                                   heading: "Exercice 1 · Traduisez",
-                                   instruction: "Lis et écoute chaque phrase, puis traduis-la en français : "
-                                       + "au micro pour la comparer au corrigé, ou de tête avant d'afficher le corrigé.",
-                                   lesson: lesson,
-                                   items: items,
-                                   content: LessonContent.translation(lesson, text),
-                                   revealTitle: "Voir le corrigé",
-                                   promptFallback: "Énoncé écrit pas encore importé : écoute-le",
-                                   clipIsPrompt: true,
-                                   listener: frenchListener,
-                                   progress: progress)
+            RevealExerciseView(stage: .translation,
+                               heading: "Exercice 1 · Traduisez",
+                               instruction: "Lis et écoute chaque phrase, puis traduis-la en français : "
+                                   + "au micro pour la comparer au corrigé, ou de tête avant d'afficher le corrigé.",
+                               lesson: lesson,
+                               items: items,
+                               content: LessonContent.translation(lesson, text),
+                               revealTitle: "Voir le corrigé",
+                               promptFallback: "Énoncé écrit pas encore importé : écoute-le",
+                               clipIsPrompt: true,
+                               listener: frenchListener,
+                               progress: progress)
+            .safeAreaBar(edge: .bottom) {
                 StageFooter(title: nextTitle(after: .translation, plan: plan),
                             symbol: nextSymbol(after: .translation, plan: plan),
                             enabled: session.progress.isDone(.translation, items: numbers),
@@ -179,20 +209,20 @@ struct DailySessionView: View {
             let text = LessonTextStore.text(for: number)
             let items = LessonContent.waveItems(lesson, text)
             let numbers = items.map(\.n)
-            VStack(spacing: 0) {
-                RevealExerciseView(stage: .secondWave,
-                                   heading: "Deuxième vague · leçon \(number)",
-                                   instruction: "Lis le français et dis la phrase en espagnol : au micro, l'app vérifie "
-                                       + "qu'elle est identique ; de tête, affiche-la, écoute-la et évalue-toi.",
-                                   lesson: lesson,
-                                   items: items,
-                                   content: LessonContent.secondWave(lesson, text),
-                                   revealTitle: "Voir l'espagnol",
-                                   promptFallback: "Traduction pas encore importée",
-                                   clipIsPrompt: false,
-                                   listener: spanishListener,
-                                   progress: progress,
-                                   listenLesson: number)
+            RevealExerciseView(stage: .secondWave,
+                               heading: "Deuxième vague · leçon \(number)",
+                               instruction: "Lis le français et dis la phrase en espagnol : au micro, l'app vérifie "
+                                   + "qu'elle est identique ; de tête, affiche-la, écoute-la et évalue-toi.",
+                               lesson: lesson,
+                               items: items,
+                               content: LessonContent.secondWave(lesson, text),
+                               revealTitle: "Voir l'espagnol",
+                               promptFallback: "Traduction pas encore importée",
+                               clipIsPrompt: false,
+                               listener: spanishListener,
+                               progress: progress,
+                               listenLesson: number)
+            .safeAreaBar(edge: .bottom) {
                 StageFooter(title: nextTitle(after: .secondWave, plan: plan),
                             symbol: nextSymbol(after: .secondWave, plan: plan),
                             enabled: session.progress.isDone(.secondWave, items: numbers),
@@ -378,64 +408,6 @@ enum TomorrowText {
 
 /// La suite des étapes, en tête de séance. On peut revenir sur une étape faite,
 /// pas sauter au-delà de la première qui reste à faire.
-private struct StageStrip: View {
-    let stages: [DailyStage]
-    let progress: DailyProgress
-    let onSelect: (DailyStage) -> Void
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(Array(stages.enumerated()), id: \.element) { index, stage in
-                        chip(stage, index: index)
-                            .id(stage)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-            }
-            .onAppear { proxy.scrollTo(progress.current, anchor: .center) }
-            .onChange(of: progress.current) {
-                withAnimation { proxy.scrollTo(progress.current, anchor: .center) }
-            }
-        }
-    }
-
-    private func chip(_ stage: DailyStage, index: Int) -> some View {
-        let done = progress.completed.contains(stage)
-        let current = progress.current == stage
-        let reachable = progress.isReachable(stage, in: stages)
-        return Button { onSelect(stage) } label: {
-            HStack(spacing: 6) {
-                ZStack {
-                    Circle().fill(current ? StudyStyle.button : (done ? StudyStyle.accent.opacity(0.15) : StudyStyle.surface))
-                    if done && !current {
-                        Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(StudyStyle.accent)
-                    } else {
-                        Text("\(index + 1)").font(.caption2.weight(.bold))
-                            .foregroundStyle(current ? .white : .secondary)
-                    }
-                }
-                .frame(width: 22, height: 22)
-                Text(stage.title)
-                    .font(.footnote.weight(current ? .semibold : .regular))
-                    .foregroundStyle(current ? StudyStyle.accent : .primary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(current ? StudyStyle.accent.opacity(0.08) : .clear, in: Capsule())
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(!reachable)
-        .opacity(reachable ? 1 : 0.45)
-        .accessibilityLabel("Étape \(index + 1) : \(stage.title)")
-        .accessibilityValue(done ? "Terminée" : (current ? "En cours" : (reachable ? "Disponible" : "Pas encore disponible")))
-    }
-}
-
-/// Le bouton du bas d'une étape, à la place des commandes du lecteur.
 struct StageFooter: View {
     let title: String
     var symbol = "arrow.right"
@@ -454,13 +426,10 @@ struct StageFooter: View {
             }
             .buttonStyle(StudyPrimaryButtonStyle())
             .disabled(!enabled)
-            .opacity(enabled ? 1 : 0.45)
             .accessibilityIdentifier("stage-footer")
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
-        .background(StudyStyle.paper)
-        .overlay(alignment: .top) { Divider() }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
     }
 }
 
