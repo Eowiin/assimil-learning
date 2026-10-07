@@ -159,8 +159,7 @@ struct DailySessionView: View {
             let numbers = items.map(\.n)
             RevealExerciseView(stage: .translation,
                                heading: "Exercice 1 · Traduisez",
-                               instruction: "Lis et écoute chaque phrase, puis traduis-la en français : "
-                                   + "au micro pour la comparer au corrigé, ou de tête avant d'afficher le corrigé.",
+                               instruction: "Traduis en français, au micro ou de tête.",
                                lesson: lesson,
                                items: items,
                                content: LessonContent.translation(lesson, text),
@@ -168,7 +167,8 @@ struct DailySessionView: View {
                                promptFallback: "Énoncé écrit pas encore importé : écoute-le",
                                clipIsPrompt: true,
                                listener: frenchListener,
-                               progress: progress)
+                               progress: progress,
+                               oneAtATime: true)
             .safeAreaBar(edge: .bottom) {
                 StageFooter(title: nextTitle(after: .translation, plan: plan),
                             symbol: nextSymbol(after: .translation, plan: plan),
