@@ -34,7 +34,10 @@ struct DailySessionView: View {
         Group {
             if let plan {
                 VStack(spacing: 0) {
-                    StageStrip(stages: plan.stages, progress: session.progress) { stage in
+                    // La fin de séance n'est une étape à l'écran que quand on y est : il
+                    // reste alors quelque chose à faire avant de valider.
+                    StageStrip(stages: plan.stages.filter { $0 != .finish || session.progress.current == .finish },
+                               progress: session.progress) { stage in
                         progress.wrappedValue.open(stage, in: plan.stages)
                     }
                     Divider()
@@ -94,8 +97,8 @@ struct DailySessionView: View {
                        resumeSentence: session.progress.audioSentence(for: stage),
                        onSentenceChange: { progress.wrappedValue.recordAudio(stage, sentence: $0) },
                        stageAction: StageAction(title: nextTitle(after: stage, plan: plan),
-                                                symbol: "arrow.right") {
-                           progress.wrappedValue.complete(stage, in: plan.stages)
+                                                symbol: nextSymbol(after: stage, plan: plan)) {
+                           completeStage(stage, plan: plan)
                        })
         }
     }
@@ -110,8 +113,9 @@ struct DailySessionView: View {
                 ComprehensionView(lesson: lesson, text: text, content: content, reviewContent: review)
                 StageFooter(title: content.needsBook || review.needsBook
                                 ? "Lu dans le livre, passer à la suite"
-                                : nextTitle(after: .comprehension, plan: plan)) {
-                    progress.wrappedValue.complete(.comprehension, in: plan.stages)
+                                : nextTitle(after: .comprehension, plan: plan),
+                            symbol: nextSymbol(after: .comprehension, plan: plan)) {
+                    completeStage(.comprehension, plan: plan)
                 }
             }
         }
@@ -137,11 +141,12 @@ struct DailySessionView: View {
                                    listener: frenchListener,
                                    progress: progress)
                 StageFooter(title: nextTitle(after: .translation, plan: plan),
+                            symbol: nextSymbol(after: .translation, plan: plan),
                             enabled: session.progress.isDone(.translation, items: numbers),
                             hint: LessonContent.translation(lesson, text).needsBook
                                 ? "Évalue chaque phrase, ou confirme l'exercice fait dans le livre."
                                 : "Réponds à chaque phrase, au micro ou de tête.") {
-                    progress.wrappedValue.complete(.translation, in: plan.stages, items: numbers)
+                    completeStage(.translation, plan: plan, items: numbers)
                 }
             }
         }
@@ -157,11 +162,12 @@ struct DailySessionView: View {
                                content: content,
                                progress: progress) {
                 StageFooter(title: nextTitle(after: .completion, plan: plan),
+                            symbol: nextSymbol(after: .completion, plan: plan),
                             enabled: session.progress.isDone(.completion, items: numbers),
                             hint: content.needsBook
                                 ? "Confirme l'exercice fait dans le livre pour continuer."
                                 : "Réussis chaque phrase, ou affiche sa correction.") {
-                    progress.wrappedValue.complete(.completion, in: plan.stages, items: numbers)
+                    completeStage(.completion, plan: plan, items: numbers)
                 }
             }
         }
@@ -188,11 +194,12 @@ struct DailySessionView: View {
                                    progress: progress,
                                    listenLesson: number)
                 StageFooter(title: nextTitle(after: .secondWave, plan: plan),
+                            symbol: nextSymbol(after: .secondWave, plan: plan),
                             enabled: session.progress.isDone(.secondWave, items: numbers),
                             hint: LessonContent.secondWave(lesson, text).needsBook
                                 ? "Évalue chaque phrase, ou confirme la restitution faite dans le livre."
                                 : "Réponds à chaque phrase, au micro ou de tête.") {
-                    progress.wrappedValue.complete(.secondWave, in: plan.stages, items: numbers)
+                    completeStage(.secondWave, plan: plan, items: numbers)
                 }
             }
         }
@@ -209,7 +216,35 @@ struct DailySessionView: View {
         case .translation: return "Passer aux exercices"
         case .completion: return "Passer à l'exercice 2"
         case .secondWave: return "Passer à la deuxième vague"
-        case .finish: return "Passer à la fin de séance"
+        case .finish: return validates(after: stage, plan: plan) ? "Valider la séance" : "Passer à la fin de séance"
+        }
+    }
+
+    private func nextSymbol(after stage: DailyStage, plan: DailyPlan) -> String {
+        validates(after: stage, plan: plan) ? "checkmark.seal" : "arrow.right"
+    }
+
+    /// Terminer cette étape validera la séance : c'est la dernière activité, et
+    /// toutes les autres sont faites.
+    private func validates(after stage: DailyStage, plan: DailyPlan) -> Bool {
+        guard let index = plan.stages.firstIndex(of: stage), index + 1 < plan.stages.count,
+              plan.stages[index + 1] == .finish
+        else { return false }
+        return plan.stages.filter { $0 != .finish && $0 != stage }.allSatisfy(session.progress.completed.contains)
+    }
+
+    /// Termine une étape. Si c'était la dernière et que tout est fait, la séance est
+    /// validée du même geste et l'on revient à l'accueil, qui dit « terminée » et
+    /// propose de retravailler la leçon demain : l'écran « Fin de séance » ne
+    /// faisait que redire la liste des étapes avant un bouton.
+    ///
+    /// La validation reste un geste explicite : la fin d'une piste n'actionne rien.
+    private func completeStage(_ stage: DailyStage, plan: DailyPlan, items: [Int] = []) {
+        var updated = session.progress
+        guard updated.complete(stage, in: plan.stages, items: items) else { return }
+        progress.wrappedValue = updated
+        if updated.current == .finish, store.validate(session, now: clock.now()) {
+            dismiss()
         }
     }
 

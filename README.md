@@ -279,7 +279,13 @@ l'app est fermée en route :
    suivante » saute les répétitions restantes, « Répéter » repart de la première.
 4. **Exercice 1** — traduire.
 5. **Exercice 2** — compléter.
-6. **Fin de séance** — valider.
+
+**La validation est le bouton de la dernière activité.** Quand toutes les autres
+étapes sont faites, il devient « Valider la séance » : il termine l'étape, valide la
+séance et ramène à l'accueil, qui dit « terminée » et propose de retravailler la leçon
+demain. S'il reste une étape en arrière (on peut y revenir par la bande d'étapes), il
+mène à la liste de ce qui manque. L'ancien écran « Fin de séance » ne faisait que
+redire cette liste avant un bouton.
 
 **Une étape ne se termine que par un geste.** Ni la fin d'une piste, ni un saut à la
 dernière phrase, ni la sortie du lecteur : la fin de l'audio met le bouton « Passer
