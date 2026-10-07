@@ -69,9 +69,30 @@ struct FillInTests {
         #expect(attempt.checks == 2)
 
         var revealed = FillInAttempt()
-        revealed.revealed = true
+        revealed.reveal()
         #expect(revealed.isDone)
         #expect(FillInGrader.grade(["Estoy"], item: sentence) == [.correct, .empty])
+    }
+}
+
+@Suite("Exercice 2 : la correction affichée")
+struct FillInRevealTests {
+    @Test("Afficher la correction efface le verdict d'avant, garde la saisie, et laisse retaper")
+    func revealClearsStaleVerdict() {
+        let sentence = FillInItem(n: 1, fr: "Je suis fictif.", template: "[Soy] ficticio.")
+        var attempt = FillInAttempt()
+        attempt.check(["soi"], item: sentence)
+        #expect(attempt.checks == 1)
+
+        attempt.reveal()
+        #expect(attempt.isDone)
+        #expect(!attempt.solved)
+        #expect(attempt.checks == 0)
+        #expect(attempt.typed == ["soi"])
+
+        attempt.check(["soy"], item: sentence)
+        #expect(attempt.solved)
+        #expect(attempt.checks == 1)
     }
 }
 
