@@ -264,3 +264,35 @@ struct DailyCourseRelaunchTests {
         #expect(store.status(now: Fixture.date(day: 11), legacyLesson: 12).plan?.unit == 13)
     }
 }
+
+@Suite("Série : les jours de séance validée")
+struct StreakTests {
+    let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Paris")!
+        return calendar
+    }()
+
+    private func day(_ offset: Int, hour: Int = 20) -> Date {
+        let base = calendar.date(from: DateComponents(year: 2026, month: 10, day: 7, hour: hour))!
+        return calendar.date(byAdding: .day, value: offset, to: base)!
+    }
+
+    @Test("Des jours validés d'affilée font la série, aujourd'hui compris")
+    func consecutiveDays() {
+        let dates = [day(0), day(-1), day(-2), day(-4)]
+        #expect(Streak.current(validatedOn: dates, today: day(0, hour: 22), calendar: calendar) == 3)
+    }
+
+    @Test("La séance du jour pas encore validée ne rompt pas la série le matin")
+    func todayNotYetValidated() {
+        let dates = [day(-1), day(-2)]
+        #expect(Streak.current(validatedOn: dates, today: day(0, hour: 8), calendar: calendar) == 2)
+    }
+
+    @Test("Un jour manqué remet la série à zéro")
+    func missedDay() {
+        #expect(Streak.current(validatedOn: [day(-2), day(-3)], today: day(0), calendar: calendar) == 0)
+        #expect(Streak.current(validatedOn: [], today: day(0), calendar: calendar) == 0)
+    }
+}
