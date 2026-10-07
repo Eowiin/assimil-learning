@@ -34,7 +34,8 @@ struct PlayerView: View {
     /// perdre ce qui vient d'être dit, comme les paroles d'un lecteur de musique.
     private static let currentLineAnchor = UnitPoint(x: 0.5, y: 0.3)
     /// La phrase sur laquelle on veut s'essayer. Ouvre l'écran de prononciation.
-    @State private var pronunciationStep: SessionStep?
+    @StateObject private var trial = VoiceTrial()
+    @State private var showTrialDetails = false
     /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
     /// ne doit pas repousser son échéance une seconde fois.
     @State private var reviewed: Set<UUID> = []
@@ -63,8 +64,8 @@ struct PlayerView: View {
             }
             ToolbarItem(placement: .topBarTrailing) { speedMenu }
         }
-        .sheet(item: $pronunciationStep) { step in
-            PronunciationView(step: step)
+        .sheet(isPresented: $showTrialDetails) {
+            PronunciationView(trial: trial)
         }
         .onAppear {
             showTranslation = settings.revealTranslation
@@ -75,6 +76,7 @@ struct PlayerView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            if trial.isOpen { trial.close() }
             recordSession()
             AudioLog.info("\(#fileID) disparaît")
             player.pause()
@@ -228,7 +230,11 @@ struct PlayerView: View {
     /// progression au-dessus. La vitesse et la traduction, plus rares, sont en haut.
     private var controls: some View {
         VStack(spacing: 12) {
-            if let stageAction {
+            if trial.isOpen {
+                VoiceTrialPanel(trial: trial,
+                                onDetails: { showTrialDetails = true },
+                                onResume: resumeAfterTrial)
+            } else if let stageAction {
                 stageButton(stageAction)
             }
 
@@ -274,7 +280,7 @@ struct PlayerView: View {
                 .accessibilityLabel("Phrase précédente")
                 .accessibilityHint("Rejoue la phrase en cours depuis le début")
                 Spacer(minLength: 0)
-                Button { player.togglePlayPause() } label: {
+                Button { trial.isOpen ? resumeAfterTrial() : player.togglePlayPause() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title.weight(.semibold))
                         .frame(width: 44, height: 44)
@@ -293,15 +299,17 @@ struct PlayerView: View {
                 }
                 .accessibilityLabel("Phrase suivante")
                 Spacer(minLength: 0)
-                Button { pronunciationStep = player.currentNavigableStep } label: {
-                    Image(systemName: "mic")
-                        .font(.title3)
+                Button { Task { await micTapped() } } label: {
+                    Image(systemName: trial.isRecording ? "stop.circle.fill" : (trial.isOpen ? "mic.fill" : "mic"))
+                        .font(trial.isRecording ? .title : .title3)
                         .frame(width: 48, height: 48)
                 }
-                .disabled(player.currentNavigableStep?.sentenceNumber == nil)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Ma voix")
-                .accessibilityHint("S'enregistrer sur la phrase en cours")
+                .disabled(player.currentNavigableStep?.sentenceNumber == nil || trial.phase == .analysing)
+                .foregroundStyle(trial.isRecording ? AnyShapeStyle(.red)
+                                 : trial.isOpen ? AnyShapeStyle(StudyStyle.accent) : AnyShapeStyle(.secondary))
+                .accessibilityLabel(trial.isRecording ? "Arrêter l’enregistrement" : "Ma voix")
+                .accessibilityHint(trial.isRecording ? "" : "Arrête la séance et t'enregistre sur la phrase en cours")
+                .accessibilityIdentifier("voice-mic")
             }
             .buttonStyle(.plain)
             .foregroundStyle(StudyStyle.ink)
@@ -354,6 +362,28 @@ struct PlayerView: View {
             .controlSize(.large)
             .accessibilityIdentifier("stage-action")
         }
+    }
+
+    // MARK: - Ma voix
+
+    /// Le micro arrête la séance et enregistre d'un même geste ; un second appui
+    /// termine la prise. Sur une autre phrase que celle de l'essai ouvert, l'essai
+    /// repart sur elle.
+    private func micTapped() async {
+        if !trial.isRecording {
+            guard let step = player.currentNavigableStep, step.sentenceNumber != nil else { return }
+            if trial.step?.id != step.id || !trial.isOpen {
+                player.releaseAudio()
+                trial.open(step)
+            }
+        }
+        await trial.toggleRecording()
+    }
+
+    /// Referme l'essai, rend la sortie audio à la séance et la relance où elle était.
+    private func resumeAfterTrial() {
+        trial.close()
+        player.play()
     }
 
     // MARK: - État
@@ -482,6 +512,89 @@ struct PlayerView: View {
     /// arrière-plan perdait un drapeau à la moindre fermeture brutale.
     private func save() {
         try? context.save()
+    }
+}
+
+/// L'essai en cours, au-dessus du transport : ce qui a été entendu, la mélodie en
+/// un mot, la réécoute côte à côte et « Reprendre ». Le détail (courbe, tempo, ce
+/// que la machine a compris) est à un appui.
+private struct VoiceTrialPanel: View {
+    @ObservedObject var trial: VoiceTrial
+    let onDetails: () -> Void
+    let onResume: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            status
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) {
+                Button { trial.toggleMine() } label: {
+                    Label("Moi", systemImage: trial.recorder.playing == .mine ? "stop.fill" : "play.fill")
+                }
+                .disabled(trial.myTake == nil || trial.isRecording || trial.phase == .analysing)
+                .accessibilityLabel(trial.recorder.playing == .mine ? "Arrêter : moi" : "Écouter : moi")
+                Button { trial.toggleNative() } label: {
+                    Label("Natif", systemImage: trial.recorder.playing == .native ? "stop.fill" : "play.fill")
+                }
+                .disabled(trial.isRecording)
+                .accessibilityLabel(trial.recorder.playing == .native ? "Arrêter : le natif" : "Écouter : le natif")
+                Button(action: onDetails) {
+                    Image(systemName: "info.circle")
+                }
+                .disabled(trial.isRecording)
+                .accessibilityLabel("Détails : courbe d'intonation et tempo")
+                .accessibilityIdentifier("voice-details")
+                Spacer(minLength: 0)
+                Button(action: onResume) {
+                    Label("Reprendre", systemImage: "play.fill")
+                }
+                .buttonStyle(.glassProminent)
+                .tint(StudyStyle.button)
+                .disabled(trial.isRecording)
+                .accessibilityIdentifier("voice-resume")
+            }
+            .buttonStyle(.glass)
+            .controlSize(.small)
+            .lineLimit(1)
+        }
+        .padding(14)
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch trial.phase {
+        case .ready:
+            Text("Touche le micro et dis la phrase.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        case .recording:
+            Label("J'écoute… touche ■ quand tu as fini.", systemImage: "waveform")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.red)
+        case .analysing:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text(trial.speech.status == .installingModel ? "Installation du modèle espagnol…" : "Reconnaissance…")
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle")
+                .font(.subheadline)
+                .foregroundStyle(.orange)
+        case .done:
+            VStack(alignment: .leading, spacing: 6) {
+                if !trial.verdicts.isEmpty {
+                    FlowText(verdicts: trial.verdicts)
+                }
+                Text([trial.understoodLabel, trial.intonation?.verdict].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 }
 

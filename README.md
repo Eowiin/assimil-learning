@@ -497,9 +497,15 @@ son échéance une seconde fois.
 
 ## S'enregistrer et se comparer au natif
 
-Sur l'écran de lecture, le micro de la barre du haut ouvre l'essai de prononciation
-pour la phrase en cours : entendre le natif, s'enregistrer, se réécouter, et voir ce
-que la reconnaissance a compris.
+Sur l'écran de lecture, le micro (à droite du transport) **arrête la séance et
+enregistre d'un même geste** ; un second appui termine la prise. Le résultat s'affiche
+au-dessus du transport : les mots de la phrase, ceux qui ne sont pas passés en orange,
+la mélodie en un mot, la réécoute moi / natif. « Reprendre » relance la séance là où
+elle était. La courbe, le tempo et ce que la machine a compris sont à un appui (ⓘ).
+Trois gestes au lieu de six, quand c'était une feuille à part.
+
+La logique de l'essai vit dans `VoiceTrial`, partagé par le panneau du lecteur et la
+feuille de détail (`PronunciationView`).
 
 **Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
 *passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
@@ -634,8 +640,9 @@ session `.playAndRecord`, alors que toute la séance repose sur `.playback` et s
 flux qui ne s'interrompt jamais : changer de catégorie au milieu d'une leçon, c'est
 risquer exactement la suspension que le silence diffusé évite, et pour toutes les
 séances, y compris celles où on ne s'enregistre pas. L'essai de prononciation prend
-donc la sortie audio explicitement (`SessionPlayer.releaseAudio()`) et la rend en
-sortant. Il suppose de toute façon d'être à l'arrêt.
+donc la sortie audio explicitement (`SessionPlayer.releaseAudio()`), au moment où l'on
+touche le micro, et la rend avec « Reprendre ». Il suppose de toute façon d'être à
+l'arrêt, téléphone en main.
 
 
 **C'est l'étape qui porte sa leçon, jamais la séance.** Une séance n'est pas « une
