@@ -373,7 +373,7 @@ private struct StageStrip: View {
         return Button { onSelect(stage) } label: {
             HStack(spacing: 6) {
                 ZStack {
-                    Circle().fill(current ? StudyStyle.accent : (done ? StudyStyle.accent.opacity(0.15) : StudyStyle.surface))
+                    Circle().fill(current ? StudyStyle.button : (done ? StudyStyle.accent.opacity(0.15) : StudyStyle.surface))
                     if done && !current {
                         Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(StudyStyle.accent)
                     } else {
