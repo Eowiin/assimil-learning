@@ -20,6 +20,7 @@ Local.xcconfig
 
 # Python
 __pycache__/
+.venv/
 
 # macOS
 .DS_Store
@@ -29,3 +30,6 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+
+# Prototype prononciation : sorties de calibration (contiennent du texte Assimil)
+tools/prononciation/calibration/
