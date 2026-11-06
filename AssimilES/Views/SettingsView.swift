@@ -10,6 +10,9 @@ struct SettingsView: View {
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @State private var showPosition = false
+    @State private var backupFolder: URL?
+    @State private var showBackupMover = false
+    @State private var backupError: String?
 
     private var dailyLesson: Int? {
         DailyCourse.status(anchorUnit: anchors.first?.unit ?? settings.currentLesson,
@@ -71,6 +74,25 @@ struct SettingsView: View {
                     }
                     LabeledContent("Temps total") { Text(totalLabel) }
                 }
+
+                Section {
+                    Button("Exporter une sauvegarde", systemImage: "externaldrive.badge.timemachine") {
+                        exportBackup()
+                    }
+                } header: {
+                    Text("Sauvegarde")
+                } footer: {
+                    Text(backupError ?? "Une copie de la progression, des phrases marquées et du temps d'étude, "
+                         + "à ranger dans Fichiers. Le texte et l'audio des leçons n'en font pas partie.")
+                }
+            }
+            .fileMover(isPresented: $showBackupMover, file: backupFolder) { result in
+                // Annuler n'est pas une erreur ; le dossier reste dans le
+                // répertoire temporaire, que le système vide seul.
+                if case .failure(let error) = result,
+                   (error as? CocoaError)?.code != .userCancelled {
+                    backupError = error.localizedDescription
+                }
             }
             .studyListBackground()
             .navigationTitle("Réglages")
@@ -81,6 +103,18 @@ struct SettingsView: View {
                         .reposition(toLesson: lesson, now: clock.now(), legacyLesson: settings.currentLesson)
                 }
             }
+        }
+    }
+
+    /// Le dossier est déplacé, pas copié, vers l'emplacement choisi : rien ne
+    /// reste en double dans l'app.
+    private func exportBackup() {
+        do {
+            backupFolder = try StoreBackup.make(from: context, now: clock.now())
+            backupError = nil
+            showBackupMover = true
+        } catch {
+            backupError = "Export impossible : \(error.localizedDescription)"
         }
     }
 
