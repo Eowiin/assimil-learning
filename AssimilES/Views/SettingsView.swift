@@ -46,13 +46,11 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("Inclure l'exercice de traduction", isOn: $settings.includeExercise)
-                    Toggle("Annoncer le numéro de leçon", isOn: $settings.announceLesson)
                     Toggle("Afficher la traduction d'emblée", isOn: $settings.revealTranslation)
                 } header: {
-                    Text("Écoute libre")
+                    Text("Lecture")
                 } footer: {
-                    Text("Dans la séance du jour, les exercices ne suivent jamais le dialogue : on y passe soi-même.")
+                    Text("Sinon, le bouton Traduction de l'écran de lecture l'affiche.")
                 }
 
                 Section("Progression") {

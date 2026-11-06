@@ -48,12 +48,9 @@ final class DifficultSentence {
     var isExercise: Bool = false
     var markedAt: Date = Date.now
 
-    /// Quand la phrase doit revenir. Une phrase fraîchement marquée est due tout
-    /// de suite : c'est le jour même qu'elle résiste.
+    /// Échéance et nombre de revues tels que l'ancienne file les tenait, figés à la
+    /// bascule : `Card.dueAt` et `Card.reps` ont pris le relais.
     var dueAt: Date = Date.now
-    /// Nombre de fois où elle est revenue. C'est lui qui donne l'intervalle
-    /// suivant — la phrase ne sort jamais de la file d'elle-même, seul le
-    /// drapeau l'en retire.
     var reviewCount: Int = 0
     var lastReviewedAt: Date?
 
@@ -66,48 +63,8 @@ final class DifficultSentence {
         self.dueAt = .now
     }
 
-    var isDue: Bool { dueAt <= .now }
-
-    /// Appelée quand la phrase vient d'être rejouée en révision. L'intervalle est
-    /// choisi sur le nombre de passages **avant** celui-ci : la première reprise
-    /// tombe le lendemain.
-    func recordReview(at date: Date = .now) {
-        dueAt = ReviewSchedule.next(after: reviewCount, from: date)
-        reviewCount += 1
-        lastReviewedAt = date
-    }
-
     static func makeKey(_ lesson: Int, _ sentence: Int, _ isExercise: Bool) -> String {
         String(format: "L%03d-%@%02d", lesson, isExercise ? "T" : "S", sentence)
-    }
-}
-
-/// Révision espacée des phrases marquées.
-///
-/// Pas de notation : l'app sert à marcher en écoutant, et noter chaque phrase
-/// demanderait l'œil sur l'écran à chaque pause. La phrase revient donc à
-/// intervalle croissant tant qu'elle est marquée, et c'est le même drapeau qu'en
-/// écoute qui l'enlève quand elle est acquise — un seul geste, déjà connu.
-enum ReviewSchedule {
-    /// Intervalles en jours. La suite s'arrête à 60 : au-delà, une phrase qu'on
-    /// n'a pas retirée du drapeau mérite de revenir de temps en temps, pas de
-    /// disparaître.
-    static let intervals = [1, 3, 7, 21, 60]
-
-    /// L'échéance est calée sur le début de journée : une phrase revue le soir
-    /// revient le lendemain, pas le lendemain soir. La séance est quotidienne,
-    /// l'heure n'a pas à décider de ce qui est dû.
-    static func next(after reviewCount: Int,
-                     from date: Date = .now,
-                     calendar: Calendar = .current) -> Date {
-        let days = intervals[min(max(0, reviewCount), intervals.count - 1)]
-        let start = calendar.startOfDay(for: date)
-        return calendar.date(byAdding: .day, value: days, to: start) ?? date
-    }
-
-    /// Les cartes actives arrivées à échéance.
-    static func due(in cards: [Card], now: Date = .now) -> [Card] {
-        cards.filter { $0.isDue(at: now) }
     }
 }
 
@@ -124,50 +81,6 @@ final class StudyDay {
     init(day: Date, seconds: Double = 0) {
         self.day = day
         self.seconds = seconds
-    }
-}
-
-/// À quoi a servi un moment d'étude : l'activité et, pour Assimil, le cours.
-struct StudyActivity: Equatable {
-    let name: String
-    /// Nil pour la révision : elle est commune, pas propre à un cours.
-    let courseID: String?
-
-    static let assimilDaily = StudyActivity(name: StudyEvent.Activity.assimilDaily,
-                                            courseID: PackStore.assimilSpanishID)
-    static let review = StudyActivity(name: StudyEvent.Activity.review, courseID: nil)
-    static let assimilListen = StudyActivity(name: StudyEvent.Activity.assimilListen,
-                                             courseID: PackStore.assimilSpanishID)
-}
-
-enum StudyTime {
-    /// Inscrit un moment d'étude qui vient de se terminer. L'appelant passe ce que
-    /// le lecteur n'a pas encore rendu (`SessionPlayer.takeUnrecordedSeconds`) :
-    /// rouvrir un écran ne recompte rien.
-    ///
-    /// Un événement par enregistrement, jamais un total qu'on gonfle : il dit à
-    /// quoi le temps a servi, et le jour se recalcule (`secondsByDay`).
-    @MainActor
-    static func record(_ seconds: Double, as activity: StudyActivity, in context: ModelContext,
-                       now: Date = .now, calendar: Calendar = .current) {
-        guard seconds > 0 else { return }
-        context.insert(StudyEvent(day: calendar.startOfDay(for: now),
-                                  startedAt: now.addingTimeInterval(-seconds),
-                                  seconds: seconds,
-                                  language: "es",
-                                  activity: activity.name,
-                                  courseID: activity.courseID))
-    }
-
-    /// Tout le temps d'étude, jours recopiés de l'ancien modèle compris : ceux-là
-    /// ne sont plus écrits depuis la bascule, rien n'est donc compté deux fois.
-    static func total(_ events: [StudyEvent]) -> Double {
-        events.reduce(0) { $0 + $1.seconds }
-    }
-
-    /// Le temps par jour, sur le jour de l'événement. Rien ne l'affiche encore.
-    static func secondsByDay(_ events: [StudyEvent], calendar: Calendar = .current) -> [Date: Double] {
-        events.reduce(into: [:]) { $0[calendar.startOfDay(for: $1.day), default: 0] += $1.seconds }
     }
 }
 

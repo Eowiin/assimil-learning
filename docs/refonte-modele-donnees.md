@@ -1,7 +1,10 @@
-# Refonte du modèle de données
+# Refonte du modèle de données — terminée
 
-Le plan de travail, tenu à jour à chaque étape. Le README garde les décisions une
-fois faites ; ce fichier dit ce qui reste à faire et comment.
+**Terminée** : les quatre étapes sont faites et testées sur l'iPhone (PR #45 à
+#48), le nettoyage final dans la PR `chore/fin-refonte`. Ce fichier reste pour
+l'historique ; les décisions vivent dans le README (« Stockage et migration »,
+« Le contenu vient d'un paquet », « Cartes, journal et temps d'étude »). Les
+points hors champ, en bas, restent à décider un par un.
 
 ## Pourquoi
 
@@ -190,6 +193,12 @@ Ce qui était prévu :
 6. Tests : révision sur cartes, drapeau (trois cas), journal ajouté une seule fois
    par séance, temps total sans double compte, bascule lancée deux fois. Adapter
    `SessionTests` et les tests d'interface qui marquent une phrase.
+
+### Nettoyage final — fait
+
+Code mort retiré (`DifficultSentence.recordReview`, devenu une aide des tests, et
+`isDue`) ; `ReviewSchedule` rangé avec `CardReview`, `StudyTime` avec `StudyEvent` ;
+commentaires et README remis à jour (nom des prises de voix, décisions du plan).
 
 ## Hors champ
 

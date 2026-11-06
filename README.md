@@ -255,7 +255,7 @@ et sans quitter la machine.
   signal, juste une absence. Le redressement les a récupérées et a corrigé les
   accents au passage.
 
-**L'app fonctionne sans ce texte.** Les trois modes n'utilisent que l'audio. La
+**L'app fonctionne sans ce texte.** L'écoute n'utilise que l'audio. La
 saisie du livre peut donc suivre l'avancement des leçons sans jamais bloquer
 l'usage : elle ajoute la traduction sous la phrase, la prononciation figurée et les
 notes, elle ne conditionne rien.
@@ -408,13 +408,16 @@ et la sortie audio est rendue à la séance dès la prise terminée.
   d'heure et le retour au premier plan : l'accueil se met à jour app ouverte.
 - **Jours manqués** : aucune leçon sautée. **Séance inachevée** : reprise, quel que soit
   le jour. **Difficulté** : « Retravailler cette leçon demain » rouvre la même leçon.
-- L'**écoute libre** vit dans l'onglet Leçons : ses trois modes en tête de liste (le
-  choix est gardé), ◎ pour aller à la leçon en cours. Une leçon ouvre sa page — le
-  texte complet de l'étape Compréhension, chaque phrase réécoutable — et « Écouter »
-  lance le lecteur dans le mode choisi. « Reprendre » sur les leçons commencées, la
-  reprise dans
-  `LessonProgress`, sans effet sur la séance du jour. L'accueil ne parle plus que de
-  la séance et des révisions.
+- L'**écoute libre** vit dans l'onglet Leçons, ◎ pour aller à la leçon en cours. Une
+  leçon ouvre sa page — le texte complet de l'étape Compréhension, chaque phrase
+  réécoutable — et « Écouter la leçon » la joue d'un trait, exercice compris.
+  « Reprendre » sur les leçons commencées, la reprise dans `LessonProgress`, sans
+  effet sur la séance du jour. L'accueil ne parle que de la séance et des révisions.
+- **Un seul mode d'écoute libre** (#19). Répétition et La vague, l'annonce du
+  numéro de leçon et le choix d'inclure l'exercice ont été retirés après un mois
+  d'usage : seule la séance du jour servait. La répétition reste dans la séance du
+  jour et dans l'écoute de l'ancienne leçon de la deuxième vague ; la deuxième vague
+  elle-même ne change pas. Une reprise enregistrée dans un ancien mode est ignorée.
 - Le temps étudié n'est compté qu'une fois : le lecteur rend ses secondes une seule
   fois (`PlayTimeLedger`). Avant, quitter et rouvrir le lecteur les recomptait.
 
@@ -424,7 +427,7 @@ Leçons 7, 14… 98 : découverte, compréhension, répétition du dialogue de r
 validation — sans les deux exercices. La synthèse grammaticale du livre peut se
 saisir sous `"review": { "sections": [{ "title": …, "text": … }] }` ; faute de quoi
 l'écran renvoie au livre. Elles comptent comme la séance du jour. Rien à voir avec
-l'onglet **À revoir**, qui reste la file des phrases marquées.
+la révision des phrases marquées.
 
 ### La deuxième vague
 
@@ -441,8 +444,7 @@ l'auto-évaluation. Sans traduction importée — le cas de toutes les leçons a
 l'écran renvoie à la restitution dans le livre et propose l'écoute de l'ancienne leçon.
 
 Après la leçon 100, la vague continue seule (leçons 52 à 100), une par jour, pour ne
-laisser aucune leçon sans deuxième vague. Le mode « La vague » de l'écoute libre ne
-change pas.
+laisser aucune leçon sans deuxième vague.
 
 ### Stockage et migration
 
@@ -455,6 +457,9 @@ change pas.
   second mode ne créait pas de doublon : SwiftData *remplaçait* la ligne existante. Le
   lecteur met donc à jour la ligne de la leçon ; le test `lessonProgressIsUniquePerLesson`
   le vérifie. Changer la contrainte aurait demandé une migration de schéma pour rien.
+- Les phrases marquées et le temps d'étude vivent dans `Card`, `ReviewLog` et
+  `StudyEvent` : voir « Cartes, journal et temps d'étude ». `DifficultSentence` et
+  `StudyDay` restent dans le schéma, figés.
 
 ### Sauvegarde avant migration
 
@@ -527,18 +532,37 @@ schéma, figés, jamais écrits.
   sont le cache.
 - **Le drapeau** (`CardReview.toggleFlag`) : carte active → désactivée, pas
   supprimée ; carte inactive → réactivée et remise à zéro (due tout de suite,
-  `reps = 0`, en tête de la liste) ; pas de carte → créée. Le balayage dans « À
-  revoir » désactive aussi.
+  `reps = 0`) ; pas de carte → créée. À la réactivation, `lastReviewedAt` est
+  gardé : c'est un fait, pas une planification.
 - **Le temps d'étude** : un `StudyEvent` par enregistrement, avec son activité
-  (`assimil.daily`, `review`, `assimil.listen`). Réglages › Temps total en fait la
+  (`assimil.daily`, `review`, `assimil.listen`) ; les extraits lancés depuis la
+  séance du jour comptent en `assimil.daily`. Réglages › Temps total en fait la
   somme, jours recopiés compris — eux ne sont plus écrits, rien n'est compté deux
   fois. `StudyTime.secondsByDay` agrège par jour, prête pour un affichage futur.
 - **Les prises de voix gardent leur nom** (`L012-S04.m4a`, `SessionStep.recordingKey`) :
   la clé de carte a changé, mais renommer les fichiers n'apportait rien.
 
 Une clé illisible lors de la copie est ignorée et journalisée (catégorie `data`
-dans Console.app), jamais fatale. Le plan de la refonte est dans
-`docs/refonte-modele-donnees.md`.
+dans Console.app), jamais fatale.
+
+Les choix de la refonte, à garder en tête pour la suite :
+
+- **Le contenu n'entre pas dans SwiftData**, l'état de l'apprenant seul (voir
+  plus haut). Ce qui est propre à Assimil le reste : `DailySession`,
+  `CourseAnchor` et `LessonProgress` n'ont pas de `courseID`, inutile tant qu'il
+  n'y a qu'un cours (une migration légère l'ajoutera).
+- **Pas de FSRS**, mais la place est prise : `Card.scheduler` (« ladder »),
+  `stability` et `difficulty` optionnels, `rating` nil dans le journal.
+- **Pas de migration SwiftData personnalisée** (`MigrationStage.custom`) : on ajoute
+  des tables, et une tâche de l'app (`LegacyCopy`) recopie les données.
+- **`key` et non `id`** : sous `@Model`, `id` entre en conflit avec celui
+  d'`Identifiable`. Le journal dit donc `cardKey`.
+- **`Card.activatedAt`**, absent du schéma de départ : la liste « À revoir »
+  (retirée depuis, #19) était triée par date de marquage, et une phrase remarquée
+  devait remonter en tête. Le champ reste, il date chaque activation.
+
+Le plan de la refonte, terminée, reste dans `docs/refonte-modele-donnees.md` pour
+l'historique.
 
 ### Vérifier
 
@@ -557,8 +581,10 @@ séance dans le simulateur grâce à trois variables lues **en Debug seulement**
 ## La révision des phrases marquées
 
 Pendant l'écoute, le drapeau met une phrase de côté. Ces phrases reviennent
-d'elles-mêmes : l'onglet **À revoir** propose chaque jour celles qui sont dues, et
-l'écran du jour les annonce à côté de la séance.
+d'elles-mêmes : l'accueil annonce chaque jour celles qui sont dues, à côté de la
+séance, et c'est de là qu'on les revoit. L'onglet **Réviser**, qui listait toutes
+les phrases marquées, a été retiré (#19) : il n'était pas ouvert, l'accueil
+suffisait.
 
 Une phrase revient à intervalle croissant — **1, 3, 7, 21 puis 60 jours**. Elle ne
 sort jamais de la file toute seule : c'est le **drapeau**, le même qu'en écoute,
@@ -624,7 +650,8 @@ les deux points.
 
 Modèle es-ES installé une fois, **rien ne sort du téléphone**. Il s'agit ici de la voix
 d'Ethan, ce qui est une raison de plus de rester hors ligne. Les prises vivent dans
-`Documents/voice/`, une par phrase, nommées comme la clé de marquage (`L012-S04`).
+`Documents/voice/`, une par phrase, nommées par l'ancienne clé de phrase marquée
+(`L012-S04`, `SessionStep.recordingKey`), qui n'est plus celle des cartes.
 
 Cet écran demande **iOS 26** (`SpeechTranscriber`), d'où la cible de déploiement.
 L'iPhone de test est en 26.6 ; l'app est personnelle et n'a qu'un appareil.
@@ -766,9 +793,8 @@ l'arrêt, téléphone en main.
 
 
 **C'est l'étape qui porte sa leçon, jamais la séance.** Une séance n'est pas « une
-leçon dans un mode » : la vague en enchaîne deux (la leçon du jour puis celle d'il y
-a 49 jours), et la file de révision en traverse autant qu'il y a de phrases
-marquées. Tant que l'écran de lecture tirait son texte d'une leçon supposée unique,
+leçon dans un mode » : la file de révision traverse autant de leçons qu'il y a
+de phrases marquées (le mode « La vague », retiré depuis, en enchaînait deux). Tant que l'écran de lecture tirait son texte d'une leçon supposée unique,
 il affichait la mauvaise — pendant l'exercice il surlignait les phrases 1 à 5 du
 *dialogue*, et le drapeau enregistrait leur clé. `SessionStep` porte donc son
 `lessonNumber` et son `isExercise`, y compris sur les pauses, et l'écran comme

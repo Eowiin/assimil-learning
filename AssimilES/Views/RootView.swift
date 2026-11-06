@@ -33,12 +33,11 @@ struct RootView: View {
             LessonListView()
                 .tabItem { Label("Leçons", systemImage: "books.vertical") }
                 .tag(1)
-            DifficultListView(onChooseLesson: { selectedTab = 1 })
-                .tabItem { Label("Réviser", systemImage: "flag") }
-                .tag(2)
+            // Pas d'onglet de révision : les phrases dues s'annoncent sur l'accueil,
+            // et c'est de là qu'on les revoit.
             SettingsView()
                 .tabItem { Label("Réglages", systemImage: "slider.horizontal.3") }
-                .tag(3)
+                .tag(2)
         }
         .tint(StudyStyle.accent)
         .task {
