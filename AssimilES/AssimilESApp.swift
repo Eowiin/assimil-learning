@@ -17,8 +17,9 @@ struct AssimilESApp: App {
         // Les textes suivent le paquet trouvé. En Debug, `ASSIMIL_TEXT_DIR` garde
         // la main pour les tests d'interface.
         LessonTextStore.directory = AppEnvironment.textDirectory ?? packs.assimil?.textDirectory
-        // Avant toute vue : les cartes suivent l'ancien modèle, que l'app écrit encore.
-        LegacyCopy.run(in: container.mainContext)
+        // Avant toute vue : la dernière copie de l'ancien modèle, une seule fois.
+        // Ensuite, la révision et le temps d'étude ne vivent plus que dans les cartes.
+        LegacyCopy.finishIfNeeded(in: container.mainContext)
     }
 
     /// Chaque entité ajoutée (`DailySession`, `CourseAnchor`, puis `Card`,

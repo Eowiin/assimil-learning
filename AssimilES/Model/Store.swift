@@ -34,8 +34,9 @@ final class LessonProgress {
     }
 }
 
-/// Phrase marquée difficile d'un geste pendant l'écoute. C'est la file de
-/// révision : une liste que l'usage remplit tout seul, sans effort de saisie.
+/// Phrase marquée difficile d'un geste pendant l'écoute — l'ancienne file de
+/// révision. **Plus écrite depuis la bascule** : c'est `Card` qui tient la file. La
+/// table reste dans le schéma, figée, et `LegacyCopy` la lit une dernière fois.
 @Model
 final class DifficultSentence {
     #Unique<DifficultSentence>([\.key])
@@ -104,13 +105,15 @@ enum ReviewSchedule {
         return calendar.date(byAdding: .day, value: days, to: start) ?? date
     }
 
-    static func due(in marks: [DifficultSentence], now: Date = .now) -> [DifficultSentence] {
-        marks.filter { $0.dueAt <= now }
+    /// Les cartes actives arrivées à échéance.
+    static func due(in cards: [Card], now: Date = .now) -> [Card] {
+        cards.filter { $0.isDue(at: now) }
     }
 }
 
-/// Un jour d'étude. Assimil ne tient que sur la régularité : c'est la série de
-/// jours consécutifs qui est motivante, pas le volume total.
+/// Le temps écouté, un total par jour — l'ancien modèle. **Plus écrit depuis la
+/// bascule** : `StudyEvent` le remplace, et les jours recopiés y restent
+/// (« assimil.legacy »).
 @Model
 final class StudyDay {
     #Unique<StudyDay>([\.day])
@@ -124,23 +127,47 @@ final class StudyDay {
     }
 }
 
+/// À quoi a servi un moment d'étude : l'activité et, pour Assimil, le cours.
+struct StudyActivity: Equatable {
+    let name: String
+    /// Nil pour la révision : elle est commune, pas propre à un cours.
+    let courseID: String?
+
+    static let assimilDaily = StudyActivity(name: StudyEvent.Activity.assimilDaily,
+                                            courseID: PackStore.assimilSpanishID)
+    static let review = StudyActivity(name: StudyEvent.Activity.review, courseID: nil)
+    static let assimilListen = StudyActivity(name: StudyEvent.Activity.assimilListen,
+                                             courseID: PackStore.assimilSpanishID)
+}
+
 enum StudyTime {
-    /// Ajoute du temps écouté au jour en cours. L'appelant passe ce que le lecteur
-    /// n'a pas encore rendu (`SessionPlayer.takeUnrecordedSeconds`) : rouvrir un
-    /// écran ne recompte rien.
+    /// Inscrit un moment d'étude qui vient de se terminer. L'appelant passe ce que
+    /// le lecteur n'a pas encore rendu (`SessionPlayer.takeUnrecordedSeconds`) :
+    /// rouvrir un écran ne recompte rien.
+    ///
+    /// Un événement par enregistrement, jamais un total qu'on gonfle : il dit à
+    /// quoi le temps a servi, et le jour se recalcule (`secondsByDay`).
     @MainActor
-    static func record(_ seconds: Double, in context: ModelContext, now: Date = .now,
-                       calendar: Calendar = .current) {
+    static func record(_ seconds: Double, as activity: StudyActivity, in context: ModelContext,
+                       now: Date = .now, calendar: Calendar = .current) {
         guard seconds > 0 else { return }
-        let today = calendar.startOfDay(for: now)
-        let existing = (try? context.fetch(FetchDescriptor<StudyDay>()))?.first {
-            calendar.isDate($0.day, inSameDayAs: today)
-        }
-        if let existing {
-            existing.seconds += seconds
-        } else {
-            context.insert(StudyDay(day: today, seconds: seconds))
-        }
+        context.insert(StudyEvent(day: calendar.startOfDay(for: now),
+                                  startedAt: now.addingTimeInterval(-seconds),
+                                  seconds: seconds,
+                                  language: "es",
+                                  activity: activity.name,
+                                  courseID: activity.courseID))
+    }
+
+    /// Tout le temps d'étude, jours recopiés de l'ancien modèle compris : ceux-là
+    /// ne sont plus écrits depuis la bascule, rien n'est donc compté deux fois.
+    static func total(_ events: [StudyEvent]) -> Double {
+        events.reduce(0) { $0 + $1.seconds }
+    }
+
+    /// Le temps par jour, sur le jour de l'événement. Rien ne l'affiche encore.
+    static func secondsByDay(_ events: [StudyEvent], calendar: Calendar = .current) -> [Date: Double] {
+        events.reduce(into: [:]) { $0[calendar.startOfDay(for: $1.day), default: 0] += $1.seconds }
     }
 }
 

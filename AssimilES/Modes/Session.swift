@@ -77,6 +77,17 @@ enum SessionRequest: Hashable {
     var mode: StudyMode? {
         if case .lesson(_, let mode) = self { mode } else { nil }
     }
+
+    /// À quoi compte le temps écouté par l'écran de lecture. Un extrait n'y est
+    /// jamais joué : il se lance surtout depuis les exercices de la séance du jour,
+    /// dont il prend l'activité.
+    var studyActivity: StudyActivity {
+        switch self {
+        case .daily, .excerpt: .assimilDaily
+        case .review: .review
+        case .lesson: .assimilListen
+        }
+    }
 }
 
 enum DailyAudio: Hashable {
@@ -142,10 +153,24 @@ struct SessionStep: Identifiable, Hashable {
         return isExercise ? text.exerciseSentence(n) : text.sentence(n)
     }
 
-    /// La clé de la phrase marquée que cette étape désigne, s'il y en a une.
+    /// La phrase Assimil de cette étape, s'il y en a une.
+    var item: AssimilItem? {
+        guard let n = sentenceNumber, lessonNumber > 0, n > 0 else { return nil }
+        return AssimilItem(lesson: lessonNumber, isExercise: isExercise, number: n)
+    }
+
+    /// La clé de la carte que le drapeau pose sur cette étape :
+    /// « assimil-es:L012:S04#listen ».
     var markKey: String? {
+        item.map { Card.makeKey(item: $0.itemID(), angle: Card.Angle.listen) }
+    }
+
+    /// Le nom de la prise de voix de cette phrase : « L012-S04 », l'ancienne clé de
+    /// phrase marquée. Les prises déjà enregistrées portent ce nom ; le garder évite
+    /// d'avoir à renommer des fichiers pour suivre la clé des cartes.
+    var recordingKey: String? {
         guard let n = sentenceNumber else { return nil }
-        return DifficultSentence.makeKey(lessonNumber, n, isExercise)
+        return String(format: "L%03d-%@%02d", lessonNumber, isExercise ? "T" : "S", n)
     }
 }
 
@@ -165,7 +190,7 @@ enum SessionBuilder {
     /// Point d'entrée unique : c'est la demande qui décide, et elle peut ne pas
     /// tenir dans une leçon.
     static func build(_ request: SessionRequest,
-                      marks: [DifficultSentence] = [],
+                      cards: [Card] = [],
                       manifest: Manifest,
                       settings: SessionSettings = SessionSettings()) -> [SessionStep] {
         switch request {
@@ -173,7 +198,7 @@ enum SessionBuilder {
             guard let lesson = manifest.lesson(number) else { return [] }
             return build(mode: mode, lesson: lesson, manifest: manifest, settings: settings)
         case .review:
-            return review(marks, manifest, settings)
+            return review(cards, manifest, settings)
         case .daily(let number, let audio):
             guard let lesson = manifest.lesson(number) else { return [] }
             // Les exercices ne suivent jamais le dialogue dans la séance du jour :
@@ -263,28 +288,30 @@ enum SessionBuilder {
         return steps
     }
 
-    /// La file de révision : chaque phrase marquée arrivée à échéance, suivie
-    /// d'une pause pour la redire. C'est de la répétition active — une phrase
-    /// qu'on se contente de réentendre n'est pas révisée.
+    /// La file de révision : chaque carte reçue, suivie d'une pause pour la redire.
+    /// C'est de la répétition active — une phrase qu'on se contente de réentendre
+    /// n'est pas révisée. L'appelant passe les cartes dues (`ReviewSchedule.due`).
     ///
     /// L'ordre est celui de l'échéance : la plus attendue d'abord, et à échéance
-    /// égale l'ordre des leçons, pour ne pas sauter d'une leçon à l'autre sans
-    /// raison.
-    private static func review(_ marks: [DifficultSentence],
+    /// égale l'ordre des clés, qui suit celui du livre — pour ne pas sauter d'une
+    /// leçon à l'autre sans raison. Une carte qui ne désigne pas une phrase du
+    /// paquet est passée.
+    private static func review(_ cards: [Card],
                                _ m: Manifest,
                                _ s: SessionSettings) -> [SessionStep] {
-        let ordered = marks.sorted {
+        let ordered = cards.sorted {
             $0.dueAt == $1.dueAt ? $0.key < $1.key : $0.dueAt < $1.dueAt
         }
 
         var steps: [SessionStep] = []
-        for mark in ordered {
-            guard let lesson = m.lesson(mark.lessonNumber),
-                  let c = clip(for: mark, in: lesson),
-                  let step = clip(c, mark.isExercise ? .exercise : .dialogue, lesson, m)
+        for card in ordered {
+            guard let item = card.assimilItem,
+                  let lesson = m.lesson(item.lesson),
+                  let c = clip(for: item, in: lesson),
+                  let step = clip(c, item.isExercise ? .exercise : .dialogue, lesson, m)
             else { continue }
             steps.append(step)
-            steps.append(pause(after: c, lesson: lesson, isExercise: mark.isExercise, settings: s))
+            steps.append(pause(after: c, lesson: lesson, isExercise: item.isExercise, settings: s))
         }
         return steps
     }
@@ -321,9 +348,9 @@ enum SessionBuilder {
                            repetition: repetition)
     }
 
-    private static func clip(for mark: DifficultSentence, in lesson: Lesson) -> AudioClip? {
-        let clips = mark.isExercise ? lesson.exercise : lesson.dialogue
-        return clips.first { $0.n == mark.sentenceNumber }
+    private static func clip(for item: AssimilItem, in lesson: Lesson) -> AudioClip? {
+        let clips = item.isExercise ? lesson.exercise : lesson.dialogue
+        return clips.first { $0.n == item.number }
     }
 
     private static func pause(after c: AudioClip, lesson: Lesson,

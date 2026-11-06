@@ -7,12 +7,14 @@ struct DifficultListView: View {
     let onChooseLesson: () -> Void
 
     @Environment(\.modelContext) private var context
-    @Query(sort: \DifficultSentence.markedAt, order: .reverse)
-    private var marks: [DifficultSentence]
+    /// Les cartes actives, la dernière marquée (ou remarquée) en tête.
+    @Query(filter: #Predicate<Card> { $0.isActive == true },
+           sort: \Card.activatedAt, order: .reverse)
+    private var marks: [Card]
 
-    private var due: [DifficultSentence] { ReviewSchedule.due(in: marks) }
-    private var later: [DifficultSentence] {
-        marks.filter { !$0.isDue }.sorted { $0.dueAt < $1.dueAt }
+    private var due: [Card] { ReviewSchedule.due(in: marks) }
+    private var later: [Card] {
+        marks.filter { !$0.isDue(at: .now) }.sorted { $0.dueAt < $1.dueAt }
     }
 
     var body: some View {
@@ -85,8 +87,10 @@ struct DifficultListView: View {
         }
     }
 
-    private func delete(_ offsets: IndexSet, from list: [DifficultSentence]) {
-        offsets.map { list[$0] }.forEach(context.delete)
+    /// Le balayage retire la phrase de la file sans effacer la carte : son
+    /// historique reste, et la retrouve si elle est remarquée.
+    private func delete(_ offsets: IndexSet, from list: [Card]) {
+        offsets.map { list[$0] }.forEach { $0.isActive = false }
         try? context.save()
     }
 }
@@ -113,22 +117,24 @@ private struct ReviewCard: View {
 }
 
 private struct MarkRow: View {
-    let mark: DifficultSentence
+    let mark: Card
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(spanish ?? "Leçon \(mark.lessonNumber), phrase \(mark.sentenceNumber)")
+            Text(spanish ?? item.map { "Leçon \($0.lesson), phrase \($0.number)" } ?? mark.itemID)
                 .font(.body)
                 .lineLimit(3)
             HStack(spacing: 6) {
-                Text("Leçon \(mark.lessonNumber)")
-                Text("·")
-                Text(mark.isExercise ? "exercice \(mark.sentenceNumber)" : "phrase \(mark.sentenceNumber)")
-                if mark.reviewCount > 0 {
+                if let item {
+                    Text("Leçon \(item.lesson)")
                     Text("·")
-                    Text("\(mark.reviewCount) reprise\(mark.reviewCount > 1 ? "s" : "")")
+                    Text(item.isExercise ? "exercice \(item.number)" : "phrase \(item.number)")
                 }
-                if !mark.isDue {
+                if mark.reps > 0 {
+                    if item != nil { Text("·") }
+                    Text("\(mark.reps) reprise\(mark.reps > 1 ? "s" : "")")
+                }
+                if !mark.isDue(at: .now) {
                     Text("·")
                     Text(mark.dueAt, format: .relative(presentation: .named))
                 }
@@ -138,10 +144,13 @@ private struct MarkRow: View {
         }
     }
 
+    private var item: AssimilItem? { mark.assimilItem }
+
     private var spanish: String? {
-        let text = LessonTextStore.text(for: mark.lessonNumber)
-        return mark.isExercise
-            ? text?.exerciseSentence(mark.sentenceNumber)?.es
-            : text?.sentence(mark.sentenceNumber)?.es
+        guard let item else { return nil }
+        let text = LessonTextStore.text(for: item.lesson)
+        return item.isExercise
+            ? text?.exerciseSentence(item.number)?.es
+            : text?.sentence(item.number)?.es
     }
 }

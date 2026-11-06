@@ -57,11 +57,11 @@ final class VoiceTrial: ObservableObject {
     var isOpen: Bool { step != nil }
     var isRecording: Bool { phase == .recording }
     var reference: String? { step?.sentenceText?.es }
-    var canRecord: Bool { reference != nil && step?.markKey != nil }
+    var canRecord: Bool { reference != nil && step?.recordingKey != nil }
 
     /// La dernière prise gardée pour cette phrase, s'il y en a une.
     var myTake: URL? {
-        guard let key = step?.markKey, VoiceRecorder.exists(for: key) else { return nil }
+        guard let key = step?.recordingKey, VoiceRecorder.exists(for: key) else { return nil }
         return VoiceRecorder.url(for: key)
     }
 
@@ -90,7 +90,7 @@ final class VoiceTrial: ObservableObject {
     // MARK: - Enregistrer
 
     func toggleRecording() async {
-        guard let key = step?.markKey, let reference else { return }
+        guard let key = step?.recordingKey, let reference else { return }
 
         if recorder.isRecording {
             guard let url = recorder.stopRecording() else { return }

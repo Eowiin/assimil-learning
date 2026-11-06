@@ -5,8 +5,9 @@ import SwiftData
 // temps d'étude. Le contenu n'y entre pas — une carte désigne son élément par
 // `ItemID`, le paquet fournit le reste.
 //
-// Ces tables s'ajoutent aux anciennes (migration légère). Pour l'instant, seule la
-// copie (`LegacyCopy`) les écrit, et rien ne les lit : la bascule vient ensuite.
+// Ces tables s'ajoutent aux anciennes (migration légère). Depuis la bascule, la
+// révision, le drapeau et le temps d'étude n'écrivent plus qu'ici ;
+// `DifficultSentence` et `StudyDay` restent dans le schéma, figés.
 
 /// Un élément à retenir, sous un angle donné. « Écouter la phrase L012:S04 » est une
 /// carte ; « la retrouver depuis le français » en serait une autre, sur le même item.
@@ -56,6 +57,13 @@ final class Card {
         "\(item.rawValue)#\(angle)"
     }
 
+    /// Une carte inactive n'est jamais due : elle attend d'être remarquée.
+    func isDue(at now: Date) -> Bool { isActive && dueAt <= now }
+
+    /// La phrase Assimil que la carte désigne ; nil pour un autre paquet, ou un
+    /// identifiant illisible.
+    var assimilItem: AssimilItem? { ItemID(itemID).flatMap(AssimilItem.init) }
+
     enum Angle {
         /// Réentendre la phrase et la redire : la seule révision qui existe.
         static let listen = "listen"
@@ -97,8 +105,8 @@ final class ReviewLog {
     }
 }
 
-/// Un moment d'étude, par activité. Remplacera `StudyDay`, qui n'a qu'un total
-/// par jour et ne dit pas à quoi le temps a servi.
+/// Un moment d'étude, par activité. Remplace `StudyDay`, qui n'a qu'un total par
+/// jour et ne dit pas à quoi le temps a servi.
 @Model
 final class StudyEvent {
     #Index<StudyEvent>([\.day])

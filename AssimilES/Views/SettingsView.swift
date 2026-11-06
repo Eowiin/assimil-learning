@@ -7,7 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
-    @Query private var days: [StudyDay]
+    @Query private var events: [StudyEvent]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @State private var showPosition = false
@@ -120,7 +120,7 @@ struct SettingsView: View {
     }
 
     private var totalLabel: String {
-        durationLabel(days.reduce(0) { $0 + $1.seconds })
+        durationLabel(StudyTime.total(events))
     }
 
     private func durationLabel(_ seconds: Double) -> String {

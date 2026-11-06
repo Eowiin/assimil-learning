@@ -54,7 +54,9 @@ struct DailySessionView: View {
         .onDisappear {
             AudioLog.info("\(#fileID) disparaît")
             player.pause()
-            StudyTime.record(player.takeUnrecordedSeconds(), in: context, now: clock.now())
+            // Les étapes audio enregistrent leur propre temps ; reste ici surtout
+            // celui des extraits joués depuis les exercices.
+            StudyTime.record(player.takeUnrecordedSeconds(), as: .assimilDaily, in: context, now: clock.now())
             store.save()
         }
     }

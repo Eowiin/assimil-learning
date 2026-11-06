@@ -199,10 +199,23 @@ final class DailyFlowUITests: XCTestCase {
         app.terminate()
 
         app = launch(store: store, lesson: 1)
+        // La carte, due tout de suite, est comptée sur l'accueil.
+        XCTAssertTrue(app.staticTexts["1 phrase à revoir"].waitForExistence(timeout: 5),
+                      "l'accueil ne compte pas la carte due")
         app.tabBars.buttons["Réviser"].tap()
         XCTAssertTrue(app.staticTexts["Frase de prueba uno."].waitForExistence(timeout: 5),
                       "la phrase marquée a été perdue")
         snapshot(app, "16-drapeau-apres-relance")
+
+        // En révision, le drapeau retire la phrase de la file.
+        tap(app.staticTexts["Réviser 1 phrase"])
+        let acquired = app.buttons["Phrase acquise, retirer des révisions"]
+        waitEnabled(acquired)
+        tap(acquired)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.staticTexts["Les phrases à garder"].waitForExistence(timeout: 5),
+                      "la phrase acquise est restée dans la file")
+        snapshot(app, "17-revision-phrase-acquise")
     }
 
     func testWeeklyReviewWithoutExercises() throws {

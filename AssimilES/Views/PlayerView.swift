@@ -25,7 +25,7 @@ struct PlayerView: View {
     @Environment(\.manifest) private var manifest
     @Environment(\.scenePhase) private var scenePhase
 
-    @Query private var marks: [DifficultSentence]
+    @Query private var cards: [Card]
     @Query private var progress: [LessonProgress]
 
     @State private var showTranslation = false
@@ -39,9 +39,10 @@ struct PlayerView: View {
     @State private var showTrialDetails = false
     /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
     /// ne doit pas repousser son échéance une seconde fois.
-    @State private var reviewed: Set<UUID> = []
+    @State private var reviews = SessionReviews()
 
-    private var markedKeys: Set<String> { Set(marks.map(\.key)) }
+    /// Une carte désactivée n'est plus marquée : son drapeau est vide.
+    private var markedKeys: Set<String> { Set(cards.filter(\.isActive).map(\.key)) }
     private var isCurrentSession: Bool { player.request == request }
 
     var body: some View {
@@ -431,7 +432,7 @@ struct PlayerView: View {
     private func startIfNeeded() {
         guard !isCurrentSession else { return }
         let steps = SessionBuilder.build(request,
-                                         marks: ReviewSchedule.due(in: marks),
+                                         cards: ReviewSchedule.due(in: cards),
                                          manifest: manifest,
                                          settings: settings.session)
         player.start(request, steps: steps, from: resumeIndex(in: steps))
@@ -458,19 +459,9 @@ struct PlayerView: View {
     /// suivante : c'est le geste « celle-là est acquise », le seul de la séance.
     /// Ailleurs, il marque ou démarque comme avant.
     private func toggleMarkCurrent() {
-        guard let step = player.currentNavigableStep,
-              let n = step.sentenceNumber,
-              let key = step.markKey
-        else { return }
-
-        if let existing = marks.first(where: { $0.key == key }) {
-            context.delete(existing)
-            if request.isReview { player.nextSentence() }
-        } else {
-            context.insert(DifficultSentence(lessonNumber: step.lessonNumber,
-                                             sentenceNumber: n,
-                                             isExercise: step.isExercise))
-        }
+        guard let item = player.currentNavigableStep?.item else { return }
+        let isMarked = CardReview.toggleFlag(on: item, cards: cards, at: .now, in: context)
+        if !isMarked, request.isReview { player.nextSentence() }
         save()
     }
 
@@ -479,12 +470,8 @@ struct PlayerView: View {
     private func recordReviewIfNeeded() {
         guard request.isReview, isCurrentSession,
               let step = player.currentNavigableStep,
-              let key = step.markKey,
-              !reviewed.contains(step.id)
+              reviews.record(step, cards: cards, at: .now, in: context)
         else { return }
-
-        reviewed.insert(step.id)
-        marks.first { $0.key == key }?.recordReview()
         save()
     }
 
@@ -506,7 +493,7 @@ struct PlayerView: View {
             entry.updatedAt = .now
         }
 
-        StudyTime.record(player.takeUnrecordedSeconds(), in: context)
+        StudyTime.record(player.takeUnrecordedSeconds(), as: request.studyActivity, in: context)
         save()
     }
 
