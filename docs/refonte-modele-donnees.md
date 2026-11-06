@@ -148,9 +148,24 @@ Ce qui était prévu :
 stockage**, pas dans `UserDefaults`, pour voyager avec une sauvegarde. Restaurer
 une sauvegarde d'avant la bascule relancerait ainsi la copie, comme il faut.
 
-### 4 · Bascule — à faire
+### 4 · Bascule — fait (PR #48)
 
-Branche `feat/bascule-card` depuis `dev`.
+`LegacyCopy.finishIfNeeded` au démarrage (copie et inscription d'un même `save` ;
+inscription illisible → pas de copie). Règles dans `Model/CardReview.swift` :
+`CardReview.review`, `CardReview.toggleFlag`, et `SessionReviews` pour la revue
+unique par séance. Temps : `StudyActivity`, `StudyTime.record(_:as:in:)`,
+`StudyTime.total`, `StudyTime.secondsByDay`. Tests dans `BasculeTests`.
+
+Précisions apportées en route :
+
+- **Prises de voix** : `markKey` les nommait (`L012-S04.m4a`). Elles gardent ce
+  nom par `SessionStep.recordingKey` ; aucun fichier n'est renommé.
+- **Réactivation** : `lastReviewedAt` n'est pas effacé — c'est un fait, pas une
+  planification ; seuls `dueAt`, `reps`, `activatedAt` sont remis à zéro.
+- **Extraits** (`SessionRequest.excerpt`) : leur temps compte pour
+  `assimil.daily`, l'écran qui les lance surtout.
+
+Ce qui était prévu :
 
 1. Au démarrage : si `DataMigration["legacy-copy"]` est absent, une dernière
    synchronisation, puis l'inscrire. Ensuite la copie ne tourne plus.
@@ -203,4 +218,5 @@ xcrun devicectl device install app --device <identifiant> \
 ```
 
 « unavailable » : l'iPhone est verrouillé ou hors du Wi‑Fi — demander de le
-déverrouiller. Avant d'installer l'étape 3, rappeler d'exporter une sauvegarde.
+déverrouiller. Avant d'installer une étape qui touche aux données, rappeler
+d'exporter une sauvegarde.
