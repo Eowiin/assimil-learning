@@ -80,3 +80,13 @@ enum Fixture {
         session.progress = progress
     }
 }
+
+extension DifficultSentence {
+    /// Une revue telle que l'ancien modèle l'écrivait, avant la bascule. L'app ne
+    /// l'écrit plus ; les tests s'en servent pour préparer un stockage d'avant.
+    func recordReview(at date: Date) {
+        dueAt = ReviewSchedule.next(after: reviewCount, from: date)
+        reviewCount += 1
+        lastReviewedAt = date
+    }
+}

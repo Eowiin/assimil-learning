@@ -70,3 +70,32 @@ struct SessionReviews {
         return true
     }
 }
+
+/// Révision espacée des phrases marquées.
+///
+/// Pas de notation : l'app sert à marcher en écoutant, et noter chaque phrase
+/// demanderait l'œil sur l'écran à chaque pause. La phrase revient donc à
+/// intervalle croissant tant qu'elle est marquée, et c'est le même drapeau qu'en
+/// écoute qui l'enlève quand elle est acquise — un seul geste, déjà connu.
+enum ReviewSchedule {
+    /// Intervalles en jours. La suite s'arrête à 60 : au-delà, une phrase qu'on
+    /// n'a pas retirée du drapeau mérite de revenir de temps en temps, pas de
+    /// disparaître.
+    static let intervals = [1, 3, 7, 21, 60]
+
+    /// L'échéance est calée sur le début de journée : une phrase revue le soir
+    /// revient le lendemain, pas le lendemain soir. La séance est quotidienne,
+    /// l'heure n'a pas à décider de ce qui est dû.
+    static func next(after reviewCount: Int,
+                     from date: Date = .now,
+                     calendar: Calendar = .current) -> Date {
+        let days = intervals[min(max(0, reviewCount), intervals.count - 1)]
+        let start = calendar.startOfDay(for: date)
+        return calendar.date(byAdding: .day, value: days, to: start) ?? date
+    }
+
+    /// Les cartes actives arrivées à échéance.
+    static func due(in cards: [Card], now: Date = .now) -> [Card] {
+        cards.filter { $0.isDue(at: now) }
+    }
+}
