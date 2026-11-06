@@ -22,6 +22,7 @@ struct PlayerView: View {
     @EnvironmentObject private var player: SessionPlayer
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.modelContext) private var context
+    @Environment(\.manifest) private var manifest
     @Environment(\.scenePhase) private var scenePhase
 
     @Query private var marks: [DifficultSentence]
@@ -431,6 +432,7 @@ struct PlayerView: View {
         guard !isCurrentSession else { return }
         let steps = SessionBuilder.build(request,
                                          marks: ReviewSchedule.due(in: marks),
+                                         manifest: manifest,
                                          settings: settings.session)
         player.start(request, steps: steps, from: resumeIndex(in: steps))
         recordReviewIfNeeded()

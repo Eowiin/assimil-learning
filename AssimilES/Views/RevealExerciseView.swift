@@ -38,6 +38,7 @@ struct RevealExerciseView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @EnvironmentObject private var player: SessionPlayer
+    @Environment(\.manifest) private var manifest
 
     /// En deuxième vague, la réponse est une phrase espagnole précise : « pas
     /// identique » y veut dire « pas encore ». En traduction, non.
@@ -398,6 +399,6 @@ struct RevealExerciseView: View {
     private func play(_ item: RevealItem) {
         guard let clip = item.clip else { return }
         player.start(.excerpt(lessonNumber: lesson.number),
-                     steps: SessionBuilder.excerpt(clip, isExercise: stage == .translation, in: lesson))
+                     steps: SessionBuilder.excerpt(clip, isExercise: stage == .translation, in: lesson, manifest: manifest))
     }
 }

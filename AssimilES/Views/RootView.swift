@@ -4,9 +4,28 @@ import SwiftData
 struct RootView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.modelContext) private var context
+    @Environment(PackStore.self) private var packs
     @State private var selectedTab = 0
 
+    /// Sans paquet, rien à étudier : on le dit, au lieu de planter au lancement
+    /// comme le faisait l'ancien `Manifest.shared`. L'état de l'apprenant reste
+    /// intact dans SwiftData, il attend le contenu.
     var body: some View {
+        if let pack = packs.assimil {
+            tabs(manifest: pack.manifest)
+                .environment(\.manifest, pack.manifest)
+        } else {
+            ContentUnavailableView {
+                Label("Aucun contenu", systemImage: "shippingbox")
+            } description: {
+                Text("Le paquet Assimil Espagnol est introuvable, ni dans l'app ni dans ses données. "
+                     + "Ta progression est conservée : elle reviendra avec le contenu.")
+            }
+            .accessibilityIdentifier("no-content")
+        }
+    }
+
+    private func tabs(manifest: Manifest) -> some View {
         TabView(selection: $selectedTab) {
             TodayView()
                 .tabItem { Label("Aujourd'hui", systemImage: "headphones") }
@@ -24,7 +43,7 @@ struct RootView: View {
         .tint(StudyStyle.accent)
         .task {
             // Migration : le parcours part de l'ancienne leçon réglée à la main.
-            DailyCourseStore(context: context).ensureAnchor(legacyLesson: settings.currentLesson)
+            DailyCourseStore(context: context, manifest: manifest).ensureAnchor(legacyLesson: settings.currentLesson)
         }
     }
 }
@@ -33,19 +52,20 @@ struct TodayView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
+    @Environment(\.manifest) private var manifest
     @Query private var marks: [DifficultSentence]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @State private var openedSession: DailySession?
 
-    private var store: DailyCourseStore { DailyCourseStore(context: context) }
+    private var store: DailyCourseStore { DailyCourseStore(context: context, manifest: manifest) }
 
     /// Recalculé à chaque changement de jour publié par l'horloge, même app ouverte.
     private var status: DayStatus {
-        DailyCourse.status(anchorUnit: anchors.first?.unit ?? min(max(1, settings.currentLesson), Manifest.shared.lessonCount),
+        DailyCourse.status(anchorUnit: anchors.first?.unit ?? min(max(1, settings.currentLesson), manifest.lessonCount),
                            anchorSetAt: anchors.first?.setAt ?? .distantPast,
                            sessions: sessions,
-                           now: clock.today)
+                           now: clock.today, manifest: manifest)
     }
 
     private var due: [DifficultSentence] { ReviewSchedule.due(in: marks) }
@@ -176,7 +196,7 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Parcours terminé", systemImage: "checkmark.seal.fill")
                         .font(.headline).foregroundStyle(StudyStyle.accent)
-                    Text("Les \(Manifest.shared.lessonCount) leçons et leur deuxième vague sont faites. "
+                    Text("Les \(manifest.lessonCount) leçons et leur deuxième vague sont faites. "
                          + "Elles restent toutes accessibles dans l’onglet Leçons.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
@@ -212,7 +232,7 @@ struct TodayView: View {
         guard let number = plan.newLesson else {
             return "Deuxième vague · leçon \(plan.headlineLesson)"
         }
-        let count = Manifest.shared.lesson(number)?.dialogue.count ?? 0
+        let count = manifest.lesson(number)?.dialogue.count ?? 0
         return "Leçon \(number) · \(count) phrases" + (plan.isWeeklyReview ? " · révision" : "")
     }
 
@@ -333,6 +353,7 @@ struct CoursePositionSheet: View {
     let onApply: (Int) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.manifest) private var manifest
     @State private var lesson: Int
     private let initialLesson: Int
 
@@ -346,8 +367,8 @@ struct CoursePositionSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Stepper(value: $lesson, in: 1...Manifest.shared.lessonCount) {
-                        Text("Leçon \(lesson) sur \(Manifest.shared.lessonCount)")
+                    Stepper(value: $lesson, in: 1...max(1, manifest.lessonCount)) {
+                        Text("Leçon \(lesson) sur \(manifest.lessonCount)")
                     }
                     Text(LessonTextStore.text(for: lesson)?.titleES ?? "")
                         .font(.title3.weight(.semibold))

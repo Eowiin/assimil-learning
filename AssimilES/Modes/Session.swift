@@ -166,7 +166,7 @@ enum SessionBuilder {
     /// tenir dans une leçon.
     static func build(_ request: SessionRequest,
                       marks: [DifficultSentence] = [],
-                      manifest: Manifest = .shared,
+                      manifest: Manifest,
                       settings: SessionSettings = SessionSettings()) -> [SessionStep] {
         switch request {
         case .lesson(let number, let mode):
@@ -195,7 +195,7 @@ enum SessionBuilder {
 
     /// Une phrase seule, sans pause : l'audio d'un énoncé ou d'une réponse.
     static func excerpt(_ clip: AudioClip, isExercise: Bool, in lesson: Lesson,
-                        manifest: Manifest = .shared) -> [SessionStep] {
+                        manifest: Manifest) -> [SessionStep] {
         [self.clip(clip, isExercise ? .exercise : .dialogue, lesson, manifest)].compactMap { $0 }
     }
 
@@ -207,7 +207,7 @@ enum SessionBuilder {
 
     static func build(mode: StudyMode,
                       lesson: Lesson,
-                      manifest: Manifest = .shared,
+                      manifest: Manifest,
                       settings: SessionSettings = SessionSettings()) -> [SessionStep] {
         switch mode {
         case .passive: passive(lesson, manifest, settings)
@@ -290,7 +290,7 @@ enum SessionBuilder {
     }
 
     /// Leçon à réviser activement en accompagnement de la leçon `number`.
-    static func activeLesson(for number: Int, in m: Manifest = .shared) -> Lesson? {
+    static func activeLesson(for number: Int, in m: Manifest) -> Lesson? {
         let target = number - 49
         guard target >= 1 else { return nil }
         return m.lesson(target)

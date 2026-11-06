@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject private var player: SessionPlayer
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
+    @Environment(\.manifest) private var manifest
     @Query private var days: [StudyDay]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
@@ -18,7 +19,7 @@ struct SettingsView: View {
         DailyCourse.status(anchorUnit: anchors.first?.unit ?? settings.currentLesson,
                            anchorSetAt: anchors.first?.setAt ?? .distantPast,
                            sessions: sessions,
-                           now: clock.today).plan?.headlineLesson
+                           now: clock.today, manifest: manifest).plan?.headlineLesson
     }
 
     var body: some View {
@@ -98,8 +99,8 @@ struct SettingsView: View {
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showPosition) {
-                CoursePositionSheet(lesson: dailyLesson ?? Manifest.shared.lessonCount) { lesson in
-                    DailyCourseStore(context: context)
+                CoursePositionSheet(lesson: dailyLesson ?? manifest.lessonCount) { lesson in
+                    DailyCourseStore(context: context, manifest: manifest)
                         .reposition(toLesson: lesson, now: clock.now(), legacyLesson: settings.currentLesson)
                 }
             }

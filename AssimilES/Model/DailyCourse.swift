@@ -74,11 +74,11 @@ enum Curriculum {
     static let waveStartLesson = 50
     static var waveOffset: Int { waveStartLesson - 1 }
 
-    static func lastUnit(in manifest: Manifest = .shared) -> Int {
+    static func lastUnit(in manifest: Manifest) -> Int {
         manifest.lessonCount + waveOffset
     }
 
-    static func plan(unit: Int, manifest: Manifest = .shared) -> DailyPlan? {
+    static func plan(unit: Int, manifest: Manifest) -> DailyPlan? {
         guard unit >= 1, unit <= lastUnit(in: manifest) else { return nil }
         let newLesson = unit <= manifest.lessonCount ? unit : nil
         let waveLesson = unit >= waveStartLesson ? unit - waveOffset : nil
@@ -264,7 +264,7 @@ enum DailyCourse {
                        sessions: [DailySession],
                        now: Date,
                        calendar: Calendar = .current,
-                       manifest: Manifest = .shared) -> DayStatus {
+                       manifest: Manifest) -> DayStatus {
         // Le jour calendaire local, pas 24 heures : une séance validée à 23 h laisse
         // la suivante disponible à minuit.
         let startOfToday = calendar.startOfDay(for: now)
@@ -302,7 +302,7 @@ enum DailyCourse {
 @MainActor
 struct DailyCourseStore {
     let context: ModelContext
-    var manifest: Manifest = .shared
+    var manifest: Manifest
     var calendar: Calendar = .current
 
     /// Au premier lancement de cette version, le parcours part de la leçon que

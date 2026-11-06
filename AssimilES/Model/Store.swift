@@ -179,8 +179,11 @@ final class DailySession {
 
     var progress: DailyProgress {
         get {
+            // Un avancement illisible repart de la découverte. Le modèle ne connaît
+            // pas le paquet de contenu, donc pas les étapes exactes de la séance :
+            // la vue les applique (une étape absente du plan n'est jamais ouverte).
             (try? JSONDecoder().decode(DailyProgress.self, from: progressData))
-                ?? DailyProgress(stages: Curriculum.plan(unit: unit)?.stages ?? [])
+                ?? DailyProgress(stages: DailyStage.allCases)
         }
         set {
             guard let data = try? JSONEncoder().encode(newValue), data != progressData else { return }

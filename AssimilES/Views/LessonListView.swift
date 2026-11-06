@@ -4,20 +4,21 @@ import SwiftData
 struct LessonListView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var clock: DayClock
+    @Environment(\.manifest) private var manifest
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @Query private var progress: [LessonProgress]
 
     /// Les leçons validées dans le parcours. Une fin d'écoute ne compte pas.
     private var completed: Set<Int> {
-        Set(sessions.filter(\.isValidated).compactMap { Curriculum.plan(unit: $0.unit)?.newLesson })
+        Set(sessions.filter(\.isValidated).compactMap { Curriculum.plan(unit: $0.unit, manifest: manifest)?.newLesson })
     }
 
     private var currentLesson: Int? {
         DailyCourse.status(anchorUnit: anchors.first?.unit ?? settings.currentLesson,
                            anchorSetAt: anchors.first?.setAt ?? .distantPast,
                            sessions: sessions,
-                           now: clock.today).plan?.newLesson
+                           now: clock.today, manifest: manifest).plan?.newLesson
     }
 
     /// Une écoute de cette leçon, dans ce mode, s'est arrêtée en route.
@@ -44,7 +45,7 @@ struct LessonListView: View {
                             Text(settings.freeListeningMode.subtitle)
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text("\(completed.count) \(completed.count > 1 ? "leçons validées" : "leçon validée") sur \(Manifest.shared.lessonCount)")
+                            Text("\(completed.count) \(completed.count > 1 ? "leçons validées" : "leçon validée") sur \(manifest.lessonCount)")
                                 .font(.subheadline).foregroundStyle(.secondary)
                                 .padding(.top, 6)
                         }
@@ -54,7 +55,7 @@ struct LessonListView: View {
                     }
                     Section {
                         // Consultation libre : ouvrir une leçon d'ici ne touche pas au parcours.
-                        ForEach(Manifest.shared.lessons) { lesson in
+                        ForEach(manifest.lessons) { lesson in
                             NavigationLink {
                                 LessonPage(lesson: lesson, canResume: canResume(lesson.number))
                             } label: {
@@ -63,7 +64,7 @@ struct LessonListView: View {
                                           isCurrent: lesson.number == currentLesson,
                                           canResume: canResume(lesson.number),
                                           waveLesson: settings.freeListeningMode == .wave
-                                            ? SessionBuilder.activeLesson(for: lesson.number)?.number : nil)
+                                            ? SessionBuilder.activeLesson(for: lesson.number, in: manifest)?.number : nil)
                             }
                             .id(lesson.number)
                         }

@@ -478,6 +478,28 @@ Pour simplement lire une sauvegarde sur le Mac : `sqlite3 default.store` ouvre l
 trois fichiers ensemble, ou lancer l'app dans le simulateur avec `ASSIMIL_STORE`
 pointant vers une copie.
 
+### Le contenu vient d'un paquet, l'état de SwiftData
+
+Le livre et l'audio ne sont pas des données de l'apprenant : ils n'entrent jamais
+dans SwiftData. Ils forment un **paquet** (`ContentPack`) que `PackStore` cherche
+dans `Application Support/Packs/assimil-es/`, puis dans le bundle, et qu'il passe
+aux vues par l'environnement. Le paquet a la même disposition que le bundle
+(`manifest.json`, `audio/L001/…`, `text/L001.json`) : le bundle en sert donc
+pendant la transition, sans rien déplacer. L'import depuis Fichiers viendra plus
+tard.
+
+`Manifest.shared` arrêtait l'app (`fatalError`) quand le manifest manquait. Un
+paquet absent est désormais un état normal : l'app affiche « Aucun contenu », et la
+progression attend intacte.
+
+L'état de l'apprenant désigne le contenu par un **identifiant global**
+(`ItemID`) : `assimil-es:L012:S04` pour une phrase du dialogue, `assimil-es:L012:T03`
+pour l'exercice. Il ne porte **pas de version** du paquet — un paquet corrigé ne
+doit pas orpheliner l'historique —, et seule la forme canonique est acceptée,
+pour qu'une phrase n'ait jamais deux clés. Ce qui suit le paquet lui appartient :
+`AssimilItem` lit `L012:S04`, un futur paquet de conjugaison écrira ses propres
+chemins.
+
 ### Vérifier
 
 ```bash
