@@ -113,8 +113,7 @@ struct PlayerView: View {
         var result: [TranscriptRow] = []
         var previousLesson: Int?
         for (index, step) in player.steps.enumerated() {
-            // L'annonce ne fait que dire le numéro de la leçon : rien à lire.
-            guard step.isNavigable, step.kind != .announcement else { continue }
+            guard step.isNavigable else { continue }
             result.append(TranscriptRow(stepIndex: index,
                                         step: step,
                                         startsNewLesson: step.lessonNumber != previousLesson))

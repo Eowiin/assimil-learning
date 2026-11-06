@@ -1,41 +1,24 @@
 import Foundation
 
-enum StudyMode: String, CaseIterable, Identifiable {
+/// Comment jouer une leçon hors de la séance du jour. L'onglet Leçons n'offre que
+/// l'écoute ; la répétition sert à réécouter l'ancienne leçon de la deuxième vague.
+/// Les valeurs brutes sont gardées dans `LessonProgress.mode` : ne pas les renommer.
+enum StudyMode: String {
     case passive
     case shadowing
-    case wave
-
-    var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .passive: "Écoute passive"
+        case .passive: "Écoute"
         case .shadowing: "Répétition"
-        case .wave: "La vague"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .passive: "La leçon s'enchaîne, tu suis le texte"
-        case .shadowing: "Une pause après chaque phrase pour répéter"
-        case .wave: "La leçon du jour, puis la révision active"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .passive: "play.circle"
-        case .shadowing: "repeat.circle"
-        case .wave: "water.waves"
         }
     }
 }
 
 /// Ce qu'on demande au lecteur de jouer.
 ///
-/// Une séance n'est pas « une leçon dans un mode » : la vague en couvre deux, et
-/// la file de révision en traverse autant qu'il y a de phrases marquées. C'est
+/// Une séance n'est pas « une leçon dans un mode » : la file de révision traverse
+/// autant de leçons qu'il y a de phrases marquées. C'est
 /// donc l'étape qui porte sa leçon, jamais la séance — sans quoi l'écran affiche
 /// le texte d'une leçon pendant qu'on en entend une autre.
 enum SessionRequest: Hashable {
@@ -101,7 +84,6 @@ enum DailyAudio: Hashable {
 /// la reprise, le saut de phrase et l'affichage de la progression triviaux.
 struct SessionStep: Identifiable, Hashable {
     enum Kind: Hashable {
-        case announcement
         case title
         case dialogue
         case exerciseIntro
@@ -180,8 +162,8 @@ struct SessionSettings {
     /// longue mérite une pause longue. Une pause fixe serait trop courte pour les
     /// unes et interminable pour les autres.
     var pauseFactor: Double = 1.3
+    /// L'écoute libre joue l'exercice à la suite du dialogue ; la séance du jour, non.
     var includeExercise: Bool = true
-    var announceLesson: Bool = false
     /// Nombre de passages de chaque phrase en répétition.
     var repetitions: Int = 1
 }
@@ -238,14 +220,13 @@ enum SessionBuilder {
         switch mode {
         case .passive: passive(lesson, manifest, settings)
         case .shadowing: shadowing(lesson, manifest, settings)
-        case .wave: wave(lesson, manifest, settings)
         }
     }
 
     // MARK: - Modes
 
     private static func passive(_ lesson: Lesson, _ m: Manifest, _ s: SessionSettings) -> [SessionStep] {
-        var steps = header(lesson, m, s)
+        var steps = header(lesson, m)
         steps += lesson.dialogue.map { clip($0, .dialogue, lesson, m) }
 
         if s.includeExercise, !lesson.exercise.isEmpty {
@@ -256,7 +237,7 @@ enum SessionBuilder {
     }
 
     private static func shadowing(_ lesson: Lesson, _ m: Manifest, _ s: SessionSettings) -> [SessionStep] {
-        var steps = header(lesson, m, s)
+        var steps = header(lesson, m)
 
         // Chaque passage rejoue le modèle puis laisse sa pause : on redit après
         // l'avoir réentendue, pas de mémoire.
@@ -276,17 +257,6 @@ enum SessionBuilder {
             }
         }
         return steps.compactMap { $0 }
-    }
-
-    /// La vague Assimil : à partir de la leçon 50, chaque séance combine la leçon
-    /// du jour en passif et la leçon d'il y a 49 jours en actif. C'est ce suivi
-    /// manuel que l'app supprime.
-    private static func wave(_ lesson: Lesson, _ m: Manifest, _ s: SessionSettings) -> [SessionStep] {
-        var steps = passive(lesson, m, s)
-        if let active = activeLesson(for: lesson.number, in: m) {
-            steps += shadowing(active, m, s)
-        }
-        return steps
     }
 
     /// La file de révision : chaque carte reçue, suivie d'une pause pour la redire.
@@ -317,20 +287,10 @@ enum SessionBuilder {
         return steps
     }
 
-    /// Leçon à réviser activement en accompagnement de la leçon `number`.
-    static func activeLesson(for number: Int, in m: Manifest) -> Lesson? {
-        let target = number - 49
-        guard target >= 1 else { return nil }
-        return m.lesson(target)
-    }
-
     // MARK: - Briques
 
-    private static func header(_ lesson: Lesson, _ m: Manifest, _ s: SessionSettings) -> [SessionStep?] {
+    private static func header(_ lesson: Lesson, _ m: Manifest) -> [SessionStep?] {
         var steps: [SessionStep?] = []
-        if s.announceLesson, let a = lesson.announcement {
-            steps.append(clip(a, .announcement, lesson, m))
-        }
         if let t = lesson.title {
             steps.append(clip(t, .title, lesson, m))
         }
