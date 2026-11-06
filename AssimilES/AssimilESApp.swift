@@ -8,7 +8,16 @@ struct AssimilESApp: App {
     @StateObject private var settings = AppSettings()
     @StateObject private var clock = DayClock()
     @State private var nowPlaying: NowPlayingController?
+    @State private var packs: PackStore
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        let packs = PackStore()
+        _packs = State(initialValue: packs)
+        // Les textes suivent le paquet trouvé. En Debug, `ASSIMIL_TEXT_DIR` garde
+        // la main pour les tests d'interface.
+        LessonTextStore.directory = AppEnvironment.textDirectory ?? packs.assimil?.textDirectory
+    }
 
     /// Ajouter `DailySession` et `CourseAnchor` est une migration légère : les
     /// entités existantes ne changent pas, SwiftData ajoute les tables.
@@ -20,6 +29,7 @@ struct AssimilESApp: App {
                 .environmentObject(player)
                 .environmentObject(settings)
                 .environmentObject(clock)
+                .environment(packs)
                 .task {
                     player.rate = Float(settings.rate)
                     // Retenu au-delà de l'initialisation : c'est lui qui porte

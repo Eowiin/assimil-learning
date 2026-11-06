@@ -58,8 +58,10 @@ struct CurriculumTests {
 
     /// Le manifest versionné ne contient que des noms de fichiers et des durées.
     @Test("Catalogue réel : les révisions 7…98 n'ont pas d'exercice audio, les autres si")
-    func realCatalog() {
-        for lesson in Manifest.shared.lessons {
+    func realCatalog() throws {
+        let pack = try #require(PackStore.load(id: PackStore.assimilSpanishID,
+                                               installedRoot: nil, bundleRoot: Bundle.main.resourceURL))
+        for lesson in pack.manifest.lessons {
             let isWeekly = lesson.number % 7 == 0 && lesson.number <= 98
             #expect(lesson.isReview == isWeekly, "leçon \(lesson.number)")
             #expect(lesson.exercise.isEmpty == isWeekly, "leçon \(lesson.number)")
