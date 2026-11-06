@@ -456,6 +456,28 @@ change pas.
   lecteur met donc à jour la ligne de la leçon ; le test `lessonProgressIsUniquePerLesson`
   le vérifie. Changer la contrainte aurait demandé une migration de schéma pour rien.
 
+### Sauvegarde avant migration
+
+Réglages › **Exporter une sauvegarde** range dans Fichiers un dossier daté
+(`AssimilES-sauvegarde-2026-11-06-1530/`) avec `default.store`, `default.store-wal`
+et `default.store-shm`. Les trois fichiers vont ensemble : SQLite garde les
+écritures récentes dans `-wal` tant qu'il ne les a pas reportées dans le fichier
+principal, et le `.store` seul pourrait perdre les derniers jours. Le contexte est
+sauvegardé juste avant la copie (`StoreBackup`).
+
+Pas de restauration dans l'app : c'est un filet de sécurité, pas une fonction
+d'usage. Pour restaurer, à la main :
+
+1. Récupérer le dossier sur le Mac (Fichiers → AirDrop, ou iCloud Drive).
+2. Xcode › Window › Devices and Simulators › l'iPhone › AssimilES › *Download
+   Container…*, remplacer les trois fichiers de
+   `AppData/Library/Application Support/` par ceux de la sauvegarde (en supprimant
+   un `-wal` ou `-shm` absent de la sauvegarde), puis *Replace Container…*.
+
+Pour simplement lire une sauvegarde sur le Mac : `sqlite3 default.store` ouvre les
+trois fichiers ensemble, ou lancer l'app dans le simulateur avec `ASSIMIL_STORE`
+pointant vers une copie.
+
 ### Vérifier
 
 ```bash
