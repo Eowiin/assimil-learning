@@ -3,18 +3,59 @@ import OSLog
 import SwiftData
 
 /// Recopie l'ancien modèle (`DifficultSentence`, `StudyDay`) dans le nouveau (`Card`,
-/// `StudyEvent`), à chaque lancement, avant que les vues ne s'affichent.
+/// `StudyEvent`), avant que les vues ne s'affichent.
 ///
-/// **Une synchronisation, pas une insertion unique.** Tant que la bascule n'est pas
-/// faite, l'app écrit encore l'ancien modèle : une phrase est marquée, revue,
-/// démarquée, du temps s'ajoute au jour. Copier une seule fois laisserait les cartes
-/// se périmer ; chaque passe les remet donc à l'identique de l'ancien modèle.
-/// Passée deux fois de suite, elle ne change rien.
+/// **Une synchronisation, pas une insertion unique.** Avant la bascule, l'app
+/// écrivait encore l'ancien modèle : chaque lancement remettait les cartes à
+/// l'identique de l'ancien modèle. Passée deux fois de suite, elle ne change rien.
 ///
-/// Les anciennes tables ne sont ni modifiées ni supprimées, et rien ne lit encore
-/// les nouvelles : le comportement de l'app ne change pas.
+/// **Depuis la bascule, elle ne passe qu'une fois** (`finishIfNeeded`) : une
+/// dernière synchronisation, inscrite dans `DataMigration`. Ensuite, la relancer
+/// serait destructeur — une carte marquée depuis n'a pas de `DifficultSentence` et
+/// serait désactivée, une carte revue reprendrait l'ancienne échéance.
+///
+/// Les anciennes tables ne sont ni modifiées ni supprimées.
 @MainActor
 enum LegacyCopy {
+
+    /// La clé inscrite dans `DataMigration` quand la dernière copie a réussi.
+    static let completionKey = "legacy-copy"
+
+    enum Outcome: Equatable {
+        /// Déjà faite : rien n'est relu.
+        case alreadyDone
+        /// La dernière synchronisation vient de passer, et elle est inscrite.
+        case finished(Report)
+        /// Échec, journalisé : rien n'est inscrit, le prochain lancement réessaie.
+        case failed
+    }
+
+    /// Au démarrage. L'inscription est enregistrée avec la copie, d'un même `save` :
+    /// l'une ne peut pas exister sans l'autre. Restaurer une sauvegarde d'avant la
+    /// bascule ramène un stockage sans inscription, et la copie repasse, comme il faut.
+    ///
+    /// Si l'inscription ne peut pas être lue, la copie ne passe pas : mieux vaut
+    /// réessayer au lancement suivant que d'écraser des cartes déjà basculées.
+    @discardableResult
+    static func finishIfNeeded(in context: ModelContext, now: Date = .now) -> Outcome {
+        let key = completionKey
+        do {
+            let done = try context.fetchCount(FetchDescriptor<DataMigration>(predicate: #Predicate { $0.key == key }))
+            if done > 0 { return .alreadyDone }
+
+            var report = Report()
+            try syncCards(in: context, report: &report)
+            try syncStudyTime(in: context, report: &report)
+            context.insert(DataMigration(key: key, completedAt: now))
+            try context.save()
+            log.info("bascule : dernière copie, \(report.cardsCreated) cartes créées, \(report.cardsUpdated) mises à jour, \(report.cardsDeactivated) désactivées, \(report.eventsCreated + report.eventsUpdated) jours d'étude recopiés")
+            return .finished(report)
+        } catch {
+            log.error("bascule interrompue : \(String(describing: error), privacy: .public)")
+            context.rollback()
+            return .failed
+        }
+    }
 
     struct Report: Equatable {
         var cardsCreated = 0
@@ -26,6 +67,9 @@ enum LegacyCopy {
         var skippedKeys: [String] = []
     }
 
+    /// Une passe de synchronisation, sans inscription. L'app ne l'appelle plus
+    /// directement (voir `finishIfNeeded`) ; les tests y vérifient la copie.
+    ///
     /// Une erreur de lecture ou d'écriture est journalisée et la passe abandonnée :
     /// la copie ne doit jamais empêcher l'app de s'ouvrir, et la suivante reprendra.
     @discardableResult

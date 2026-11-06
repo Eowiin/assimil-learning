@@ -53,7 +53,7 @@ struct TodayView: View {
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
-    @Query private var marks: [DifficultSentence]
+    @Query(filter: #Predicate<Card> { $0.isActive == true }) private var cards: [Card]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @State private var openedSession: DailySession?
@@ -68,7 +68,7 @@ struct TodayView: View {
                            now: clock.today, manifest: manifest)
     }
 
-    private var due: [DifficultSentence] { ReviewSchedule.due(in: marks) }
+    private var due: [Card] { ReviewSchedule.due(in: cards) }
 
     var body: some View {
         NavigationStack {

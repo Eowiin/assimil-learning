@@ -508,15 +508,36 @@ Quatre tables s'ajoutent, par migration légère, à côté des anciennes :
 activité) et `DataMigration` (les migrations de données terminées, inscrites
 dans le stockage pour voyager avec une sauvegarde).
 
-Tant que la révision n'a pas basculé, l'app écrit encore `DifficultSentence` et
-`StudyDay`, et rien ne lit les nouvelles tables. `LegacyCopy` les **synchronise**
-à chaque lancement, avant l'affichage : une carte par phrase marquée (échéance,
-nombre de revues et date de marquage recopiés), désactivée — pas supprimée —
-quand la phrase a été démarquée, réactivée quand elle est remarquée ; un
-`StudyEvent` « assimil.legacy » par jour d'étude. Une copie unique aurait laissé
-les cartes se périmer. Aucun `ReviewLog` n'est créé : l'ancien modèle n'a pas
-d'historique. Une clé illisible est ignorée et journalisée (catégorie `data`
-dans Console.app), jamais fatale. Le plan de la bascule est dans
+**La bascule est faite** : la révision, le drapeau et le temps d'étude ne lisent et
+n'écrivent plus que ces tables. `DifficultSentence` et `StudyDay` restent dans le
+schéma, figés, jamais écrits.
+
+- **La copie ne passe qu'une fois.** Avant la bascule, `LegacyCopy`
+  synchronisait l'ancien modèle à chaque lancement (une carte par phrase marquée,
+  désactivée quand la phrase était démarquée ; un `StudyEvent` « assimil.legacy »
+  par jour d'étude ; aucun `ReviewLog`, l'ancien modèle n'ayant pas d'historique).
+  Au premier lancement de la bascule, `LegacyCopy.finishIfNeeded` fait une
+  dernière synchronisation et l'inscrit dans `DataMigration` (« legacy-copy »),
+  dans le même enregistrement. Ensuite elle ne relit plus rien : la relancer
+  désactiverait les phrases marquées depuis. Restaurer une sauvegarde d'avant la
+  bascule ramène un stockage sans inscription, et la copie repasse.
+- **Une revue** (une fois par phrase et par séance, `SessionReviews`) avance
+  l'échéance sur l'échelle, incrémente `reps` et ajoute un `ReviewLog` mains libres
+  (`rating` nil). Le journal est la source de vérité ; les champs de la carte en
+  sont le cache.
+- **Le drapeau** (`CardReview.toggleFlag`) : carte active → désactivée, pas
+  supprimée ; carte inactive → réactivée et remise à zéro (due tout de suite,
+  `reps = 0`, en tête de la liste) ; pas de carte → créée. Le balayage dans « À
+  revoir » désactive aussi.
+- **Le temps d'étude** : un `StudyEvent` par enregistrement, avec son activité
+  (`assimil.daily`, `review`, `assimil.listen`). Réglages › Temps total en fait la
+  somme, jours recopiés compris — eux ne sont plus écrits, rien n'est compté deux
+  fois. `StudyTime.secondsByDay` agrège par jour, prête pour un affichage futur.
+- **Les prises de voix gardent leur nom** (`L012-S04.m4a`, `SessionStep.recordingKey`) :
+  la clé de carte a changé, mais renommer les fichiers n'apportait rien.
+
+Une clé illisible lors de la copie est ignorée et journalisée (catégorie `data`
+dans Console.app), jamais fatale. Le plan de la refonte est dans
 `docs/refonte-modele-donnees.md`.
 
 ### Vérifier
