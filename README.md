@@ -500,6 +500,25 @@ pour qu'une phrase n'ait jamais deux clés. Ce qui suit le paquet lui appartient
 `AssimilItem` lit `L012:S04`, un futur paquet de conjugaison écrira ses propres
 chemins.
 
+### Cartes, journal et temps d'étude
+
+Quatre tables s'ajoutent, par migration légère, à côté des anciennes :
+`Card` (une phrase sous un angle — `assimil-es:L012:S04#listen`), `ReviewLog`
+(chaque revue, ajoutée et jamais modifiée), `StudyEvent` (du temps d'étude, par
+activité) et `DataMigration` (les migrations de données terminées, inscrites
+dans le stockage pour voyager avec une sauvegarde).
+
+Tant que la révision n'a pas basculé, l'app écrit encore `DifficultSentence` et
+`StudyDay`, et rien ne lit les nouvelles tables. `LegacyCopy` les **synchronise**
+à chaque lancement, avant l'affichage : une carte par phrase marquée (échéance,
+nombre de revues et date de marquage recopiés), désactivée — pas supprimée —
+quand la phrase a été démarquée, réactivée quand elle est remarquée ; un
+`StudyEvent` « assimil.legacy » par jour d'étude. Une copie unique aurait laissé
+les cartes se périmer. Aucun `ReviewLog` n'est créé : l'ancien modèle n'a pas
+d'historique. Une clé illisible est ignorée et journalisée (catégorie `data`
+dans Console.app), jamais fatale. Le plan de la bascule est dans
+`docs/refonte-modele-donnees.md`.
+
 ### Vérifier
 
 ```bash

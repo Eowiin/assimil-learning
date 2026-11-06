@@ -17,9 +17,12 @@ struct AssimilESApp: App {
         // Les textes suivent le paquet trouvé. En Debug, `ASSIMIL_TEXT_DIR` garde
         // la main pour les tests d'interface.
         LessonTextStore.directory = AppEnvironment.textDirectory ?? packs.assimil?.textDirectory
+        // Avant toute vue : les cartes suivent l'ancien modèle, que l'app écrit encore.
+        LegacyCopy.run(in: container.mainContext)
     }
 
-    /// Ajouter `DailySession` et `CourseAnchor` est une migration légère : les
+    /// Chaque entité ajoutée (`DailySession`, `CourseAnchor`, puis `Card`,
+    /// `ReviewLog`, `StudyEvent`, `DataMigration`) est une migration légère : les
     /// entités existantes ne changent pas, SwiftData ajoute les tables.
     private let container = AssimilESApp.makeContainer()
 
@@ -47,6 +50,7 @@ struct AssimilESApp: App {
 
     nonisolated static let models: [any PersistentModel.Type] = [
         LessonProgress.self, DifficultSentence.self, StudyDay.self, DailySession.self, CourseAnchor.self,
+        Card.self, ReviewLog.self, StudyEvent.self, DataMigration.self,
     ]
 
     private static func makeContainer() -> ModelContainer {

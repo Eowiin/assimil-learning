@@ -108,9 +108,16 @@ installé dans `Application Support/Packs/assimil-es/`, sinon le bundle. Sans pa
 (paquet + chemin opaque) et `AssimilItem` (`L012:S04`, forme canonique,
 conversion de l'ancienne clé `L012-S04`).
 
-### 3 · Nouvelles tables et copie — à faire
+### 3 · Nouvelles tables et copie — fait (PR #47)
 
-Branche `feat/tables-card-journal` depuis `dev`.
+Tables dans `Model/LearnerState.swift`. La tâche s'appelle `LegacyCopy`
+(`Model/LegacyCopy.swift`), lancée dans `AssimilESApp.init`, avant toute vue ; elle
+renvoie un `Report` (comptes, clés ignorées) et journalise dans la catégorie
+`data`. Précision apportée en route : `activatedAt` est recopié depuis `markedAt`
+**à chaque passe**, pas seulement à la création — une phrase remarquée a un
+nouveau `markedAt`, et sa carte réactivée doit remonter en tête.
+
+Ce qui était prévu :
 
 1. Ajouter `Card`, `ReviewLog`, `StudyEvent`, `DataMigration` à
    `AssimilESApp.models`, avec `#Unique` et `#Index`. Vérifier par un test (comme
