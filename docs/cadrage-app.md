@@ -82,7 +82,7 @@ pas »), qui deviendrait une carte prioritaire.
 5. **Le drapeau est retiré**, et avec lui la révision des phrases marquées, à
    l'arrivée du vocabulaire.
 
-## Mesures (tools/vocabulaire/mesure.swift)
+## Mesures (faites avec ce qui est devenu tools/vocabulaire/build-vocab.swift)
 
 Le script lit le texte espagnol, découpe les mots, retrouve leur forme de base et
 écarte les mots-outils et les noms propres. Le texte Assimil reste hors dépôt, la

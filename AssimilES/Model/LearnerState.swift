@@ -65,8 +65,12 @@ final class Card {
     var assimilItem: AssimilItem? { ItemID(itemID).flatMap(AssimilItem.init) }
 
     enum Angle {
-        /// Réentendre la phrase et la redire : la seule révision qui existe.
+        /// Réentendre la phrase et la redire.
         static let listen = "listen"
+        /// Un mot : de l'espagnol vers son sens.
+        static let recognize = "recognize"
+        /// Un mot : du français vers l'espagnol. N'arrive qu'une fois `recognize` connue.
+        static let recall = "recall"
     }
 
     enum Scheduler {
