@@ -1,8 +1,8 @@
 # Cadrage : vers une app d'apprentissage complète
 
-**Brouillon, à valider.** Rien n'est codé. Ce document décide quels modules on
-ajoute, dans quel ordre, et comment ils se branchent sur l'app. Une fois validé, chaque
-module aura son propre plan, comme `refonte-modele-donnees.md`.
+**Validé le 2026-11-07** (décisions plus bas). Rien n'est codé. Ce document décide
+quels modules on ajoute, dans quel ordre, et comment ils se branchent sur l'app.
+Chaque module aura son propre plan, comme `refonte-modele-donnees.md`.
 
 ## Ce que dit l'usage
 
@@ -70,7 +70,45 @@ cartes selon tes réponses, et la place est déjà prévue dans `Card`.
 de marquer une phrase, on pourrait marquer un mot (« celui-là, je ne le connais
 pas »), qui deviendrait une carte prioritaire.
 
-## Questions pour toi
+## Décisions (2026-11-07)
+
+1. **Le vocabulaire d'abord.** La prononciation (#44) suit.
+2. **Le sens d'un mot : les deux**, une traduction et la phrase de la leçon où il
+   apparaît (texte et audio).
+3. **Les deux sens de carte** : espagnol → français et français → espagnol, soit deux
+   cartes par mot (deux angles sur le même `ItemID`).
+4. **20 nouveaux par jour au plus.** Reste à fixer si on compte des mots ou des
+   cartes : avec deux sens, 20 mots font 40 cartes. Proposition : 20 cartes, la
+   carte français → espagnol d'un mot n'arrivant qu'une fois l'autre connue.
+5. **Le drapeau est retiré**, et avec lui la révision des phrases marquées, à
+   l'arrivée du vocabulaire.
+
+## Mesures (tools/vocabulaire/mesure.swift)
+
+Le script lit le texte espagnol, découpe les mots, retrouve leur forme de base et
+écarte les mots-outils et les noms propres. Le texte Assimil reste hors dépôt, la
+sortie aussi : seuls les chiffres figurent ici.
+
+| | Leçons 1 à 5 | Leçons 1 à 100 |
+|---|---|---|
+| Mots lus | 216 | 16 361 |
+| Mots-outils écartés | 37 % | 41 % |
+| **Mots à apprendre** (formes de base) | 43 | **1 938** |
+| Nouveaux mots par leçon (médiane) | 9 | **21** (de 1 à 40) |
+
+- **Le rythme colle aux 20 par jour** : une leçon par jour apporte une vingtaine de
+  mots. Le parcours complet représente environ 1 900 mots.
+- **La forme de base est juste à 93 % environ** (vérifiée à la main sur 60 mots tirés au
+  hasard : `estoy / está / estás` → `estar`, `tomé / tomando` → `tomar`). Les erreurs
+  sont du genre `barran` → `barrar` au lieu de `barrer`, ou un point resté collé à un
+  mot. Il faudra une **liste de corrections** dans le paquet, et un geste pour
+  écarter une carte absurde.
+- **La classe de mot est peu fiable** (`hablar` étiqueté comme un nom) : elle sert
+  à écarter les mots-outils, pas à l'affichage.
+- **La traduction n'est pas encore mesurée** : l'espagnol et le français de
+  Translation ne sont pas installés sur ce Mac.
+
+## Questions posées (réponses ci-dessus)
 
 1. Le vocabulaire en premier, ça te va ? Ou la prononciation (#44) d'abord ?
 2. Le sens d'un mot : une traduction (Translation d'Apple), la phrase de la leçon
@@ -84,6 +122,7 @@ pas »), qui deviendrait une carte prioritaire.
 
 ## Ensuite
 
-Après tes réponses : un prototype de mesure du vocabulaire sur les leçons 1 à 5
-(mots trouvés, formes de base, qualité des traductions), en chiffres. Puis un plan
-par étapes, comme pour la refonte du modèle de données.
+1. Mesurer la traduction d'un mot isolé, dès que les langues sont installées sur
+   le Mac.
+2. Écrire le plan du module de vocabulaire, par étapes, comme pour la refonte du
+   modèle de données.
