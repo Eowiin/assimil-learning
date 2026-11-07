@@ -41,12 +41,6 @@ final class VoiceRecorder: NSObject, ObservableObject {
         FileManager.default.fileExists(atPath: url(for: key).path)
     }
 
-    static func duration(of url: URL) -> Double {
-        (try? AVAudioFile(forReading: url)).map {
-            Double($0.length) / $0.processingFormat.sampleRate
-        } ?? 0
-    }
-
     // MARK: - Session audio
 
     /// Prend la main sur la sortie audio le temps de l'essai. `.defaultToSpeaker`
