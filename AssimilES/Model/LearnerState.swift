@@ -138,6 +138,50 @@ final class StudyEvent {
     }
 }
 
+/// À quoi a servi un moment d'étude : l'activité et, pour Assimil, le cours.
+struct StudyActivity: Equatable {
+    let name: String
+    /// Nil pour la révision : elle est commune, pas propre à un cours.
+    let courseID: String?
+
+    static let assimilDaily = StudyActivity(name: StudyEvent.Activity.assimilDaily,
+                                            courseID: PackStore.assimilSpanishID)
+    static let review = StudyActivity(name: StudyEvent.Activity.review, courseID: nil)
+    static let assimilListen = StudyActivity(name: StudyEvent.Activity.assimilListen,
+                                             courseID: PackStore.assimilSpanishID)
+}
+
+enum StudyTime {
+    /// Inscrit un moment d'étude qui vient de se terminer. L'appelant passe ce que
+    /// le lecteur n'a pas encore rendu (`SessionPlayer.takeUnrecordedSeconds`) :
+    /// rouvrir un écran ne recompte rien.
+    ///
+    /// Un événement par enregistrement, jamais un total qu'on gonfle : il dit à
+    /// quoi le temps a servi, et le jour se recalcule (`secondsByDay`).
+    @MainActor
+    static func record(_ seconds: Double, as activity: StudyActivity, in context: ModelContext,
+                       now: Date = .now, calendar: Calendar = .current) {
+        guard seconds > 0 else { return }
+        context.insert(StudyEvent(day: calendar.startOfDay(for: now),
+                                  startedAt: now.addingTimeInterval(-seconds),
+                                  seconds: seconds,
+                                  language: "es",
+                                  activity: activity.name,
+                                  courseID: activity.courseID))
+    }
+
+    /// Tout le temps d'étude, jours recopiés de l'ancien modèle compris : ceux-là
+    /// ne sont plus écrits depuis la bascule, rien n'est donc compté deux fois.
+    static func total(_ events: [StudyEvent]) -> Double {
+        events.reduce(0) { $0 + $1.seconds }
+    }
+
+    /// Le temps par jour, sur le jour de l'événement. Rien ne l'affiche encore.
+    static func secondsByDay(_ events: [StudyEvent], calendar: Calendar = .current) -> [Date: Double] {
+        events.reduce(into: [:]) { $0[calendar.startOfDay(for: $1.day), default: 0] += $1.seconds }
+    }
+}
+
 /// Une migration de données menée à son terme. Inscrite dans le stockage et non dans
 /// `UserDefaults` : elle voyage avec une sauvegarde, et restaurer une sauvegarde
 /// d'avant la migration la relance, comme il faut.

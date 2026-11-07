@@ -118,7 +118,8 @@ struct SessionStep: Identifiable, Hashable {
     /// Vrai quand l'étape porte sur une phrase de l'exercice plutôt que du
     /// dialogue — **y compris pour la pause qui la suit**, dont le `kind` ne le
     /// dit plus. C'est ce qui distingue la phrase 3 de l'exercice de la phrase 3
-    /// du dialogue, pour le texte affiché comme pour la clé de marquage.
+    /// du dialogue, pour le texte affiché, la clé de carte et le nom de la prise
+    /// de voix.
     let isExercise: Bool
     let url: URL?
     let duration: Double

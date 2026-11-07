@@ -455,6 +455,9 @@ change pas.
   second mode ne créait pas de doublon : SwiftData *remplaçait* la ligne existante. Le
   lecteur met donc à jour la ligne de la leçon ; le test `lessonProgressIsUniquePerLesson`
   le vérifie. Changer la contrainte aurait demandé une migration de schéma pour rien.
+- Les phrases marquées et le temps d'étude vivent dans `Card`, `ReviewLog` et
+  `StudyEvent` : voir « Cartes, journal et temps d'étude ». `DifficultSentence` et
+  `StudyDay` restent dans le schéma, figés.
 
 ### Sauvegarde avant migration
 
@@ -528,17 +531,36 @@ schéma, figés, jamais écrits.
 - **Le drapeau** (`CardReview.toggleFlag`) : carte active → désactivée, pas
   supprimée ; carte inactive → réactivée et remise à zéro (due tout de suite,
   `reps = 0`, en tête de la liste) ; pas de carte → créée. Le balayage dans « À
-  revoir » désactive aussi.
+  revoir » désactive aussi. À la réactivation, `lastReviewedAt` est gardé : c'est
+  un fait, pas une planification.
 - **Le temps d'étude** : un `StudyEvent` par enregistrement, avec son activité
-  (`assimil.daily`, `review`, `assimil.listen`). Réglages › Temps total en fait la
+  (`assimil.daily`, `review`, `assimil.listen`) ; les extraits lancés depuis la
+  séance du jour comptent en `assimil.daily`. Réglages › Temps total en fait la
   somme, jours recopiés compris — eux ne sont plus écrits, rien n'est compté deux
   fois. `StudyTime.secondsByDay` agrège par jour, prête pour un affichage futur.
 - **Les prises de voix gardent leur nom** (`L012-S04.m4a`, `SessionStep.recordingKey`) :
   la clé de carte a changé, mais renommer les fichiers n'apportait rien.
 
 Une clé illisible lors de la copie est ignorée et journalisée (catégorie `data`
-dans Console.app), jamais fatale. Le plan de la refonte est dans
-`docs/refonte-modele-donnees.md`.
+dans Console.app), jamais fatale.
+
+Les choix de la refonte, à garder en tête pour la suite :
+
+- **Le contenu n'entre pas dans SwiftData**, l'état de l'apprenant seul (voir
+  plus haut). Ce qui est propre à Assimil le reste : `DailySession`,
+  `CourseAnchor` et `LessonProgress` n'ont pas de `courseID`, inutile tant qu'il
+  n'y a qu'un cours (une migration légère l'ajoutera).
+- **Pas de FSRS**, mais la place est prise : `Card.scheduler` (« ladder »),
+  `stability` et `difficulty` optionnels, `rating` nil dans le journal.
+- **Pas de migration SwiftData personnalisée** (`MigrationStage.custom`) : on ajoute
+  des tables, et une tâche de l'app (`LegacyCopy`) recopie les données.
+- **`key` et non `id`** : sous `@Model`, `id` entre en conflit avec celui
+  d'`Identifiable`. Le journal dit donc `cardKey`.
+- **`Card.activatedAt`**, absent du schéma de départ : « À revoir » est triée
+  par date de marquage, et une phrase remarquée doit remonter en tête.
+
+Le plan de la refonte, terminée, reste dans `docs/refonte-modele-donnees.md` pour
+l'historique.
 
 ### Vérifier
 
@@ -624,7 +646,8 @@ les deux points.
 
 Modèle es-ES installé une fois, **rien ne sort du téléphone**. Il s'agit ici de la voix
 d'Ethan, ce qui est une raison de plus de rester hors ligne. Les prises vivent dans
-`Documents/voice/`, une par phrase, nommées comme la clé de marquage (`L012-S04`).
+`Documents/voice/`, une par phrase, nommées par l'ancienne clé de phrase marquée
+(`L012-S04`, `SessionStep.recordingKey`), qui n'est plus celle des cartes.
 
 Cet écran demande **iOS 26** (`SpeechTranscriber`), d'où la cible de déploiement.
 L'iPhone de test est en 26.6 ; l'app est personnelle et n'a qu'un appareil.
