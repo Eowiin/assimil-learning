@@ -1,6 +1,6 @@
 # Module de vocabulaire
 
-**Plan proposé, à valider.** Le pourquoi et les mesures sont dans
+**Validé le 2026-11-07.** Le pourquoi et les mesures sont dans
 `docs/cadrage-app.md`. Comme pour la refonte du modèle de données, ce fichier dit
 ce qu'il reste à faire et comment, et le README garde les décisions une fois faites.
 
@@ -42,10 +42,11 @@ marquées disparaissent.
 
 `tools/vocabulaire/` passe de la mesure à la production :
 
-- `build-vocab.swift` lit `text/L001.json`… et écrit `vocab.json` dans le paquet. Pour
+- `build-vocab.swift` lit `text/L001.json`… et écrit `text/vocab.json` dans le paquet
+  (dans `text/` : il dérive du texte, il est déjà hors dépôt et dans le bundle). Pour
   chaque mot, il garde : la forme de base, les formes rencontrées, la traduction, la
   première leçon, et les occurrences (leçon, phrase) qui donnent le contexte et l'audio.
-- `corrections.json` (hors dépôt, à sauvegarder avec le texte) : les formes de base à
+- `content/vocab/corrections.json` (hors dépôt, à sauvegarder avec le texte) : les formes de base à
   corriger, les traductions à remplacer, les mots à écarter. Il s'applique à chaque
   génération.
 - Les points restés collés aux mots (`fatal.`) sont nettoyés.
@@ -102,15 +103,14 @@ jamais deux révisions.
 Audio mot par mot (Assimil découpe par phrase), synthèse vocale, optimisation des
 paramètres FSRS, conjugaison, import de paquets depuis Fichiers, synchro CloudKit.
 
-## Points à valider
+## Décisions validées
 
-1. **Les noms d'angle** `recognize` et `recall`. « recall » était prévu pour les
-   phrases (français → espagnol) ; ici il sert aux mots.
-2. **« Connue »**, pour débloquer la carte « retrouver » : passée en révision dans
-   FSRS, c'est-à-dire réussie au moins une fois un autre jour que celui de sa
-   découverte.
-3. **L'ordre des étapes** : 1 et 2 sont indépendantes (Mac et logique pure) ; 3 et 4
-   vont ensemble.
+1. **Angles** `recognize` (espagnol → français) et `recall` (français → espagnol).
+2. **« Connue »**, pour débloquer la carte `recall` : la carte `recognize` est passée
+   en révision dans FSRS, c'est-à-dire réussie au moins une fois un autre jour que
+   celui de sa découverte.
+3. **Ordre** : 1 et 2 d'abord (indépendantes : Mac et logique pure), puis 3 et 4
+   ensemble.
 
 ## Vérifier, à chaque étape
 
