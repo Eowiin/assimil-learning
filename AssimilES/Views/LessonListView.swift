@@ -21,10 +21,11 @@ struct LessonListView: View {
                            now: clock.today, manifest: manifest).plan?.newLesson
     }
 
-    /// Une écoute de cette leçon, dans ce mode, s'est arrêtée en route.
+    /// Une écoute de cette leçon s'est arrêtée en route. Les reprises des anciens
+    /// modes (Répétition, La vague) ne valent pas pour l'écoute : elles sont ignorées.
     private func canResume(_ number: Int) -> Bool {
         progress.contains {
-            $0.lessonNumber == number && $0.mode == settings.freeListeningMode.rawValue && $0.stepIndex > 0
+            $0.lessonNumber == number && $0.mode == StudyMode.passive.rawValue && $0.stepIndex > 0
         }
     }
 
@@ -33,21 +34,10 @@ struct LessonListView: View {
             ScrollViewReader { proxy in
                 List {
                     Section {
-                        // L'écoute libre : ses trois modes, sans effet sur la séance du jour.
+                        // L'écoute libre, sans effet sur la séance du jour.
                         VStack(alignment: .leading, spacing: 10) {
-                            Picker("Mode d’écoute", selection: $settings.freeListeningMode) {
-                                Text("Écoute").tag(StudyMode.passive)
-                                Text("Répétition").tag(StudyMode.shadowing)
-                                Text("La vague").tag(StudyMode.wave)
-                            }
-                            .pickerStyle(.segmented)
-                            .accessibilityIdentifier("listening-mode")
-                            Text(settings.freeListeningMode.subtitle)
-                                .font(.caption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
                             Text("\(completed.count) \(completed.count > 1 ? "leçons validées" : "leçon validée") sur \(manifest.lessonCount)")
                                 .font(.subheadline).foregroundStyle(.secondary)
-                                .padding(.top, 6)
                         }
                         .padding(.vertical, 10)
                         .listRowBackground(Color.clear)
@@ -62,9 +52,7 @@ struct LessonListView: View {
                                 LessonRow(lesson: lesson,
                                           isCompleted: completed.contains(lesson.number),
                                           isCurrent: lesson.number == currentLesson,
-                                          canResume: canResume(lesson.number),
-                                          waveLesson: settings.freeListeningMode == .wave
-                                            ? SessionBuilder.activeLesson(for: lesson.number, in: manifest)?.number : nil)
+                                          canResume: canResume(lesson.number))
                             }
                             .id(lesson.number)
                         }
@@ -93,28 +81,26 @@ struct LessonListView: View {
 }
 
 /// La page d'une leçon : son texte complet — espagnol, prononciation, traduction,
-/// notes —, chaque phrase réécoutable, et l'écoute de la leçon dans le mode choisi.
+/// notes —, chaque phrase réécoutable, et l'écoute de la leçon d'un trait.
 /// Avant, une leçon ouvrait directement le lecteur, et ce texte n'existait que
 /// pendant l'étape Compréhension de la séance du jour.
 struct LessonPage: View {
     let lesson: Lesson
     let canResume: Bool
 
-    @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: SessionPlayer
 
     var body: some View {
         let text = LessonTextStore.text(for: lesson.number)
-        let mode = settings.freeListeningMode
         ComprehensionView(lesson: lesson,
                           text: text,
                           content: LessonContent.comprehension(text),
                           reviewContent: LessonContent.reviewSummary(lesson, text))
             .safeAreaBar(edge: .bottom) {
                 NavigationLink {
-                    PlayerView(request: .lesson(number: lesson.number, mode: mode))
+                    PlayerView(request: .lesson(number: lesson.number, mode: .passive))
                 } label: {
-                    Label("\(canResume ? "Reprendre" : "Écouter") · \(mode.title)", systemImage: "headphones")
+                    Label(canResume ? "Reprendre l'écoute" : "Écouter la leçon", systemImage: "headphones")
                 }
                 .buttonStyle(StudyPrimaryButtonStyle())
                 .padding(.horizontal, 20)
@@ -136,8 +122,6 @@ private struct LessonRow: View {
     let isCompleted: Bool
     let isCurrent: Bool
     let canResume: Bool
-    /// En mode « La vague » : la leçon révisée à la suite.
-    let waveLesson: Int?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -154,9 +138,6 @@ private struct LessonRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if isCurrent {
                     Text("En cours").font(.caption.weight(.semibold)).foregroundStyle(StudyStyle.accent)
-                }
-                if let waveLesson {
-                    Text("Puis la leçon \(waveLesson) en révision").font(.caption).foregroundStyle(.secondary)
                 }
             }
 
