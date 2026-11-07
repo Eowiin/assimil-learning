@@ -612,20 +612,21 @@ son échéance une seconde fois.
 
 Sur l'écran de lecture, le micro (à droite du transport) **arrête la séance et
 enregistre d'un même geste** ; un second appui termine la prise. Le résultat s'affiche
-au-dessus du transport : les mots de la phrase, ceux qui ne sont pas passés en orange,
-la mélodie en un mot, la réécoute moi / natif. « Reprendre » relance la séance là où
-elle était. La courbe, le tempo et ce que la machine a compris sont à un appui (ⓘ).
-Trois gestes au lieu de six, quand c'était une feuille à part.
+au-dessus du transport, tout au même endroit : les mots de la phrase, ceux qui ne
+sont pas passés en orange, la mélodie en un mot et sa courbe natif / moi, la réécoute
+moi / natif. « Reprendre » relance la séance là où elle était.
 
-La logique de l'essai vit dans `VoiceTrial`, partagé par le panneau du lecteur et la
-feuille de détail (`PronunciationView`).
+**Pas de feuille de détail** (#19). Elle répétait les commandes d'enregistrement et
+ajoutait le tempo, le moteur de reconnaissance, l'écart médian en demi-tons et ce que
+la machine avait compris : des chiffres justes, mais qui n'aidaient pas à se corriger.
+Seule la courbe servait ; elle est passée dans le panneau. La logique de l'essai vit
+dans `VoiceTrial`. Une analyse qui dise quel son corriger est cherchée à part (#44).
 
 **Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
 *passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
-L'écran affiche donc trois choses vérifiables — les mots de la phrase, ceux qui ne
-sont pas passés en orange ; ce que la machine a compris, mot pour mot ; et le tempo,
-qui compare deux durées. Pour l'accent, c'est la réécoute côte à côte qui tranche,
-pas une note.
+L'écran affiche donc deux choses vérifiables — les mots de la phrase, ceux qui ne
+sont pas passés en orange, et la courbe d'intonation. Pour l'accent, c'est la
+réécoute côte à côte qui tranche, pas une note.
 
 C'est le même signal que sur le corpus : c'est ce contrôle qui avait fait ressortir
 `Ejem` comme le seul mot manqué sur les cinq leçons de contrôle.
@@ -641,8 +642,7 @@ signale rien, `XH 553` contre `XH553` non plus, `Yujú` contre `Youjú` non plus
 **Deux moteurs, selon l'appareil.** `SpeechTranscriber` — celui qui a transcrit le
 corpus — expose `isAvailable` : il demande un appareil capable d'Apple Intelligence,
 ce que l'iPhone 11 (A13) n'est pas. `DictationTranscriber` n'a pas cette condition et
-rend la même chose. L'app prend le premier quand il est là, le second sinon, et
-affiche en petit lequel a parlé. Dans les deux cas, l'app doit **réserver** la locale
+rend la même chose. L'app prend le premier quand il est là, le second sinon. Dans les deux cas, l'app doit **réserver** la locale
 auprès d'`AssetInventory` avant d'en toucher les assets : sans cette souscription, le
 système refuse jusqu'à dire où en est le téléchargement. Le portage direct de
 `tools/transcribe.swift`, qui n'y est pas soumis en ligne de commande, échouait sur
@@ -660,8 +660,8 @@ L'iPhone de test est en 26.6 ; l'app est personnelle et n'a qu'un appareil.
 
 Après l'enregistrement, l'écran superpose **deux courbes d'intonation** : celle du
 natif et la tienne, alignées dans le temps et ramenées chacune au registre de son
-locuteur. Un chiffre dit de combien ça s'écarte, la courbe dit où — une montée de
-question qu'on a aplatie se voit d'un coup d'œil.
+locuteur. Le verdict en un mot dit de combien ça s'écarte, la courbe dit où — une
+montée de question qu'on a aplatie se voit d'un coup d'œil.
 
 C'est la seule des deux questions posées (accent, intonation) à laquelle on puisse
 répondre honnêtement en local et sans payer. L'évaluation d'accent au phonème

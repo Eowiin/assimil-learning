@@ -36,7 +36,6 @@ struct PlayerView: View {
     private static let currentLineAnchor = UnitPoint(x: 0.5, y: 0.3)
     /// La phrase sur laquelle on veut s'essayer. Ouvre l'écran de prononciation.
     @StateObject private var trial = VoiceTrial()
-    @State private var showTrialDetails = false
     /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
     /// ne doit pas repousser son échéance une seconde fois.
     @State private var reviews = SessionReviews()
@@ -65,9 +64,6 @@ struct PlayerView: View {
                 .accessibilityValue(showTranslation ? "Visible" : "Masquée")
             }
             ToolbarItem(placement: .topBarTrailing) { speedMenu }
-        }
-        .sheet(isPresented: $showTrialDetails) {
-            PronunciationView(trial: trial)
         }
         .onAppear {
             showTranslation = settings.revealTranslation
@@ -232,9 +228,7 @@ struct PlayerView: View {
     private var controls: some View {
         VStack(spacing: 12) {
             if trial.isOpen {
-                VoiceTrialPanel(trial: trial,
-                                onDetails: { showTrialDetails = true },
-                                onResume: resumeAfterTrial)
+                VoiceTrialPanel(trial: trial, onResume: resumeAfterTrial)
             } else if let stageAction {
                 stageButton(stageAction)
             }
@@ -503,12 +497,12 @@ struct PlayerView: View {
     }
 }
 
-/// L'essai en cours, au-dessus du transport : ce qui a été entendu, la mélodie en
-/// un mot, la réécoute côte à côte et « Reprendre ». Le détail (courbe, tempo, ce
-/// que la machine a compris) est à un appui.
+/// L'essai en cours, au-dessus du transport : les mots de la phrase (ceux qui ne
+/// sont pas passés en orange), la courbe natif / moi, la réécoute côte à côte et
+/// « Reprendre ». Tout au même endroit : il n'y a plus de feuille de détail, dont
+/// les chiffres (tempo, moteur, écart médian) n'aidaient pas à se corriger (#19).
 private struct VoiceTrialPanel: View {
     @ObservedObject var trial: VoiceTrial
-    let onDetails: () -> Void
     let onResume: () -> Void
 
     var body: some View {
@@ -526,12 +520,6 @@ private struct VoiceTrialPanel: View {
                 }
                 .disabled(trial.isRecording)
                 .accessibilityLabel(trial.recorder.playing == .native ? "Arrêter : le natif" : "Écouter : le natif")
-                Button(action: onDetails) {
-                    Image(systemName: "info.circle")
-                }
-                .disabled(trial.isRecording)
-                .accessibilityLabel("Détails : courbe d'intonation et tempo")
-                .accessibilityIdentifier("voice-details")
                 Spacer(minLength: 0)
                 Button(action: onResume) {
                     Label("Reprendre", systemImage: "play.fill")
@@ -580,8 +568,15 @@ private struct VoiceTrialPanel: View {
                 Text([trial.understoodLabel, trial.intonation?.verdict].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let intonation = trial.intonation {
+                    IntonationChart(intonation: intonation)
+                        .padding(.top, 4)
+                } else if trial.intonationFailed {
+                    Label("Pas assez de voix pour lire la mélodie.", systemImage: "waveform.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .accessibilityElement(children: .combine)
         }
     }
 }
