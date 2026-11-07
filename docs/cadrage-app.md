@@ -77,9 +77,8 @@ pas »), qui deviendrait une carte prioritaire.
    apparaît (texte et audio).
 3. **Les deux sens de carte** : espagnol → français et français → espagnol, soit deux
    cartes par mot (deux angles sur le même `ItemID`).
-4. **20 nouveaux par jour au plus.** Reste à fixer si on compte des mots ou des
-   cartes : avec deux sens, 20 mots font 40 cartes. Proposition : 20 cartes, la
-   carte français → espagnol d'un mot n'arrivant qu'une fois l'autre connue.
+4. **20 nouvelles cartes par jour au plus.** La carte français → espagnol d'un mot
+   n'arrive qu'une fois la carte espagnol → français connue.
 5. **Le drapeau est retiré**, et avec lui la révision des phrases marquées, à
    l'arrivée du vocabulaire.
 
@@ -105,8 +104,17 @@ sortie aussi : seuls les chiffres figurent ici.
   écarter une carte absurde.
 - **La classe de mot est peu fiable** (`hablar` étiqueté comme un nom) : elle sert
   à écarter les mots-outils, pas à l'affichage.
-- **La traduction n'est pas encore mesurée** : l'espagnol et le français de
-  Translation ne sont pas installés sur ce Mac.
+- **La traduction d'un mot isolé est juste à 85-90 % environ** (Translation d'Apple,
+  sur l'appareil, 70 mots vérifiés à la main). Les erreurs se rangent en trois
+  familles : un mot mal orthographié (`pesadilla` → « Causemar », `bombilla` →
+  « Ampeule »), un sens hors contexte (`hostia` → « Hôte »), une erreur héritée de
+  la forme de base. 102 mots reviennent identiques, presque toujours à raison
+  (`café`, `dormir`, `triste`). **La phrase de la leçon est donc indispensable**
+  à côté de la traduction : c'est elle qui donne le sens, la traduction aide.
+- **Conséquence : le vocabulaire se calcule sur le Mac, pas sur l'iPhone.** On le
+  calcule une fois et on le range dans le paquet, comme le texte. Les corrections
+  à la main s'y appliquent avant l'installation, et l'iPhone n'a ni modèle à
+  télécharger ni calcul à faire.
 
 ## Questions posées (réponses ci-dessus)
 
@@ -122,7 +130,4 @@ sortie aussi : seuls les chiffres figurent ici.
 
 ## Ensuite
 
-1. Mesurer la traduction d'un mot isolé, dès que les langues sont installées sur
-   le Mac.
-2. Écrire le plan du module de vocabulaire, par étapes, comme pour la refonte du
-   modèle de données.
+Le plan du module : `docs/module-vocabulaire.md`.
