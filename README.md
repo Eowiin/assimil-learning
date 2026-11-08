@@ -568,7 +568,7 @@ Quatre tables s'ajoutent, par migration légère, à côté des anciennes :
 activité) et `DataMigration` (les migrations de données terminées, inscrites
 dans le stockage pour voyager avec une sauvegarde).
 
-**La bascule est faite** : la révision, le drapeau et le temps d'étude ne lisent et
+**La bascule est faite** : la révision et le temps d'étude ne lisent et
 n'écrivent plus que ces tables. `DifficultSentence` et `StudyDay` restent dans le
 schéma, figés, jamais écrits.
 
@@ -581,16 +581,12 @@ schéma, figés, jamais écrits.
   dans le même enregistrement. Ensuite elle ne relit plus rien : la relancer
   désactiverait les phrases marquées depuis. Restaurer une sauvegarde d'avant la
   bascule ramène un stockage sans inscription, et la copie repasse.
-- **Une revue** (une fois par phrase et par séance, `SessionReviews`) avance
-  l'échéance sur l'échelle, incrémente `reps` et ajoute un `ReviewLog` mains libres
-  (`rating` nil). Le journal est la source de vérité ; les champs de la carte en
-  sont le cache.
-- **Le drapeau** (`CardReview.toggleFlag`) : carte active → désactivée, pas
-  supprimée ; carte inactive → réactivée et remise à zéro (due tout de suite,
-  `reps = 0`) ; pas de carte → créée. À la réactivation, `lastReviewedAt` est
-  gardé : c'est un fait, pas une planification.
+- **Le journal est la source de vérité** ; les champs de la carte en sont le
+  cache. Les revues des phrases marquées (retirées depuis) y sont sans note,
+  celles des mots avec leur note.
 - **Le temps d'étude** : un `StudyEvent` par enregistrement, avec son activité
-  (`assimil.daily`, `review`, `assimil.listen`) ; les extraits lancés depuis la
+  (`assimil.daily`, `assimil.listen`, `vocab` ; `review` pour l'ancienne révision
+  des phrases) ; les extraits lancés depuis la
   séance du jour comptent en `assimil.daily`. Réglages › Temps total en fait la
   somme, jours recopiés compris — eux ne sont plus écrits, rien n'est compté deux
   fois. `StudyTime.secondsByDay` agrège par jour, prête pour un affichage futur.
@@ -606,8 +602,9 @@ Les choix de la refonte, à garder en tête pour la suite :
   plus haut). Ce qui est propre à Assimil le reste : `DailySession`,
   `CourseAnchor` et `LessonProgress` n'ont pas de `courseID`, inutile tant qu'il
   n'y a qu'un cours (une migration légère l'ajoutera).
-- **Pas de FSRS**, mais la place est prise : `Card.scheduler` (« ladder »),
-  `stability` et `difficulty` optionnels, `rating` nil dans le journal.
+- **Pas de FSRS pendant la refonte**, mais la place était prise : `Card.scheduler`,
+  `stability` et `difficulty` optionnels, `rating` nil dans le journal. FSRS est
+  arrivé ensuite avec le vocabulaire (voir « Le vocabulaire »).
 - **Pas de migration SwiftData personnalisée** (`MigrationStage.custom`) : on ajoute
   des tables, et une tâche de l'app (`LegacyCopy`) recopie les données.
 - **`key` et non `id`** : sous `@Model`, `id` entre en conflit avec celui
@@ -633,35 +630,47 @@ séance dans le simulateur grâce à trois variables lues **en Debug seulement**
 `ASSIMIL_STORE` (stockage isolé), `ASSIMIL_TEXT_DIR` (textes fictifs) et
 `ASSIMIL_DAY_OFFSET` (décaler « aujourd'hui » pour vérifier le lendemain).
 
-## La révision des phrases marquées
+## Réviser le vocabulaire
 
-Pendant l'écoute, le drapeau met une phrase de côté. Ces phrases reviennent
-d'elles-mêmes : l'accueil annonce chaque jour celles qui sont dues, à côté de la
-séance, et c'est de là qu'on les revoit. L'onglet **Réviser**, qui listait toutes
-les phrases marquées, a été retiré (#19) : il n'était pas ouvert, l'accueil
-suffisait.
+Les mots des leçons reviennent en cartes, à la Anki, depuis l'accueil : une ligne
+« Vocabulaire · 14 à revoir · 20 nouveaux » sous la séance du jour. Le recto montre
+le mot espagnol (carte `recognize`) ou son sens (carte `recall`, français →
+espagnol) ; « Voir la réponse » montre le sens ou le mot, ses autres formes, et la
+phrase de la leçon où il apparaît, texte et audio. Quatre notes : **À revoir,
+Difficile, Bien, Facile**, avec sous chacune le délai qu'elle donnerait. FSRS
+espace les cartes (voir « Le vocabulaire »). « Retirer ce mot », dans le menu,
+désactive ses deux cartes : il ne revient plus.
 
-Une phrase revient à intervalle croissant — **1, 3, 7, 21 puis 60 jours**. Elle ne
-sort jamais de la file toute seule : c'est le **drapeau**, le même qu'en écoute,
-qui l'en retire quand elle est acquise, et qui enchaîne alors sur la suivante.
+La logique est dans `VocabStudy` et `VocabSession` (`VocabStudyTests`), l'écran dans
+`VocabReviewView`. Les règles :
 
-**Pas de notation.** Un « facile / difficile » après chaque phrase serait plus fin,
-mais il demanderait l'œil sur l'écran et un appui à chaque pause — exactement ce
-dont l'app affranchit. Un seul geste, déjà connu, qui ne sert qu'à dire « celle-là,
-c'est bon ». La séance de révision se conduit sinon comme une leçon, y compris
-depuis l'écran verrouillé.
+- **Les mots d'une leçon arrivent le lendemain de sa validation**, et ceux des
+  leçons d'avant le point de départ du parcours sont d'emblée disponibles : elles
+  ont été faites, simplement pas dans l'app.
+- **Au plus 20 nouvelles cartes par jour**, dans l'ordre du livre (première leçon,
+  puis fréquence). Une carte n'existe en base qu'à sa première note : le plafond
+  compte les cartes créées aujourd'hui.
+- **La carte `recall` d'un mot n'arrive qu'une fois `recognize` connue** : en
+  révision **et** réussie un autre jour que celui de sa découverte. « Facile »
+  d'emblée met une carte en révision le jour même, ce qui ne suffit pas.
+- **Ce qui est dû** : une carte en révision due ce soir l'est dès ce matin, la
+  révision est quotidienne. Une carte en apprentissage (1 puis 10 minutes) attend
+  ses minutes, et revient dans la même séance ; s'il ne reste qu'elle, elle passe
+  en avance (jusqu'à 20 minutes), comme dans Anki.
+- **Le temps** : celui de l'écran, plafonné à une minute par carte (le téléphone
+  posé ne fait pas du temps d'étude), inscrit en `vocab`. Chaque revue garde sa
+  durée au journal.
+- **Une forme de base corrigée** dans le paquet déplace la carte et son journal à
+  l'ouverture de la révision (`VocabStudy.applyRenames`).
 
-Deux points de calcul, dans `ReviewSchedule` :
+### Le drapeau, retiré
 
-- L'échéance est calée sur le **début de journée**. Une phrase revue le soir revient
-  le lendemain, pas le lendemain soir : la séance est quotidienne, l'heure n'a pas à
-  décider de ce qui est dû.
-- La suite **s'arrête à 60 jours**. Une phrase encore marquée après cinq reprises
-  mérite de repasser de temps en temps, pas de disparaître.
-
-Une phrase compte comme revue dès qu'elle est **jouée** : c'est de l'avoir
-réentendue et redite qui la révise. La rejouer dans la même séance ne repousse pas
-son échéance une seconde fois.
+Avant le vocabulaire, le drapeau de l'écran de lecture marquait une phrase, qui
+revenait à intervalle fixe (1, 3, 7, 21, 60 jours), sans note, dans une séance de
+révision mains libres. Il n'a jamais servi à l'usage (#19) ; il est retiré avec sa
+révision. Ses cartes (`#listen`) restent en base, désactivées au lancement
+(`CardReview.retireListenCards`), avec leur journal. `DifficultSentence`, l'ancien
+modèle, reste dans le schéma pour la copie (`LegacyCopy`).
 
 ## S'enregistrer et se comparer au natif
 

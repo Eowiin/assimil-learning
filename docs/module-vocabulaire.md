@@ -101,7 +101,28 @@ L'ordonnanceur, sans interface :
 Le champ d'état est la seule nouveauté de schéma : une propriété ajoutée avec une
 valeur par défaut, donc une migration légère.
 
-### 3 · L'écran de révision et l'accueil
+### 3 · L'écran de révision et l'accueil — fait (branche feat/vocab-revision)
+
+`VocabStudy`, `VocabSession` (logique, `VocabStudyTests`), `VocabReviewView`, la
+ligne « Vocabulaire » de l'accueil, `VocabularyStore` (le vocabulaire lu une fois),
+`StudyActivity.vocab`. Test d'interface : la séance validée la veille, ses mots, le
+recto et le verso, les notes, un arrêt brutal, « Retirer ce mot ».
+
+Précisions apportées en route :
+
+- **« Connue » demande un autre jour** : « Facile » d'emblée met une carte en
+  révision le jour même ; c'est le test d'interface qui l'a montré.
+- **Les leçons d'avant le point de départ du parcours** comptent comme faites.
+- **Dû** : une carte en révision due ce soir l'est dès ce matin ; une carte en
+  apprentissage revient dans la séance, en avance de 20 minutes au plus s'il ne
+  reste qu'elle.
+- **Une ligne calme** « Vocabulaire à jour » quand il n'y a rien à faire, plutôt
+  que rien : sinon le module disparaît de l'accueil sans explication.
+- **Temps plafonné à une minute par carte**, comme Anki.
+- **La barre d'onglets se cache** pendant la révision, comme pendant une séance.
+
+Ce qui était prévu :
+
 
 - **Accueil** : une carte « Vocabulaire · 14 à revoir · 20 nouvelles » sous la séance
   du jour, qui ouvre la révision. Rien quand il n'y a rien à faire.
@@ -115,7 +136,16 @@ valeur par défaut, donc une migration légère.
 - Tests unitaires (choix des nouvelles cartes, plafond de 20, déblocage de
   « retrouver ») et un test d'interface du parcours.
 
-### 4 · Retrait du drapeau
+### 4 · Retrait du drapeau — fait (même branche)
+
+Drapeau, `SessionRequest.review`, `SessionReviews`, `CardReview.toggleFlag` et
+`.review`, `ReviewSchedule`, `Card.isDue`, `StudyActivity.review` retirés ; les tests
+qui les couvraient aussi. `CardReview.retireListenCards` désactive les cartes
+`#listen` au lancement. README : « La révision des phrases marquées » devient
+« Réviser le vocabulaire », avec l'historique du drapeau.
+
+Ce qui était prévu :
+
 
 - Le drapeau du lecteur, la révision des phrases (`SessionRequest.review`,
   `SessionReviews`, `CardReview.toggleFlag`) et la ligne « phrases à revoir » de
@@ -135,9 +165,10 @@ paramètres FSRS, conjugaison, import de paquets depuis Fichiers, synchro CloudK
 ## Décisions validées
 
 1. **Angles** `recognize` (espagnol → français) et `recall` (français → espagnol).
-2. **« Connue »**, pour débloquer la carte `recall` : la carte `recognize` est passée
-   en révision dans FSRS, c'est-à-dire réussie au moins une fois un autre jour que
-   celui de sa découverte.
+2. **« Connue »**, pour débloquer la carte `recall` : la carte `recognize` est en
+   révision dans FSRS **et** a été réussie un autre jour que celui de sa découverte
+   (`Card.isKnown`). Précision apportée à l'étape 3 : « Facile » d'emblée met une
+   carte en révision le jour même, ce qui ne suffit pas.
 3. **Ordre** : 1 et 2 d'abord (indépendantes : Mac et logique pure), puis 3 et 4
    ensemble.
 

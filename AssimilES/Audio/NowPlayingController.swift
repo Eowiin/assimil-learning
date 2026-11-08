@@ -49,15 +49,12 @@ final class NowPlayingController {
             return
         }
 
-        // La leçon de l'étape, pas celle de la séance : la vague en enchaîne
-        // deux et la révision en traverse autant qu'il y a de phrases marquées.
-        // Prise sur la séance, la ligne de l'écran verrouillé annoncerait la
-        // mauvaise leçon la moitié du temps.
+        // La leçon de l'étape, pas celle de la séance : c'est elle qu'on entend.
         let lessonNumber = step.lessonNumber
 
         var info: [String: Any] = [
             MPMediaItemPropertyAlbumTitle: "Leçon \(lessonNumber)",
-            MPMediaItemPropertyArtist: request.isReview ? request.title : request.subtitle,
+            MPMediaItemPropertyArtist: request.subtitle,
             MPNowPlayingInfoPropertyPlaybackRate: player.isPlaying ? Double(player.rate) : 0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
         ]

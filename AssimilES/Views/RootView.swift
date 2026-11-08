@@ -52,7 +52,9 @@ struct TodayView: View {
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
-    @Query(filter: #Predicate<Card> { $0.isActive == true }) private var cards: [Card]
+    /// Toutes les cartes, inactives comprises : un mot retiré ne doit pas revenir
+    /// parmi les nouveaux.
+    @Query private var cards: [Card]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @State private var openedSession: DailySession?
@@ -67,7 +69,26 @@ struct TodayView: View {
                            now: clock.today, manifest: manifest)
     }
 
-    private var due: [Card] { ReviewSchedule.due(in: cards) }
+    // MARK: Vocabulaire
+
+    private var vocabulary: Vocabulary? { VocabularyStore.current }
+
+    /// Les leçons dont les mots sont proposés : validées avant aujourd'hui.
+    private var vocabLessons: Set<Int> {
+        VocabStudy.availableLessons(sessions: sessions, anchorUnit: anchors.first?.unit,
+                                    manifest: manifest, now: clock.today)
+    }
+
+    /// Dues et nouvelles du moment. `clock.today` les fait recalculer au changement
+    /// de jour ; l'heure, elle, vient de l'horloge du système (décalée en Debug).
+    private var vocabCounts: (due: Int, new: Int) {
+        guard let vocabulary else { return (0, 0) }
+        _ = clock.today
+        let now = DayClock.systemNow()
+        let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: vocabLessons, cards: cards,
+                                      limit: VocabStudy.newRemaining(cards, now: now)).count
+        return (VocabStudy.due(cards, now: now).count, new)
+    }
 
     var body: some View {
         NavigationStack {
@@ -306,29 +327,44 @@ struct TodayView: View {
         }
     }
 
-    /// Les phrases dues : toute la ligne mène à la révision. Sans rien de dû, une
-    /// ligne calme qui dit où elles reviendront.
+    /// Le vocabulaire du jour : toute la ligne mène à la révision. Sans rien à faire,
+    /// une ligne calme qui dit d'où viennent les mots. Sans vocabulaire dans le
+    /// paquet, rien.
     @ViewBuilder
     private var reviews: some View {
-        if due.isEmpty {
-            reviewsRow(title: "Révisions à jour",
-                       detail: "Tes phrases marquées reviendront ici.",
-                       symbol: "checkmark.circle")
-        } else {
-            NavigationLink { PlayerView(request: .review) } label: {
-                HStack(spacing: 14) {
-                    reviewsRow(title: "\(due.count) phrase\(due.count > 1 ? "s" : "") à revoir",
-                               detail: "Chacune suivie d'une pause pour la redire.",
-                               symbol: "flag")
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+        if let vocabulary {
+            let counts = vocabCounts
+            if counts.due + counts.new == 0 {
+                reviewsRow(title: "Vocabulaire à jour",
+                           detail: "Les mots d'une leçon validée arrivent ici le lendemain.",
+                           symbol: "checkmark.circle")
+                    .accessibilityIdentifier("vocab-up-to-date")
+            } else {
+                NavigationLink {
+                    VocabReviewView(vocabulary: vocabulary, lessons: vocabLessons)
+                } label: {
+                    HStack(spacing: 14) {
+                        reviewsRow(title: "Vocabulaire",
+                                   detail: Self.vocabDetail(due: counts.due, new: counts.new),
+                                   symbol: "character.book.closed")
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("start-vocab")
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("start-reviews")
         }
+    }
+
+    /// « 14 à revoir · 20 nouveaux »
+    static func vocabDetail(due: Int, new: Int) -> String {
+        var parts: [String] = []
+        if due > 0 { parts.append("\(due) à revoir") }
+        if new > 0 { parts.append("\(new) nouveau\(new > 1 ? "x" : "")") }
+        return parts.joined(separator: " · ")
     }
 
     private func reviewsRow(title: String, detail: String, symbol: String) -> some View {
