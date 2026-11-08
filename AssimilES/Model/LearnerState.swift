@@ -41,6 +41,11 @@ final class Card {
     /// Réservés à FSRS, jamais écrits par l'échelle.
     var stability: Double?
     var difficulty: Double?
+    /// L'état FSRS (`FSRS.State`) et l'étape d'apprentissage. Nil sur une carte
+    /// neuve : elle est en apprentissage, à l'étape 0. Ajoutés à l'étape 2 du
+    /// vocabulaire, optionnels : migration légère.
+    var fsrsState: String?
+    var fsrsStep: Int?
 
     init(item: ItemID, angle: String, language: String, scheduler: String, at date: Date) {
         self.key = Self.makeKey(item: item, angle: angle)
@@ -63,6 +68,34 @@ final class Card {
     /// La phrase Assimil que la carte désigne ; nil pour un autre paquet, ou un
     /// identifiant illisible.
     var assimilItem: AssimilItem? { ItemID(itemID).flatMap(AssimilItem.init) }
+
+    /// Le mot que la carte désigne, pour les cartes de vocabulaire.
+    var vocabItem: VocabItem? { ItemID(itemID).flatMap(VocabItem.init) }
+
+    /// Ce que FSRS sait de la carte. Une carte jamais notée est neuve, en
+    /// apprentissage à l'étape 0.
+    var fsrsMemory: FSRS.Memory {
+        get {
+            let state = fsrsState.flatMap(FSRS.State.init) ?? .learning
+            return FSRS.Memory(state: state,
+                               step: state == .review ? nil : (fsrsStep ?? 0),
+                               stability: stability, difficulty: difficulty,
+                               due: dueAt, lastReview: lastReviewedAt)
+        }
+        set {
+            fsrsState = newValue.state.rawValue
+            fsrsStep = newValue.step
+            stability = newValue.stability
+            difficulty = newValue.difficulty
+            dueAt = newValue.due
+            lastReviewedAt = newValue.lastReview
+        }
+    }
+
+    /// « Connue » : passée en révision dans FSRS, c'est-à-dire réussie au moins une
+    /// fois un autre jour que celui de sa découverte. C'est ce qui débloque la carte
+    /// `recall` d'un mot (docs/module-vocabulaire.md).
+    var isKnown: Bool { fsrsState == FSRS.State.review.rawValue }
 
     enum Angle {
         /// Réentendre la phrase et la redire.

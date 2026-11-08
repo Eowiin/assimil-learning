@@ -18,6 +18,26 @@ enum CardReview {
         context.insert(ReviewLog(cardKey: card.key, reviewedAt: date, context: ReviewLog.Context.handsFree))
     }
 
+    /// Une carte notée (FSRS) : l'échéance suit la note, et le journal reçoit la
+    /// revue avec sa note — c'est lui qui permettra un jour d'optimiser FSRS.
+    static func grade(_ card: Card, _ rating: FSRS.Rating, at date: Date,
+                      durationMs: Int? = nil, in context: ModelContext) {
+        card.fsrsMemory = FSRS.review(card.fsrsMemory, rating: rating, at: date)
+        card.reps += 1
+        let log = ReviewLog(cardKey: card.key, reviewedAt: date, context: ReviewLog.Context.graded,
+                            rating: rating.rawValue)
+        log.durationMs = durationMs
+        context.insert(log)
+    }
+
+    /// Quand la carte reviendrait pour chaque note : ce qu'on affiche sous les
+    /// boutons, comme dans Anki. Rien n'est écrit.
+    static func preview(_ card: Card, at date: Date) -> [FSRS.Rating: Date] {
+        Dictionary(uniqueKeysWithValues: FSRS.Rating.allCases.map {
+            ($0, FSRS.review(card.fsrsMemory, rating: $0, at: date).due)
+        })
+    }
+
     /// Le drapeau, sur une phrase. Carte active : désactivée — la phrase est
     /// acquise, son historique reste. Carte inactive : réactivée et remise à zéro,
     /// due tout de suite, en tête de la liste. Pas de carte : créée.
