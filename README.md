@@ -505,6 +505,47 @@ pour qu'une phrase n'ait jamais deux clés. Ce qui suit le paquet lui appartient
 `AssimilItem` lit `L012:S04`, un futur paquet de conjugaison écrira ses propres
 chemins.
 
+### Le vocabulaire
+
+Les mots des leçons sont calculés **sur le Mac** et rangés dans le paquet, à côté
+du texte : `text/vocab.json`, hors dépôt comme lui. L'iPhone ne découpe ni ne
+traduit rien, il lit. Pour régénérer (une trentaine de secondes) :
+
+```bash
+swift tools/vocabulaire/build-vocab.swift Resources/text content/vocab/corrections.json
+```
+
+Trois outils d'Apple, tous sur la machine. NaturalLanguage découpe les mots et
+retrouve leur forme de base (`estoy` → `estar`). Sa classe lexicale écarte les
+mots-outils (`el`, `de`, `que`) ; une majuscule hors début de phrase écarte les noms
+propres. Translation donne un premier sens en français ; les langues espagnol et
+français s'installent une fois, dans Réglages Système › Général › Langue et
+région › Langues de traduction.
+
+Mesuré sur les 100 leçons : **environ 1 930 mots, 21 nouveaux par leçon**. La forme
+de base est juste à 93 % environ, la traduction d'un mot isolé à 85-90 %
+(`docs/cadrage-app.md`). Le reste se corrige dans `content/vocab/corrections.json`,
+hors dépôt — **à sauvegarder avec le texte des leçons**, il ne se régénère pas :
+
+```json
+{
+  "forms":        { "barran": "barrer" },
+  "lemmas":       { "gracia": "gracias" },
+  "translations": { "pesadilla": "cauchemar" },
+  "excluded":     [ "fa" ]
+}
+```
+
+Un mot se désigne par sa forme de base : `assimil-es:V:estar` (`VocabItem`), sous
+forme canonique — minuscules, Unicode composé, sans espace, « : » ni « # ». La
+composition se vérifie scalaire par scalaire : pour Swift, `"á" == "a\u{301}"`,
+alors que deux clés de carte ainsi écrites diffèrent dans le stockage.
+
+**Corriger une forme de base ne perd pas de carte.** `vocab.json` garde les
+renommages (`renamed` : `barrar` → `barrer`), d'une génération à l'autre, pour que
+l'app déplace une carte posée sur l'ancienne forme. Le script prévient si un mot
+disparaît sans renommage.
+
 ### Cartes, journal et temps d'étude
 
 Quatre tables s'ajoutent, par migration légère, à côté des anciennes :

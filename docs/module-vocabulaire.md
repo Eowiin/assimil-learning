@@ -38,7 +38,16 @@ marquées disparaissent.
 
 ## Étapes
 
-### 1 · Le vocabulaire dans le paquet (Mac)
+### 1 · Le vocabulaire dans le paquet (Mac) — fait (branche feat/vocab-paquet)
+
+`build-vocab.swift`, `content/vocab/corrections.json`, `text/vocab.json` ; côté app
+`VocabItem`, `Vocabulary`, `ContentPack.vocabulary`, les angles `recognize` et
+`recall`. Tests dans `VocabularyTests`. Précision apportée en route : la forme
+canonique se vérifie **scalaire par scalaire**, car `==` sur des `String` confond
+« á » composé et décomposé.
+
+Ce qui était prévu :
+
 
 `tools/vocabulaire/` passe de la mesure à la production :
 
