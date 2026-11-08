@@ -546,6 +546,20 @@ renommages (`renamed` : `barrar` → `barrer`), d'une génération à l'autre, p
 l'app déplace une carte posée sur l'ancienne forme. Le script prévient si un mot
 disparaît sans renommage.
 
+**Les cartes de mots sont notées, et FSRS les espace** (`Model/FSRS.swift`). C'est
+FSRS-6, porté de l'implémentation officielle (py-fsrs 6.3.2) et vérifié contre elle
+revue par revue (`FSRSTests`, valeurs tirées de `tools/vocabulaire/fsrs-reference.py`).
+Paramètres par défaut, rétention visée 90 %, sans optimisation ni « fuzz » ; étapes
+d'apprentissage d'Anki (1 puis 10 minutes, 10 minutes en réapprentissage). Quatre
+notes : À revoir, Difficile, Bien, Facile ; chaque revue va au journal avec sa note
+(`ReviewLog.rating`, contexte `graded`), ce qui permettra d'optimiser un jour.
+`Card` garde l'état FSRS (`fsrsState`, `fsrsStep`, `stability`, `difficulty`) ; une
+carte de mot est « connue » quand elle est passée en révision (`Card.isKnown`).
+
+Deux détails de portage : `round` en Python arrondit les demis au pair (2,5 → 2),
+et les jours écoulés y sont des tranches de 24 h, pas des jours calendaires. Le
+port fait de même, sinon les échéances divergent d'un jour.
+
 ### Cartes, journal et temps d'étude
 
 Quatre tables s'ajoutent, par migration légère, à côté des anciennes :

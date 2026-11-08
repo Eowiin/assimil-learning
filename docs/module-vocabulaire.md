@@ -66,7 +66,27 @@ Côté app : `ContentPack` lit `vocab.json` s'il existe, et `VocabItem` lit et �
 chemin `V:<forme>`, comme `AssimilItem` le fait pour `L012:S04`. Sans `vocab.json`,
 rien ne change. Tests : lecture du fichier, forme canonique de l'identifiant.
 
-### 2 · FSRS
+### 2 · FSRS — fait (branche feat/vocab-fsrs)
+
+`Model/FSRS.swift` (logique pure), `Card.fsrsMemory`, `Card.isKnown`,
+`CardReview.grade` et `CardReview.preview`. Tests : `FSRSTests` (6 scénarios, 30
+revues, identiques à py-fsrs à 10⁻⁹ près) et `CardGradeTests`. Les valeurs de
+référence viennent de `tools/vocabulaire/fsrs-reference.py`.
+
+Précisions apportées en route :
+
+- **Deux champs, et non un** : `fsrsState` et `fsrsStep` (l'étape d'apprentissage),
+  optionnels tous les deux. Nil = carte neuve.
+- **Étapes d'apprentissage d'Anki** (1 puis 10 minutes ; 10 minutes en
+  réapprentissage), comme py-fsrs par défaut. Une carte ratée revient donc dans la
+  séance ; l'écran de l'étape 3 devra la reproposer.
+- **Sans « fuzz »** : échéances prévisibles et testables, un peu plus groupées.
+- **Arrondi des intervalles au pair**, comme `round` en Python (2,5 → 2).
+- **Les jours écoulés sont des tranches de 24 h**, comme py-fsrs, pas des jours
+  calendaires. L'étape 3 décidera si une carte due ce soir compte dès ce matin.
+
+Ce qui était prévu :
+
 
 L'ordonnanceur, sans interface :
 
