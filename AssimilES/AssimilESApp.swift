@@ -20,6 +20,9 @@ struct AssimilESApp: App {
         // Avant toute vue : la dernière copie de l'ancien modèle, une seule fois.
         // Ensuite, la révision et le temps d'étude ne vivent plus que dans les cartes.
         LegacyCopy.finishIfNeeded(in: container.mainContext)
+        // La révision des phrases marquées est retirée : leurs cartes sont
+        // désactivées (pas supprimées), une fois. Après la copie, qui en crée.
+        CardReview.retireListenCards(in: container.mainContext)
     }
 
     /// Chaque entité ajoutée (`DailySession`, `CourseAnchor`, puis `Card`,

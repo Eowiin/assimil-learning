@@ -22,7 +22,7 @@ struct CardGradeTests {
         let context = container.mainContext
         let card = try vocabCard("estar", in: context)
         #expect(card.fsrsMemory == FSRS.Memory.new(at: Fixture.date(day: 1)))
-        #expect(!card.isKnown)
+        #expect(!card.isInReview && !card.isKnown())
         #expect(card.vocabItem?.lemma == "estar")
         #expect(card.assimilItem == nil)
     }
@@ -44,7 +44,9 @@ struct CardGradeTests {
         #expect(card.fsrsMemory == expected)
         #expect(card.fsrsState == "review" && card.fsrsStep == nil)
         #expect(card.reps == 2)
-        #expect(card.isKnown)
+        // En révision, mais découverte le jour même : pas encore connue.
+        #expect(card.isInReview)
+        #expect(!card.isKnown(calendar: Fixture.calendar))
 
         let logs = try context.fetch(FetchDescriptor<ReviewLog>(sortBy: [SortDescriptor(\.reviewedAt)]))
         #expect(logs.map(\.rating) == [3, 3])

@@ -104,6 +104,20 @@ struct Vocabulary: Decodable, Equatable {
     }
 }
 
-extension ContentPack {
-    var vocabulary: Vocabulary? { Vocabulary.load(from: textDirectory) }
+/// Le vocabulaire en cours, lu une fois. Il vient du même dossier que le texte des
+/// leçons (`LessonTextStore.directory`) : le paquet trouvé au lancement, ou les
+/// textes fictifs des tests d'interface (`ASSIMIL_TEXT_DIR`). 500 Ko de JSON ne se
+/// relisent pas à chaque affichage de l'accueil.
+@MainActor
+enum VocabularyStore {
+    private static var cache: (directory: URL?, vocabulary: Vocabulary?)?
+
+    static var current: Vocabulary? {
+        let directory = LessonTextStore.directory
+            ?? Bundle.main.resourceURL?.appendingPathComponent("text", isDirectory: true)
+        if let cache, cache.directory == directory { return cache.vocabulary }
+        let vocabulary = Vocabulary.load(from: directory)
+        cache = (directory, vocabulary)
+        return vocabulary
+    }
 }

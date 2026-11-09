@@ -23,8 +23,8 @@ final class Card {
     var itemID: String = ""
     var angle: String = Card.Angle.listen
     var language: String = "es"
-    /// Ce qui calcule l'échéance : l'échelle fixe d'aujourd'hui (`ReviewSchedule`),
-    /// FSRS peut-être un jour. Les cartes d'une même file peuvent ainsi différer.
+    /// Ce qui calcule l'échéance : FSRS pour les mots ; l'ancienne échelle fixe pour
+    /// les cartes de phrases, désactivées depuis.
     var scheduler: String = Card.Scheduler.ladder
     /// Désactiver au lieu de supprimer : une phrase démarquée garde son historique,
     /// et le retrouve si elle est remarquée.
@@ -62,9 +62,6 @@ final class Card {
         "\(item.rawValue)#\(angle)"
     }
 
-    /// Une carte inactive n'est jamais due : elle attend d'être remarquée.
-    func isDue(at now: Date) -> Bool { isActive && dueAt <= now }
-
     /// La phrase Assimil que la carte désigne ; nil pour un autre paquet, ou un
     /// identifiant illisible.
     var assimilItem: AssimilItem? { ItemID(itemID).flatMap(AssimilItem.init) }
@@ -92,13 +89,21 @@ final class Card {
         }
     }
 
-    /// « Connue » : passée en révision dans FSRS, c'est-à-dire réussie au moins une
-    /// fois un autre jour que celui de sa découverte. C'est ce qui débloque la carte
-    /// `recall` d'un mot (docs/module-vocabulaire.md).
-    var isKnown: Bool { fsrsState == FSRS.State.review.rawValue }
+    /// En révision dans FSRS (sortie de l'apprentissage, pas en réapprentissage).
+    var isInReview: Bool { fsrsState == FSRS.State.review.rawValue }
+
+    /// « Connue » : en révision **et** réussie un autre jour que celui de sa
+    /// découverte. « Facile » d'emblée la met en révision le jour même : ce n'est pas
+    /// encore la connaître. C'est ce qui débloque la carte `recall` d'un mot
+    /// (docs/module-vocabulaire.md).
+    func isKnown(calendar: Calendar = .current) -> Bool {
+        guard isInReview, let last = lastReviewedAt else { return false }
+        return calendar.startOfDay(for: last) > calendar.startOfDay(for: createdAt)
+    }
 
     enum Angle {
-        /// Réentendre la phrase et la redire.
+        /// Une phrase marquée au drapeau. Le drapeau et sa révision sont retirés :
+        /// ces cartes restent en base, désactivées, avec leur journal.
         static let listen = "listen"
         /// Un mot : de l'espagnol vers son sens.
         static let recognize = "recognize"
@@ -107,7 +112,8 @@ final class Card {
     }
 
     enum Scheduler {
-        /// Intervalles fixes, sans notation (`ReviewSchedule`).
+        /// L'ancienne échelle fixe des phrases marquées (1, 3, 7, 21, 60 jours),
+        /// retirée avec le drapeau. Les cartes copiées de l'ancien modèle la portent.
         static let ladder = "ladder"
         static let fsrs = "fsrs"
     }
@@ -168,8 +174,10 @@ final class StudyEvent {
 
     enum Activity {
         static let assimilDaily = "assimil.daily"
+        /// La révision des phrases marquées, retirée : d'anciens événements la portent.
         static let review = "review"
         static let assimilListen = "assimil.listen"
+        static let vocab = "vocab"
         /// Le total d'un jour de l'ancien `StudyDay`, sans détail d'activité.
         static let assimilLegacy = "assimil.legacy"
     }
@@ -183,9 +191,11 @@ struct StudyActivity: Equatable {
 
     static let assimilDaily = StudyActivity(name: StudyEvent.Activity.assimilDaily,
                                             courseID: PackStore.assimilSpanishID)
-    static let review = StudyActivity(name: StudyEvent.Activity.review, courseID: nil)
     static let assimilListen = StudyActivity(name: StudyEvent.Activity.assimilListen,
                                              courseID: PackStore.assimilSpanishID)
+    /// Les mots viennent des leçons d'Assimil : le cours est le leur.
+    static let vocab = StudyActivity(name: StudyEvent.Activity.vocab,
+                                     courseID: PackStore.assimilSpanishID)
 }
 
 enum StudyTime {

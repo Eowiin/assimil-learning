@@ -17,13 +17,11 @@ enum StudyMode: String {
 
 /// Ce qu'on demande au lecteur de jouer.
 ///
-/// Une séance n'est pas « une leçon dans un mode » : la file de révision traverse
-/// autant de leçons qu'il y a de phrases marquées. C'est
-/// donc l'étape qui porte sa leçon, jamais la séance — sans quoi l'écran affiche
-/// le texte d'une leçon pendant qu'on en entend une autre.
+/// C'est l'étape qui porte sa leçon, jamais la séance : la file de révision des
+/// phrases, retirée depuis, en traversait plusieurs, et l'écran affichait alors le
+/// texte d'une leçon pendant qu'on en entendait une autre. La règle reste.
 enum SessionRequest: Hashable {
     case lesson(number: Int, mode: StudyMode)
-    case review
     /// Une étape audio de la séance du jour. Elle n'enregistre aucune reprise dans
     /// `LessonProgress` : c'est la séance qui s'en souvient.
     case daily(lessonNumber: Int, audio: DailyAudio)
@@ -33,14 +31,12 @@ enum SessionRequest: Hashable {
     var title: String {
         switch self {
         case .lesson(let number, _), .daily(let number, _), .excerpt(let number): "Leçon \(number)"
-        case .review: "À revoir"
         }
     }
 
     var subtitle: String {
         switch self {
         case .lesson(_, let mode): mode.title
-        case .review: "Révision espacée"
         case .daily(_, .discovery): "Découverte"
         case .daily(_, .repetition): "Répétition"
         case .excerpt: "Extrait"
@@ -51,12 +47,7 @@ enum SessionRequest: Hashable {
         if case .daily = self { true } else { false }
     }
 
-    var isReview: Bool {
-        if case .review = self { true } else { false }
-    }
-
-    /// Le mode, quand la séance en a un : la révision n'en est pas un, elle a sa
-    /// propre file et ne se reprend pas là où on l'a laissée.
+    /// Le mode, quand la séance en a un : seule l'écoute libre en a.
     var mode: StudyMode? {
         if case .lesson(_, let mode) = self { mode } else { nil }
     }
@@ -67,7 +58,6 @@ enum SessionRequest: Hashable {
     var studyActivity: StudyActivity {
         switch self {
         case .daily, .excerpt: .assimilDaily
-        case .review: .review
         case .lesson: .assimilListen
         }
     }
@@ -142,12 +132,6 @@ struct SessionStep: Identifiable, Hashable {
         return AssimilItem(lesson: lessonNumber, isExercise: isExercise, number: n)
     }
 
-    /// La clé de la carte que le drapeau pose sur cette étape :
-    /// « assimil-es:L012:S04#listen ».
-    var markKey: String? {
-        item.map { Card.makeKey(item: $0.itemID(), angle: Card.Angle.listen) }
-    }
-
     /// Le nom de la prise de voix de cette phrase : « L012-S04 », l'ancienne clé de
     /// phrase marquée. Les prises déjà enregistrées portent ce nom ; le garder évite
     /// d'avoir à renommer des fichiers pour suivre la clé des cartes.
@@ -173,15 +157,12 @@ enum SessionBuilder {
     /// Point d'entrée unique : c'est la demande qui décide, et elle peut ne pas
     /// tenir dans une leçon.
     static func build(_ request: SessionRequest,
-                      cards: [Card] = [],
                       manifest: Manifest,
                       settings: SessionSettings = SessionSettings()) -> [SessionStep] {
         switch request {
         case .lesson(let number, let mode):
             guard let lesson = manifest.lesson(number) else { return [] }
             return build(mode: mode, lesson: lesson, manifest: manifest, settings: settings)
-        case .review:
-            return review(cards, manifest, settings)
         case .daily(let number, let audio):
             guard let lesson = manifest.lesson(number) else { return [] }
             // Les exercices ne suivent jamais le dialogue dans la séance du jour :
@@ -259,34 +240,6 @@ enum SessionBuilder {
         return steps.compactMap { $0 }
     }
 
-    /// La file de révision : chaque carte reçue, suivie d'une pause pour la redire.
-    /// C'est de la répétition active — une phrase qu'on se contente de réentendre
-    /// n'est pas révisée. L'appelant passe les cartes dues (`ReviewSchedule.due`).
-    ///
-    /// L'ordre est celui de l'échéance : la plus attendue d'abord, et à échéance
-    /// égale l'ordre des clés, qui suit celui du livre — pour ne pas sauter d'une
-    /// leçon à l'autre sans raison. Une carte qui ne désigne pas une phrase du
-    /// paquet est passée.
-    private static func review(_ cards: [Card],
-                               _ m: Manifest,
-                               _ s: SessionSettings) -> [SessionStep] {
-        let ordered = cards.sorted {
-            $0.dueAt == $1.dueAt ? $0.key < $1.key : $0.dueAt < $1.dueAt
-        }
-
-        var steps: [SessionStep] = []
-        for card in ordered {
-            guard let item = card.assimilItem,
-                  let lesson = m.lesson(item.lesson),
-                  let c = clip(for: item, in: lesson),
-                  let step = clip(c, item.isExercise ? .exercise : .dialogue, lesson, m)
-            else { continue }
-            steps.append(step)
-            steps.append(pause(after: c, lesson: lesson, isExercise: item.isExercise, settings: s))
-        }
-        return steps
-    }
-
     // MARK: - Briques
 
     private static func header(_ lesson: Lesson, _ m: Manifest) -> [SessionStep?] {
@@ -309,7 +262,8 @@ enum SessionBuilder {
                            repetition: repetition)
     }
 
-    private static func clip(for item: AssimilItem, in lesson: Lesson) -> AudioClip? {
+    /// Le clip d'une phrase Assimil : celui que joue le verso d'une carte de mot.
+    static func clip(for item: AssimilItem, in lesson: Lesson) -> AudioClip? {
         let clips = item.isExercise ? lesson.exercise : lesson.dialogue
         return clips.first { $0.n == item.number }
     }

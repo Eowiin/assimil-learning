@@ -6,9 +6,7 @@ import UIKit
 /// des commandes assez grosses pour être atteintes au pouce en marchant.
 ///
 /// Tout ce qui s'affiche est dérivé des **étapes** de la séance, jamais d'une
-/// leçon supposée unique : c'est ce qui permet au même écran de suivre une leçon,
-/// la vague (deux leçons) ou la file de révision (autant de leçons qu'il y a de
-/// phrases marquées).
+/// leçon supposée unique : chaque étape porte sa leçon (voir `SessionRequest`).
 struct PlayerView: View {
     let request: SessionRequest
     /// Pour une étape de la séance du jour : la phrase où reprendre, et qui prévenir
@@ -25,7 +23,6 @@ struct PlayerView: View {
     @Environment(\.manifest) private var manifest
     @Environment(\.scenePhase) private var scenePhase
 
-    @Query private var cards: [Card]
     @Query private var progress: [LessonProgress]
 
     @State private var showTranslation = false
@@ -36,12 +33,6 @@ struct PlayerView: View {
     private static let currentLineAnchor = UnitPoint(x: 0.5, y: 0.3)
     /// La phrase sur laquelle on veut s'essayer. Ouvre l'écran de prononciation.
     @StateObject private var trial = VoiceTrial()
-    /// Étapes déjà comptées comme revues dans cette séance : rejouer une phrase
-    /// ne doit pas repousser son échéance une seconde fois.
-    @State private var reviews = SessionReviews()
-
-    /// Une carte désactivée n'est plus marquée : son drapeau est vide.
-    private var markedKeys: Set<String> { Set(cards.filter(\.isActive).map(\.key)) }
     private var isCurrentSession: Bool { player.request == request }
 
     var body: some View {
@@ -85,7 +76,6 @@ struct PlayerView: View {
             if scenePhase == .background { recordSession() }
         }
         .onChange(of: player.index) {
-            recordReviewIfNeeded()
             if isCurrentSession {
                 onSentenceChange?(player.currentNavigableStep?.sentenceNumber)
             }
@@ -199,31 +189,25 @@ struct PlayerView: View {
         default:
             SentenceRow(step: row.step,
                         isCurrent: isCurrent,
-                        showTranslation: showTranslation,
-                        isMarked: row.step.markKey.map(markedKeys.contains) ?? false)
+                        showTranslation: showTranslation)
         }
     }
 
-    private var emptyMessage: String {
-        request.isReview
-            ? "Aucune phrase à revoir aujourd'hui."
-            : "Cette séance ne contient aucune étape."
-    }
+    private var emptyMessage: String { "Cette séance ne contient aucune étape." }
 
-    /// Seulement pour une leçon : en révision, les phrases viennent de partout et
-    /// une note par leçon manquante serait du bruit.
+    /// Seulement pour une leçon : un extrait ne dit rien du texte de sa leçon.
     private var missingTextNotice: Bool {
         switch request {
         case .lesson(let number, _), .daily(let number, _):
             return !LessonTextStore.hasText(for: number)
-        case .review, .excerpt:
+        case .excerpt:
             return false
         }
     }
 
     // MARK: - Commandes
 
-    /// Une rangée au pouce : le drapeau et le micro encadrent le transport, la
+    /// Une rangée au pouce : le transport au centre, le micro à droite, la
     /// progression au-dessus. La vitesse et la traduction, plus rares, sont en haut.
     private var controls: some View {
         VStack(spacing: 12) {
@@ -241,7 +225,7 @@ struct PlayerView: View {
                     } else {
                         // « Écoute » et non « séance » : arriver au bout de l'audio ne
                         // termine pas une leçon.
-                        Text(player.isFinished ? (request.isReview ? "Révision terminée" : "Écoute terminée") : positionLabel)
+                        Text(player.isFinished ? "Écoute terminée" : positionLabel)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -255,15 +239,9 @@ struct PlayerView: View {
             }
 
             HStack {
-                Button { toggleMarkCurrent() } label: {
-                    Image(systemName: isCurrentMarked ? "flag.fill" : "flag")
-                        .font(.title3)
-                        .frame(width: 48, height: 48)
-                }
-                .disabled(currentMarkKey == nil)
-                .foregroundStyle(isCurrentMarked ? StudyStyle.accent : .secondary)
-                .accessibilityLabel(request.isReview ? "Phrase acquise, retirer des révisions" :
-                                    (isCurrentMarked ? "Retirer des phrases à revoir" : "Marquer à revoir"))
+                // La place qu'avait le drapeau (retiré avec la révision des phrases) :
+                // elle garde la lecture au centre, face au micro.
+                Color.clear.frame(width: 48, height: 48)
                 Spacer(minLength: 0)
                 Button { player.previousOrReplay() } label: {
                     Image(systemName: "backward.end.fill")
@@ -393,9 +371,6 @@ struct PlayerView: View {
         }
         let step = sentences[rank].step
         let position = "\(rank + 1) sur \(sentences.count)"
-        if request.isReview {
-            return "Leçon \(step.lessonNumber), phrase \(step.sentenceNumber ?? 0) · \(position)"
-        }
         if let repetitionLabel {
             return "Phrase \(position) · \(repetitionLabel.lowercased())"
         }
@@ -411,30 +386,16 @@ struct PlayerView: View {
         return "Répétition \(step.repetition) sur \(times)"
     }
 
-    private var currentMarkKey: String? {
-        guard isCurrentSession else { return nil }
-        return player.currentNavigableStep?.markKey
-    }
-
-    private var isCurrentMarked: Bool {
-        currentMarkKey.map(markedKeys.contains) ?? false
-    }
-
     // MARK: - Actions
 
     private func startIfNeeded() {
         guard !isCurrentSession else { return }
-        let steps = SessionBuilder.build(request,
-                                         cards: ReviewSchedule.due(in: cards),
-                                         manifest: manifest,
-                                         settings: settings.session)
+        let steps = SessionBuilder.build(request, manifest: manifest, settings: settings.session)
         player.start(request, steps: steps, from: resumeIndex(in: steps))
-        recordReviewIfNeeded()
     }
 
-    /// La révision ne se reprend pas : la file est reconstruite à chaque fois, à
-    /// partir de ce qui est dû au moment où on la lance. L'étape du jour reprend à
-    /// sa phrase, que le nombre de répétitions ait changé ou non.
+    /// L'étape du jour reprend à sa phrase, que le nombre de répétitions ait changé
+    /// ou non. Un extrait repart du début.
     private func resumeIndex(in steps: [SessionStep]) -> Int {
         switch request {
         case .lesson(let number, let mode):
@@ -443,29 +404,9 @@ struct PlayerView: View {
             }?.stepIndex ?? 0
         case .daily:
             return resumeSentence.flatMap { SessionBuilder.index(ofSentence: $0, in: steps) } ?? 0
-        case .review, .excerpt:
+        case .excerpt:
             return 0
         }
-    }
-
-    /// En révision, le drapeau **retire** la phrase de la file et passe à la
-    /// suivante : c'est le geste « celle-là est acquise », le seul de la séance.
-    /// Ailleurs, il marque ou démarque comme avant.
-    private func toggleMarkCurrent() {
-        guard let item = player.currentNavigableStep?.item else { return }
-        let isMarked = CardReview.toggleFlag(on: item, cards: cards, at: .now, in: context)
-        if !isMarked, request.isReview { player.nextSentence() }
-        save()
-    }
-
-    /// Une phrase compte comme revue dès qu'elle est jouée : c'est de l'avoir
-    /// réentendue et redite qui la révise, pas une note qu'on lui donnerait.
-    private func recordReviewIfNeeded() {
-        guard request.isReview, isCurrentSession,
-              let step = player.currentNavigableStep,
-              reviews.record(step, cards: cards, at: .now, in: context)
-        else { return }
-        save()
     }
 
     /// Sauvegarde la reprise et le temps écouté en quittant l'écran. Arriver au
@@ -490,8 +431,8 @@ struct PlayerView: View {
         save()
     }
 
-    /// Chaque geste est enregistré aussitôt : attendre l'autosave ou le passage en
-    /// arrière-plan perdait un drapeau à la moindre fermeture brutale.
+    /// Enregistré aussitôt : attendre l'autosave ou le passage en arrière-plan
+    /// perdait la reprise à la moindre fermeture brutale.
     private func save() {
         try? context.save()
     }
@@ -595,7 +536,6 @@ private struct SentenceRow: View {
     let step: SessionStep
     let isCurrent: Bool
     let showTranslation: Bool
-    let isMarked: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -632,13 +572,6 @@ private struct SentenceRow: View {
             }
 
             Spacer(minLength: 0)
-
-            if isMarked {
-                Image(systemName: "flag.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .accessibilityLabel("À revoir")
-            }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: isCurrent)
     }

@@ -48,57 +48,27 @@ struct SessionTests {
         #expect(steps[firstOfSentence2].repetition == 1)
     }
 
-    func card(_ lesson: Int, _ number: Int, exercise: Bool = false, due: Date) -> Card {
-        Card(item: AssimilItem(lesson: lesson, isExercise: exercise, number: number).itemID(),
-             angle: Card.Angle.listen, language: "es", scheduler: Card.Scheduler.ladder, at: due)
-    }
-
-    @Test("File de révision : deux phrases 3 de leçons différentes restent distinctes")
-    func reviewQueueSameNumber() throws {
-        let a = card(4, 3, due: Fixture.date(day: 3))
-        let b = card(9, 3, due: Fixture.date(day: 3).addingTimeInterval(1))
-        let steps = SessionBuilder.build(.review, cards: [b, a], manifest: manifest)
-        #expect(steps.count == 4)
-        #expect(SessionNavigation.navigableIndex(after: 0, in: steps) == 2)
-        #expect(steps[2].lessonNumber == 9)
-    }
-
-    @Test("File de révision : échéance d'abord, puis l'ordre des clés ; une carte d'ailleurs est passée")
-    func reviewQueueOrder() throws {
-        let day = Fixture.date(day: 3)
-        let exercise = card(12, 2, exercise: true, due: day)
-        let dialogue = card(12, 2, due: day)
-        let earlier = card(40, 1, due: Fixture.date(day: 2))
-        let foreign = Card(item: try #require(ItemID("conjugaison-es:ser:presente:1s")),
-                           angle: Card.Angle.listen, language: "es", scheduler: Card.Scheduler.ladder, at: day)
-        let steps = SessionBuilder.build(.review, cards: [exercise, foreign, dialogue, earlier], manifest: manifest)
-        let sentences = steps.filter { !$0.isPause }
-        #expect(sentences.map(\.markKey) == [earlier.key, dialogue.key, exercise.key])
-        #expect(sentences.map(\.isExercise) == [false, false, true])
-        #expect(steps.filter(\.isPause).count == 3)
-    }
-
-    @Test("L'étape désigne sa carte ; la prise de voix garde l'ancien nom")
+    @Test("L'étape désigne sa phrase ; la prise de voix garde l'ancien nom")
     func stepKeys() throws {
         let steps = SessionBuilder.build(.lesson(number: 12, mode: .shadowing), manifest: manifest)
         let dialogue = try #require(steps.first { $0.kind == .dialogue && $0.sentenceNumber == 3 })
-        #expect(dialogue.markKey == "assimil-es:L012:S03#listen")
+        #expect(dialogue.item?.itemID().rawValue == "assimil-es:L012:S03")
         #expect(dialogue.recordingKey == "L012-S03")
         let exercise = try #require(steps.first { $0.kind == .exercise && $0.sentenceNumber == 2 })
-        #expect(exercise.markKey == "assimil-es:L012:T02#listen")
+        #expect(exercise.item?.itemID().rawValue == "assimil-es:L012:T02")
         #expect(exercise.recordingKey == "L012-T02")
-        // La pause qui suit une phrase désigne la même carte.
+        // La pause qui suit une phrase désigne la même phrase.
         let pause = try #require(steps.first { $0.isPause && $0.isExercise && $0.sentenceNumber == 2 })
-        #expect(pause.markKey == exercise.markKey)
+        #expect(pause.item == exercise.item)
         let title = try #require(steps.first { $0.kind == .title })
-        #expect(title.markKey == nil)
+        #expect(title.item == nil)
     }
 
     @Test("Le temps compte pour l'activité de l'écran")
     func studyActivity() {
         #expect(SessionRequest.daily(lessonNumber: 3, audio: .discovery).studyActivity == .assimilDaily)
-        #expect(SessionRequest.review.studyActivity == .review)
-        #expect(SessionRequest.review.studyActivity.courseID == nil)
+        #expect(SessionRequest.excerpt(lessonNumber: 3).studyActivity == .assimilDaily)
+        #expect(StudyActivity.vocab.courseID == "assimil-es")
         #expect(SessionRequest.lesson(number: 3, mode: .passive).studyActivity == .assimilListen)
         #expect(SessionRequest.lesson(number: 3, mode: .passive).studyActivity.courseID == "assimil-es")
     }
