@@ -1,11 +1,13 @@
 import Foundation
 
-/// Un mot à apprendre, désigné par sa forme de base : « assimil-es:V:estar ».
+/// Un mot ou une expression à apprendre, désigné par sa forme de base :
+/// « assimil-es:V:estar », « assimil-es:V:qué tal ».
 ///
 /// Comme `AssimilItem` pour les phrases, il écrit et lit le chemin de son
 /// identifiant, et seule la forme canonique passe : minuscules, Unicode composé
-/// (NFC), sans espace ni « : » ni « # » — ces deux-là séparent le paquet et l'angle
-/// dans les clés de carte. Sans cela, `Estar` et `estar` feraient deux cartes.
+/// (NFC), sans « : » ni « # » — ils séparent le paquet et l'angle dans les clés de
+/// carte —, les mots d'une expression séparés par une seule espace. Sans cela,
+/// `Estar` et `estar`, ou `qué  tal` et `qué tal`, feraient deux cartes.
 struct VocabItem: Hashable {
     let lemma: String
 
@@ -26,12 +28,16 @@ struct VocabItem: Hashable {
         self.init(lemma: String(id.path.dropFirst(2)))
     }
 
-    /// La forme canonique d'un mot quelconque, ou nil s'il n'en reste rien.
+    /// La forme canonique d'un mot ou d'une expression quelconque, ou nil s'il n'en
+    /// reste rien.
     static func canonical(_ word: String) -> String? {
         let cleaned = word.lowercased().precomposedStringWithCanonicalMapping
             .trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return isCanonical(cleaned) ? cleaned : nil
     }
+
+    var isExpression: Bool { lemma.contains(" ") }
 
     static func isCanonical(_ lemma: String) -> Bool {
         !lemma.isEmpty
@@ -39,7 +45,8 @@ struct VocabItem: Hashable {
             // Par scalaires : `==` sur des `String` tient « á » et « a + ◌́ » pour égaux,
             // alors que les clés de carte, elles, diffèrent octet par octet.
             && lemma.unicodeScalars.elementsEqual(lemma.precomposedStringWithCanonicalMapping.unicodeScalars)
-            && !lemma.contains(where: { $0 == ":" || $0 == "#" || $0.isWhitespace })
+            && !lemma.contains(where: { $0 == ":" || $0 == "#" || ($0.isWhitespace && $0 != " ") })
+            && !lemma.hasPrefix(" ") && !lemma.hasSuffix(" ") && !lemma.contains("  ")
     }
 }
 
@@ -79,8 +86,14 @@ struct Vocabulary: Decodable, Equatable {
     /// « barrer ». Une carte posée sur l'ancienne forme se déplace sur la nouvelle,
     /// au lieu de rester orpheline.
     let renamed: [String: String]
+    /// Traduction automatique des phrases d'exemple que le livre ne traduit pas, par
+    /// chemin de phrase (« L012:S04 ») : le livre n'a le français que des leçons 1 à 5.
+    let sentences: [String: String]
+    /// La place de chaque mot dans `words` : un accueil qui compte ses cartes dues ne
+    /// parcourt pas deux mille mots par carte.
+    private let index: [String: Int]
 
-    private enum CodingKeys: String, CodingKey { case version, words, renamed }
+    private enum CodingKeys: String, CodingKey { case version, words, renamed, sentences }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -89,9 +102,14 @@ struct Vocabulary: Decodable, Equatable {
         // retrouver : il est écarté à la lecture, pas fatal.
         words = try c.decode([Word].self, forKey: .words).filter { $0.item != nil }
         renamed = try c.decodeIfPresent([String: String].self, forKey: .renamed) ?? [:]
+        sentences = try c.decodeIfPresent([String: String].self, forKey: .sentences) ?? [:]
+        index = Dictionary(words.enumerated().map { ($1.lemma, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
-    func word(_ item: VocabItem) -> Word? { words.first { $0.lemma == item.lemma } }
+    func word(_ item: VocabItem) -> Word? { index[item.lemma].map { words[$0] } }
+
+    /// La traduction automatique d'une phrase, quand le livre n'en donne pas.
+    func sentenceTranslation(_ item: AssimilItem) -> String? { sentences[item.path] }
 
     static let fileName = "vocab.json"
 

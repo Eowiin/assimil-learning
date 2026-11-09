@@ -23,7 +23,14 @@ struct VocabularyTests {
         #expect(VocabItem(lemma: "") == nil)
         #expect(VocabItem(lemma: "a:b") == nil)
         #expect(VocabItem(lemma: "a#b") == nil)
-        #expect(VocabItem(lemma: "dos palabras") == nil)
+        // Une expression : des mots séparés par une seule espace.
+        #expect(VocabItem(lemma: "qué tal")?.itemID().rawValue == "assimil-es:V:qué tal")
+        #expect(VocabItem(lemma: "qué tal")?.isExpression == true)
+        #expect(VocabItem(lemma: "estar")?.isExpression == false)
+        #expect(VocabItem(lemma: "qué  tal") == nil)
+        #expect(VocabItem(lemma: " qué tal") == nil)
+        #expect(VocabItem(lemma: "qué tal ") == nil)
+        #expect(VocabItem(lemma: "qué\ttal") == nil)
         // « á » décomposé (a + accent) n'est pas la forme canonique de « á ».
         #expect(VocabItem(lemma: "ma\u{0301}s") == nil)
         #expect(VocabItem(lemma: "más") != nil)
@@ -38,6 +45,7 @@ struct VocabularyTests {
         #expect(VocabItem.canonical("¡Hola!") == "hola")
         #expect(VocabItem.canonical("ma\u{0301}s") == "más")
         #expect(VocabItem.canonical("...") == nil)
+        #expect(VocabItem.canonical("¿Qué   tal?") == "qué tal")
     }
 
     @Test("Lecture de vocab.json : mots, occurrences, renommages")
@@ -52,7 +60,8 @@ struct VocabularyTests {
                {"lemma": "Mal", "forms": ["mal"], "translation": null,
                 "firstLesson": 2, "count": 1, "occurrences": []}
              ],
-             "renamed": {"barrar": "barrer"}}
+             "renamed": {"barrar": "barrer"},
+             "sentences": {"L003:T01": "Traduction de l'exercice."}}
             """)
         let vocabulary = try #require(Vocabulary.load(from: dir))
         // Le mot à la forme non canonique est écarté, pas fatal.
@@ -63,6 +72,9 @@ struct VocabularyTests {
         #expect(estar.occurrences.map(\.item) == [AssimilItem(lesson: 1, isExercise: false, number: 2),
                                                   AssimilItem(lesson: 3, isExercise: true, number: 1)])
         #expect(vocabulary.renamed == ["barrar": "barrer"])
+        #expect(vocabulary.sentenceTranslation(AssimilItem(lesson: 3, isExercise: true, number: 1)) == "Traduction de l'exercice.")
+        #expect(vocabulary.sentenceTranslation(AssimilItem(lesson: 1, isExercise: false, number: 2)) == nil)
+        #expect(vocabulary.word(try #require(VocabItem(lemma: "mal"))) == nil)
     }
 
     @Test("Sans vocab.json, ou illisible : pas de vocabulaire, pas d'erreur")
@@ -71,6 +83,8 @@ struct VocabularyTests {
         #expect(Vocabulary.load(from: FileManager.default.temporaryDirectory.appendingPathComponent("absent")) == nil)
         #expect(Vocabulary.load(from: try write("{ pas du json")) == nil)
         // `renamed` est facultatif.
-        #expect(Vocabulary.load(from: try write(#"{"version": 1, "words": []}"#))?.renamed == [:])
+        let minimal = Vocabulary.load(from: try write(#"{"version": 1, "words": []}"#))
+        #expect(minimal?.renamed == [:])
+        #expect(minimal?.sentences == [:])
     }
 }

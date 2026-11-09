@@ -21,6 +21,14 @@ struct VocabStudyTests {
         return try JSONDecoder().decode(Vocabulary.self, from: Data(json.utf8))
     }
 
+    /// Un vocabulaire réduit à ces mots, sans autre détail.
+    func vocabulary(_ lemmas: [String]) throws -> Vocabulary {
+        let words = lemmas.map {
+            #"{"lemma": "\#($0)", "forms": [], "translation": null, "firstLesson": 1, "count": 1, "occurrences": []}"#
+        }
+        return try JSONDecoder().decode(Vocabulary.self, from: Data(#"{"version": 1, "words": [\#(words.joined(separator: ","))]}"#.utf8))
+    }
+
     func card(_ lemma: String, _ angle: String = Card.Angle.recognize, created: Date,
               in context: ModelContext) throws -> Card {
         let new = VocabStudy.NewCard(item: try #require(VocabItem(lemma: lemma)), angle: angle)
@@ -51,7 +59,7 @@ struct VocabStudyTests {
 
     // MARK: - Dû et nouveau
 
-    @Test("Due : une carte en révision due ce soir l'est dès ce matin ; en apprentissage, à la minute")
+    @Test("Due : en révision, dès le matin ; en apprentissage, à la minute ; une carte orpheline, jamais")
     func due() throws {
         let container = try Fixture.container()
         let context = container.mainContext
@@ -71,11 +79,17 @@ struct VocabStudyTests {
                           angle: Card.Angle.listen, language: "es", scheduler: Card.Scheduler.ladder,
                           at: Fixture.date(day: 1))
         context.insert(phrase)
+        // « tal » a été absorbé par « qué tal » : sa carte, due, n'a plus de mot.
+        let orphan = try card("tal", created: Fixture.date(day: 1), in: context)
+        let orphanSoon = try card("tel", created: morning, in: context)
+        CardReview.grade(orphanSoon, .good, at: morning.addingTimeInterval(-60), in: context)
 
         let cards = try context.fetch(FetchDescriptor<Card>())
-        #expect(VocabStudy.due(cards, now: morning, calendar: Fixture.calendar).map(\.key)
+        let vocabulary = try vocabulary(["a", "b", "c", "d"])
+        #expect(VocabStudy.due(cards, in: vocabulary, now: morning, calendar: Fixture.calendar).map(\.key)
                 == [tonight.key])
-        #expect(VocabStudy.dueSoon(cards, now: morning).map(\.key) == [learningLater.key])
+        #expect(VocabStudy.dueSoon(cards, in: vocabulary, now: morning).map(\.key) == [learningLater.key])
+        #expect(orphan.isActive, "écartée, pas désactivée : son mot peut revenir")
     }
 
     @Test("Au plus 20 nouvelles cartes par jour : celles créées aujourd'hui comptent")

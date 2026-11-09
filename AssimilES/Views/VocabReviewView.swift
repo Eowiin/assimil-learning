@@ -125,8 +125,14 @@ struct VocabReviewView: View {
         return HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(line.es).font(.body)
+                // Le français du livre s'il existe (leçons 1 à 5), sinon la traduction
+                // automatique, dite comme telle : c'est la phrase qui donne le sens.
                 if let fr = line.fr, !fr.isEmpty {
                     Text(fr).font(.callout).foregroundStyle(.secondary)
+                } else if let fr = vocabulary.sentenceTranslation(occurrence.item) {
+                    Text(fr).font(.callout).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("vocab-example-fr")
+                    Text("Traduction automatique").font(.caption2).foregroundStyle(.tertiary)
                 }
                 Text("Leçon \(occurrence.lesson)\(occurrence.isExercise ? ", exercice" : "")")
                     .font(.caption)
@@ -210,8 +216,8 @@ struct VocabReviewView: View {
         VocabStudy.applyRenames(vocabulary.renamed, cards: cards, in: context)
         let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: lessons, cards: cards,
                                       limit: VocabStudy.newRemaining(cards, now: now))
-        var s = VocabSession(due: VocabStudy.due(cards, now: now), new: new,
-                             soon: VocabStudy.dueSoon(cards, now: now))
+        var s = VocabSession(due: VocabStudy.due(cards, in: vocabulary, now: now), new: new,
+                             soon: VocabStudy.dueSoon(cards, in: vocabulary, now: now))
         s.advance(now: now)
         session = s
     }
