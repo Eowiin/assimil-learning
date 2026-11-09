@@ -87,7 +87,7 @@ struct TodayView: View {
         let now = DayClock.systemNow()
         let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: vocabLessons, cards: cards,
                                       limit: VocabStudy.newRemaining(cards, now: now)).count
-        return (VocabStudy.due(cards, now: now).count, new)
+        return (VocabStudy.due(cards, in: vocabulary, now: now).count, new)
     }
 
     var body: some View {

@@ -531,13 +531,38 @@ hors dépôt — **à sauvegarder avec le texte des leçons**, il ne se régén�
 {
   "forms":        { "barran": "barrer" },
   "lemmas":       { "gracia": "gracias" },
-  "translations": { "pesadilla": "cauchemar" },
-  "excluded":     [ "fa" ]
+  "translations": { "pesadilla": "cauchemar", "ni hablar": "pas question" },
+  "excluded":     [ "fa" ],
+  "expressions":  { "qué tal": [], "tener ganas de": ["tengo ganas de"] }
 }
 ```
 
-Un mot se désigne par sa forme de base : `assimil-es:V:estar` (`VocabItem`), sous
-forme canonique — minuscules, Unicode composé, sans espace, « : » ni « # ». La
+**Les expressions sont des cartes à part entière.** Découpé mot par mot, « ¿Qué
+tal? » ne laissait que `tal` (`qué` est un mot-outil), traduit « tel » : faux, et
+sans rapport avec la phrase. Le script reconnaît donc d'abord les expressions de la
+liste, par leur forme écrite, leurs variantes ou la suite de leurs formes de base
+(« tienes ganas de » → `tener gana de`), et les mots qu'elles couvrent ne comptent
+pas seuls à cet endroit. `tal` ne reste une carte que s'il apparaît hors
+expression. La liste (67 expressions, 344 occurrences) vient d'un calcul de
+cooccurrence sur les 100 leçons — les suites de 2 à 4 mots qui reviennent au moins 3
+fois plus souvent que le hasard ne le dit —, triée à la main : le calcul trouve aussi
+`los niños` ou `mi marido`, qui ne sont pas des expressions. Translation traduit bien
+mieux une expression qu'un mot (`qué tal` → « comment ça va ») ; une quinzaine sont
+tout de même corrigées (`un ojo de la cara` → « les yeux de la tête »). Le résumé
+du script liste les expressions jamais trouvées.
+
+**La phrase d'exemple est traduite aussi.** Le livre ne donne le français que des
+leçons 1 à 5 ; pour les autres, le script traduit la phrase d'exemple de chaque mot
+(`sentences` dans `vocab.json`, environ 900 phrases), et le verso l'affiche avec la
+mention « Traduction automatique ». C'est la phrase qui donne le sens.
+
+**Une carte orpheline est écartée.** Quand un mot quitte le vocabulaire (`tal`,
+absorbé par `qué tal`), sa carte n'est plus proposée ni comptée, mais elle reste en
+base avec son journal : le mot peut revenir.
+
+Un mot se désigne par sa forme de base : `assimil-es:V:estar`, une expression de
+même : `assimil-es:V:qué tal` (`VocabItem`), sous forme canonique — minuscules,
+Unicode composé, sans « : » ni « # », les mots séparés par une seule espace. La
 composition se vérifie scalaire par scalaire : pour Swift, `"á" == "a\u{301}"`,
 alors que deux clés de carte ainsi écrites diffèrent dans le stockage.
 

@@ -43,22 +43,31 @@ enum VocabStudy {
     /// Les cartes de mots dues. Une carte en révision due ce soir l'est dès ce matin :
     /// la révision est quotidienne, l'heure n'a pas à décider. Une carte en
     /// apprentissage, elle, attend ses minutes.
-    static func due(_ cards: [Card], now: Date, calendar: Calendar = .current) -> [Card] {
+    ///
+    /// Une carte dont le mot n'est plus dans le vocabulaire (« tal », absorbé par
+    /// « qué tal ») est orpheline : écartée, pas supprimée — son journal reste.
+    static func due(_ cards: [Card], in vocabulary: Vocabulary, now: Date,
+                    calendar: Calendar = .current) -> [Card] {
         let endOfToday: Date = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
         let due: [Card] = cards.filter { card in
-            guard card.isActive, card.scheduler == Card.Scheduler.fsrs else { return false }
+            guard card.isActive, card.scheduler == Card.Scheduler.fsrs, isInVocabulary(card, vocabulary) else { return false }
             return card.isInReview ? card.dueAt < endOfToday : card.dueAt <= now
         }
         return due.sorted { a, b in a.dueAt == b.dueAt ? a.key < b.key : a.dueAt < b.dueAt }
     }
 
     /// Les cartes en apprentissage qui reviennent dans la séance (moins de 20 minutes).
-    static func dueSoon(_ cards: [Card], now: Date) -> [Card] {
+    static func dueSoon(_ cards: [Card], in vocabulary: Vocabulary, now: Date) -> [Card] {
         cards.filter {
             $0.isActive && $0.scheduler == Card.Scheduler.fsrs && !$0.isInReview
                 && $0.dueAt > now && $0.dueAt <= now.addingTimeInterval(learnAhead)
+                && isInVocabulary($0, vocabulary)
         }
         .sorted { $0.dueAt < $1.dueAt }
+    }
+
+    private static func isInVocabulary(_ card: Card, _ vocabulary: Vocabulary) -> Bool {
+        card.vocabItem.map { vocabulary.word($0) != nil } ?? false
     }
 
     /// Combien de nouvelles cartes sont encore permises aujourd'hui.

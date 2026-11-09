@@ -157,6 +157,15 @@ Ce qui était prévu :
 Cette étape peut se faire en même temps que la 3, pour que l'accueil ne montre
 jamais deux révisions.
 
+### 5 · Les expressions — fait (branche feat/vocab-expressions)
+
+Retour d'usage : « qué tal » donnait une carte `tal` → « tel ». Les expressions
+deviennent des cartes (67, triées à la main parmi les candidats d'un calcul de
+cooccurrence), leurs mots ne comptent plus seuls à cet endroit, la phrase d'exemple
+est traduite quand le livre ne la traduit pas, et une carte dont le mot a quitté le
+vocabulaire est écartée (pas supprimée). `VocabItem` accepte une espace entre les
+mots d'une expression.
+
 ## Hors champ
 
 Audio mot par mot (Assimil découpe par phrase), synthèse vocale, optimisation des
