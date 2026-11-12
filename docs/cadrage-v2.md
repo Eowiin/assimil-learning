@@ -203,8 +203,9 @@ Ce ne sont que des pistes. Aucune n'entre dans l'ordre ci-dessous.
    cours, et plus tard le niveau et les mots connus. Les erreurs relevées reviennent
    sur l'iPhone, qui les range avec le reste. Il n'y a qu'une source de vérité et
    qu'une sauvegarde. On changera probablement d'architecture avec les fonctions à venir.
-3. **Le modèle de prononciation est un wav2vec2.** Lequel exactement, et ce que mesuraient
-   les 90 %, restent à préciser.
+3. **Le modèle de prononciation est un wav2vec2**, que l'essai refait par Ethan le
+   12 novembre valide. Le module se fera avec. Avant de le brancher, il passera sur les
+   16 enregistrements du test du 10 novembre, pour avoir un chiffre comparable.
 
 ## À valider
 
