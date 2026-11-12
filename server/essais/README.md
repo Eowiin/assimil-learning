@@ -80,3 +80,32 @@ garder.
   ```
 - **La mémoire affiche `?`** : `nvidia-smi` ne répond pas dans WSL2, et les modèles
   tournent sans la carte graphique. Vérifie le pilote NVIDIA de Windows.
+
+## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
+
+Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris
+pour tourner sur le PC. Un wav2vec2 phonétique transcrit la prise, et chaque phonème
+attendu reçoit une note : le modèle entend-il mieux ce son-là, ou un autre ?
+`rejouer.py` le fait passer sur les 16 prises du test (8 phrases, soignées puis avec
+les fautes d'un francophone), puis donne le bilan.
+
+```bash
+# Sur le Mac, une fois : les prises et leur texte, hors dépôt, à copier sur le PC.
+python3 server/essais/prononciation/empaqueter.py ~/Desktop/prises-10-novembre
+
+# Sur le PC :
+uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
+ASSIMIL_PRONONCIATION_MODELE=autre/modele uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
+```
+
+**Le chiffre à battre**, avec le modèle par défaut (`facebook/wav2vec2-xlsr-53-espeak-cv-ft`),
+retrouvé à l'identique le 12 novembre :
+
+| | θ dit s | jota dite r français | r dit r français | v dit v | **Total** |
+|---|---|---|---|---|---|
+| Fautes repérées | 4/7 | 0/4 | 1/18 | 3/5 | **8/34** |
+| Signalés à tort (prise soignée) | | | | | **24/218** |
+
+Un même modèle donne le même résultat sur le Mac et sur le PC : la carte graphique
+change la vitesse, pas le jugement. Pour faire mieux, il faut un autre modèle (la
+variable `ASSIMIL_PRONONCIATION_MODELE`), ou une autre méthode.
