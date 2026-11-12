@@ -81,6 +81,10 @@ La réponse ressemble à :
 `gpu` vaut `null` quand `nvidia-smi` ne répond pas dans WSL2. Dans ce cas, le pilote
 NVIDIA de Windows n'est pas vu, et les modèles tourneront sur le processeur.
 
+## Essais de modèles
+
+`essais/` mesure un modèle avant de le brancher sur l'app : `essais/README.md`.
+
 ## Tests
 
 ```bash
