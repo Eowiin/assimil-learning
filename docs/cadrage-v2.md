@@ -1,6 +1,6 @@
 # Cadrage v2 : une app d'espagnol complète, avec un serveur à la maison
 
-**Brouillon du 2026-11-12.** Rien n'est codé. Ce cadrage prend la suite de
+**Validé le 2026-11-12.** Le serveur (étape 0) est fait, et la conversation est mesurée. Ce cadrage prend la suite de
 `cadrage-app.md` (validé le 2026-11-07, vocabulaire fait). Il fixe le but, l'architecture
 et l'ordre des modules. Comme avant, chaque module aura son propre plan.
 
@@ -95,14 +95,23 @@ entre deux tours gêne à l'usage.
 |---|---|---|
 | Voix de synthèse | XTTS v2 (Coqui) | Testé par Ethan : bon. Sa licence interdit l'usage commercial, ce qui ne pose pas de problème ici |
 | Analyse de prononciation | wav2vec2 (lequel exactement : à préciser) | Ethan a mesuré environ 90 % sur le PC. Le test du 10 novembre (`wav2vec2-xlsr-53-espeak-cv-ft`) ne repérait que 24 % des fautes. On tranche sur les 16 enregistrements (plus bas) |
-| Reconnaissance (voix → texte) | Qwen ASR | En test (Whisper si Qwen ASR ne convient pas) |
-| IA de conversation | Qwen (taille à fixer) | En test : qualité en espagnol, vitesse |
+| Reconnaissance (voix → texte) | Whisper large-v3-turbo (faster-whisper) | Retenu : testé par Ethan, 1,5 Go au plus |
+| IA de conversation | Qwen3 8B, servi par Ollama, sans réflexion | Retenu après l'essai du 12 novembre. Gemma 3 12B en réserve si l'espagnol déçoit |
 
-**La mémoire graphique est la contrainte.** Estimation, avant toute mesure : XTTS v2
-prend 2 à 3 Go, la reconnaissance 2 à 5 Go, la prononciation 1 à 2 Go. Il resterait
-6 à 10 Go pour le modèle de conversation. Ça laisse un modèle de 7 à 8 milliards de
-paramètres, compressé. Si ça ne tient pas, plusieurs options : charger les modèles à
-la demande, ou n'en garder chargé qu'un jeu par mode.
+**Mesuré le 12 novembre** (`server/essais/conversation.py`) :
+
+- **Délai par tour, une fois la carte préparée : 1,26 s.** L'écoute prend 0,31 s,
+  l'IA 0,14 s et la voix 0,81 s, pour 4 s de réponse parlée.
+- **Le premier passage sur la carte est lent** : 20 s, dont 16 s pour XTTS. Le
+  serveur fera donc un tour à vide au démarrage.
+- **La mémoire graphique monte à 10,7 Go au plus, sur 16**, avec les trois modèles
+  chargés et l'affichage de Windows. Le wav2vec2 de la prononciation a la place qu'il
+  lui faut.
+
+Whisper a transcrit « jamón de Jaén » en « jamón de chan ». Le mot était mal
+prononcé (« jan », en une syllabe), et c'est un nom propre rare. La conversation
+n'en souffre pas, puisque l'IA a compris le sens. Mais c'est exactement le genre de
+faute que le module de prononciation devra montrer.
 
 ## Les modules
 
@@ -207,7 +216,7 @@ Ce ne sont que des pistes. Aucune n'entre dans l'ordre ci-dessous.
    12 novembre valide. Le module se fera avec. Avant de le brancher, il passera sur les
    16 enregistrements du test du 10 novembre, pour avoir un chiffre comparable.
 
-## À valider
-
-- **L'ordre** : la conversation en talkie-walkie d'abord.
-- **Les choix de départ** pour les sujets et les corrections (section Conversation).
+4. **La conversation passe d'abord, en talkie-walkie**, avec Qwen3 8B, Whisper
+   large-v3-turbo et XTTS v2. Elle part sur les choix de départ de la section
+   Conversation : l'IA propose un sujet, et les corrections viennent à la fin. Les
+   thèmes tirés des leçons viendront plus tard.
