@@ -1,6 +1,6 @@
 # Module de conversation
 
-**Plan proposé le 2026-11-12, à valider.** Le pourquoi, l'architecture et les mesures
+**Validé le 2026-11-12.** Le pourquoi, l'architecture et les mesures
 sont dans `docs/cadrage-v2.md`. Comme pour le vocabulaire, ce fichier dit ce qu'il
 reste à faire et comment, et le README garde les décisions une fois faites.
 
@@ -40,8 +40,9 @@ mesuré à la maison. Il faut compter un peu plus en 4G ou en 5G.
 
 ## L'échange entre l'app et le serveur
 
-L'API passe en **version 2** : l'app refuse un serveur qui n'a pas les routes de
-conversation, et le voyant dit pourquoi.
+Ajouter des routes ne change pas la forme des anciennes : l'API reste en **version 1**.
+`/health` annonce plutôt les modules prêts (`"modules": ["conversation"]`). L'app
+ne montre la conversation que si le serveur l'annonce.
 
 | Route | L'app envoie | Le serveur renvoie |
 |---|---|---|
@@ -107,18 +108,12 @@ conversation, et le voyant dit pourquoi.
 - LiveKit, si l'attente du talkie-walkie gêne.
 - Faire tourner le serveur comme un service, lancé avec Windows.
 
-## Questions pour toi
+## Décisions (2026-11-12)
 
-1. **Le micro** : toucher pour commencer, puis toucher pour finir, ou bien garder le
-   doigt appuyé pendant qu'on parle ? Je propose de toucher deux fois : rien à tenir
-   en bougeant, et le doigt libre.
-2. **Garder les conversations sur l'iPhone ?** Je propose de garder chaque
-   conversation et ses corrections (un nouveau modèle SwiftData, ajouté par une
-   migration légère). Elles nourriront le profil d'apprenant plus tard, même si rien
-   ne les affiche après le récapitulatif.
-3. **Le texte de l'IA** : affiché d'emblée, ou masqué derrière un bouton ? Masqué, on
-   travaille la compréhension orale. Je propose de l'afficher, avec un réglage pour le
-   masquer.
-4. **La voix de l'IA** : une voix fournie avec XTTS, ou une imitation d'une voix
-   native d'Assimil (un extrait de 10 s, gardé sur le PC, hors dépôt) ? Je propose
-   d'essayer les deux à l'étape 1, et de garder celle qui te plaît.
+1. **Le micro** : on touche pour commencer, et on touche pour finir.
+2. **Les conversations et leurs corrections sont gardées sur l'iPhone** (un nouveau
+   modèle SwiftData), pour le profil d'apprenant à venir.
+3. **Le texte de l'IA est affiché**, et un réglage permet de le masquer.
+4. **La voix de l'IA est celle qu'Ethan a déjà clonée avec XTTS.** L'extrait de
+   référence reste sur le PC, hors dépôt. Le serveur le trouve par une variable
+   d'environnement.
