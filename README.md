@@ -709,8 +709,8 @@ moi / natif. « Reprendre » relance la séance là où elle était.
 ajoutait le tempo, le moteur de reconnaissance, l'écart médian en demi-tons et ce que
 la machine avait compris : des chiffres justes, mais qui n'aidaient pas à se corriger.
 Seule la courbe servait ; elle est passée dans le panneau. La logique de l'essai vit
-dans `VoiceTrial`. Une analyse qui dise quel son corriger a été essayée et écartée
-(#44, voir « L'accent au phonème »).
+dans `VoiceTrial`. Une analyse qui dise quel son corriger a été essayée sur le
+téléphone et écartée (#44, voir « L'accent au phonème »).
 
 **Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
 *passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
@@ -820,11 +820,13 @@ transcription libre du modèle, qui n'en dépend pas, écrit le r français « r
 jota dite en r français « x », et entend le θ d'Ethan comme un s dans les deux
 prises. Les deux fautes les plus courantes d'un francophone lui sont invisibles.
 
-Pas de Core ML ni d'intégration, donc. L'écran garde ce qui est vérifiable — les mots
+Pas de Core ML ni d'intégration, donc : ce modèle est écarté, et aucun modèle assez
+bon ne tiendrait sur l'iPhone 11. L'écran garde ce qui est vérifiable — les mots
 qui passent, la courbe d'intonation, la réécoute côte à côte. Le prototype reste sur
 les branches `recherche/prononciation-locale` et `recherche/prononciation-essai-voix`,
-hors de `dev`. La seule voie restante pour un score d'accent est un service en ligne,
-où la voix quitte le téléphone.
+hors de `dev`. La piste suivante est un modèle plus gros, servi par un PC de la maison
+(carte graphique) plutôt que calculé sur le téléphone : à mesurer sur les mêmes
+enregistrements avant toute intégration.
 
 ## Interface
 

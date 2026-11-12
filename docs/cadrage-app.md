@@ -31,7 +31,7 @@ Chaque module aura son propre plan, comme `refonte-modele-donnees.md`.
 | Module | Ce que c'est | Contenu | Faisabilité | Avis |
 |---|---|---|---|---|
 | **Vocabulaire** | Les mots des leçons déjà faites, en cartes à la Anki | Tiré du texte espagnol des leçons | À vérifier (voir plus bas) | **En premier** |
-| **Prononciation** (#44) | Dire quel son corriger, et comment | Phonèmes calculés localement | Écarté : le test sur ta voix ne repère que 24 % des fautes (README) | Abandonné, pas de Core ML |
+| **Prononciation** (#44) | Dire quel son corriger, et comment | Phonèmes calculés localement | En local sur l'iPhone, écarté : le test sur ta voix ne repère que 24 % des fautes (README) | Pas de Core ML ; à reprendre avec un PC de la maison comme serveur |
 | **Rappel** (angle « recall ») | Le français d'une phrase → la redire en espagnol | Traduction du livre | Bloqué : le français n'existe que pour les leçons 1 à 5 | Plus tard |
 | **Conjugaison** | Exercices de conjugaison | Un paquet à construire | Contenu à créer de zéro | Plus tard |
 | **Lecteur** | Lire des textes hors Assimil | Textes à importer | Import de paquets à faire | Plus tard |
