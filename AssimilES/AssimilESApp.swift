@@ -9,6 +9,7 @@ struct AssimilESApp: App {
     @StateObject private var clock = DayClock()
     @State private var nowPlaying: NowPlayingController?
     @State private var packs: PackStore
+    @State private var server = ServerStatus()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -37,6 +38,7 @@ struct AssimilESApp: App {
                 .environmentObject(settings)
                 .environmentObject(clock)
                 .environment(packs)
+                .environment(server)
                 .task {
                     player.rate = Float(settings.rate)
                     // Retenu au-delà de l'initialisation : c'est lui qui porte
@@ -47,7 +49,11 @@ struct AssimilESApp: App {
         .modelContainer(container)
         .onChange(of: scenePhase) {
             AudioLog.info("scène : \(String(describing: scenePhase))")
-            if scenePhase == .active { clock.refresh() }
+            if scenePhase == .active {
+                clock.refresh()
+                // Le PC a pu s'allumer ou s'éteindre pendant que l'app dormait.
+                Task { await server.check(address: settings.serverAddress) }
+            }
             if scenePhase == .background { try? container.mainContext.save() }
         }
     }

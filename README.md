@@ -17,6 +17,7 @@ scans/                 PDF des doubles pages, hors dépôt
 content/               sorties OCR, transcriptions audio, brouillons — hors dépôt
 AssimilES/             sources SwiftUI
 tools/                 scripts de préparation des données
+server/                le serveur de la maison (FastAPI, PC fixe sous WSL2)
 ```
 
 Les originaux vivent dans `~/Documents/assimil-3135414906918-methode-espagnol`
@@ -827,6 +828,20 @@ les branches `recherche/prononciation-locale` et `recherche/prononciation-essai-
 hors de `dev`. La piste suivante est un modèle plus gros, servi par un PC de la maison
 (carte graphique) plutôt que calculé sur le téléphone : à mesurer sur les mêmes
 enregistrements avant toute intégration.
+
+## Le serveur de la maison
+
+Ce que l'iPhone ne peut pas faire tourner, la conversation et le jugement de la
+prononciation, le PC fixe le fera (`docs/cadrage-v2.md`). Le serveur vit dans
+`server/` ; son installation (WSL2, Tailscale, `tailscale serve`) est décrite dans
+`server/README.md`.
+
+L'app ne gère pas la connexion : Tailscale la fait, et l'app ne connaît qu'une adresse,
+saisie dans Réglages, Serveur. `ServerStatus` interroge `GET /health` au lancement,
+au retour au premier plan et à la demande. Le voyant dit pourquoi le serveur ne répond
+pas (Tailscale éteint, serveur non lancé, certificat, version d'API). Sans serveur,
+rien ne change : les modules qui en dépendent ne s'afficheront que s'il est en ligne.
+Le serveur ne garde rien de l'apprenant, et toutes les données restent sur l'iPhone.
 
 ## Interface
 
