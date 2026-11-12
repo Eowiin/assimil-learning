@@ -178,6 +178,7 @@ final class StudyEvent {
         static let review = "review"
         static let assimilListen = "assimil.listen"
         static let vocab = "vocab"
+        static let conversation = "conversation"
         /// Le total d'un jour de l'ancien `StudyDay`, sans détail d'activité.
         static let assimilLegacy = "assimil.legacy"
     }
@@ -196,6 +197,8 @@ struct StudyActivity: Equatable {
     /// Les mots viennent des leçons d'Assimil : le cours est le leur.
     static let vocab = StudyActivity(name: StudyEvent.Activity.vocab,
                                      courseID: PackStore.assimilSpanishID)
+    /// La conversation ne dépend d'aucun cours.
+    static let conversation = StudyActivity(name: StudyEvent.Activity.conversation, courseID: nil)
 }
 
 enum StudyTime {
