@@ -862,8 +862,19 @@ des faux dans les tests.
   et un appui montre la réplique écrite.
 - **Le temps compte** dans `StudyEvent`, activité `conversation`, sans cours. Un
   silence de plus de deux minutes ne compte que pour deux.
-- `ASSIMIL_FAKE_SERVER=1` (Debug) simule un serveur en ligne, pour les tests
-  d'interface.
+- **« Terminer » montre le récapitulatif** (`ConversationRecapView`) : chaque phrase
+  fautive, sa correction et la règle en une phrase. Les mots changés sont barrés en
+  rouge dans la phrase dite, et en gras dans la corrigée (`WordDiff`). La comparaison
+  ignore la casse, la ponctuation et les accents écrits, qui viennent de la
+  transcription. Sans phrase de l'apprenant, « Terminer » revient simplement à l'accueil.
+- **Chaque conversation est gardée sur l'iPhone** (`ConversationRecord`) : l'échange
+  et les corrections, en JSON, dans la forme où ils circulent avec le serveur. Elle
+  est gardée même si on part par le bouton retour, ou si le récapitulatif échoue ;
+  les corrections s'y ajoutent quand elles arrivent. Rien ne la réaffiche : elle
+  attend le profil d'apprenant. C'est une nouvelle entité, ajoutée par migration
+  légère.
+- `ASSIMIL_FAKE_SERVER=1` (Debug) simule un serveur en ligne et un micro
+  silencieux. Le test d'interface fait ainsi un tour complet, jusqu'au récapitulatif.
 
 ## Interface
 

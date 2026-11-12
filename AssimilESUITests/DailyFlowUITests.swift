@@ -239,7 +239,17 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["conversation-mic"].isEnabled)
         snapshot(app, "conversation-ouverture")
 
+        // Le faux serveur « entend » une phrase fautive, sans micro.
+        tap(app.buttons["conversation-mic"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        snapshot(app, "conversation-tour")
+
         tap(app.buttons["conversation-end"])
+        XCTAssertTrue(app.staticTexts["recap-count"].waitForExistence(timeout: 5))
+        snapshot(app, "conversation-recapitulatif")
+
+        tap(app.buttons["recap-close"])
         XCTAssertTrue(app.buttons["start-conversation"].waitForExistence(timeout: 5))
     }
 

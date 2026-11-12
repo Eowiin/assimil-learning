@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 
 /// La conversation avec l'IA, en talkie-walkie : elle ouvre, on touche le micro
-/// pour parler, on touche à nouveau pour envoyer, elle répond à voix haute. La
+/// pour parler, on touche à nouveau pour envoyer, elle répond à voix haute.
+/// « Terminer » garde la conversation sur l'iPhone et montre le récapitulatif. La
 /// règle vit dans `ConversationSession` ; l'écran affiche et transmet.
 struct ConversationView: View {
 
@@ -18,30 +19,52 @@ struct ConversationView: View {
     /// Secondes d'étude pas encore inscrites (`StudyTime`).
     @State private var unrecorded: Double = 0
     @State private var lastTick = DayClock.systemNow()
+    /// Terminée : l'écran montre le récapitulatif.
+    @State private var finished = false
+    /// La conversation gardée, complétée par les corrections quand elles arrivent.
+    @State private var record: ConversationRecord?
 
     /// Un silence de plus de deux minutes ne compte que pour deux : le téléphone
     /// posé ne fait pas du temps d'étude.
     private static let maxGap: Double = 120
 
     init(service: any ConversationService) {
-        _session = State(initialValue: ConversationSession(service: service, sound: ConversationAudio()))
+        _session = State(initialValue: ConversationSession(service: service, sound: Self.sound()))
+    }
+
+    private static func sound() -> any ConversationSound {
+        #if DEBUG
+        if AppEnvironment.fakeServer { return SilentSound() }
+        #endif
+        return ConversationAudio()
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            transcript
-            controls
+        Group {
+            if finished {
+                ConversationRecapView(review: session.review) { await review() }
+            } else {
+                VStack(spacing: 0) {
+                    transcript
+                    controls
+                }
+            }
         }
         .frame(maxWidth: 600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(StudyStyle.paper)
-        .navigationTitle("Conversation")
+        .navigationTitle(finished ? "Récapitulatif" : "Conversation")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Terminer") { dismiss() }
-                    .accessibilityIdentifier("conversation-end")
+                if finished {
+                    Button("Fermer") { dismiss() }
+                        .accessibilityIdentifier("recap-close")
+                } else {
+                    Button("Terminer") { finish() }
+                        .accessibilityIdentifier("conversation-end")
+                }
             }
         }
         .task {
@@ -51,6 +74,9 @@ struct ConversationView: View {
         }
         .onDisappear {
             session.close()
+            // Partie par le bouton retour : la conversation est gardée quand même,
+            // sans récapitulatif.
+            save()
             recordTime()
         }
         .onChange(of: session.phase) { tick() }
@@ -232,6 +258,36 @@ struct ConversationView: View {
         Text(text)
             .font(.subheadline)
             .foregroundStyle(.secondary)
+    }
+
+    // MARK: - Fin
+
+    /// Sans phrase de l'apprenant, rien à garder ni à corriger : on revient à
+    /// l'accueil.
+    private func finish() {
+        guard session.learnerSpoke else { return dismiss() }
+        session.close()
+        save()
+        recordTime()
+        withAnimation { finished = true }
+        Task { await review() }
+    }
+
+    private func review() async {
+        await session.requestReview()
+        if case .done(let corrections) = session.review, let record {
+            record.reviewedCorrections = corrections
+            try? context.save()
+        }
+    }
+
+    private func save() {
+        guard record == nil, session.learnerSpoke else { return }
+        let saved = ConversationRecord(startedAt: session.startedAt, endedAt: DayClock.systemNow(),
+                                       messages: session.history)
+        context.insert(saved)
+        try? context.save()
+        record = saved
     }
 
     // MARK: - Temps d'étude

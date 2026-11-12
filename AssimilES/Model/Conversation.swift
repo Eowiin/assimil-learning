@@ -113,7 +113,10 @@ struct ConversationClient: ConversationService {
             body.append(Data(value.utf8))
             body.append(Data("\r\n".utf8))
         }
-        let historyJSON = (try? JSONEncoder().encode(history)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        // Clés triées : le même historique donne toujours le même texte.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let historyJSON = (try? encoder.encode(history)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         field("history", historyJSON)
         if let text { field("text", text) }
         if let audio {
@@ -200,8 +203,18 @@ final class ConversationSession {
         case micDenied
     }
 
+    /// Le récapitulatif, une fois la conversation terminée.
+    enum Review: Equatable {
+        case notStarted
+        case loading
+        case done([ConversationCorrection])
+        case failed(String)
+    }
+
     private(set) var lines: [ConversationLine] = []
     private(set) var phase: Phase = .opening
+    private(set) var review: Review = .notStarted
+    let startedAt: Date
     /// La bulle de l'IA en train d'être lue.
     private(set) var playingLine: ConversationLine.ID?
 
@@ -211,9 +224,10 @@ final class ConversationSession {
     private enum Pending { case opening, turn(Data) }
     private var pending: Pending?
 
-    init(service: any ConversationService, sound: any ConversationSound) {
+    init(service: any ConversationService, sound: any ConversationSound, startedAt: Date = .now) {
         self.service = service
         self.sound = sound
+        self.startedAt = startedAt
     }
 
     /// L'historique envoyé au serveur, qui ne garde rien.
@@ -234,6 +248,21 @@ final class ConversationSession {
         sound.stopPlayback()
         sound.end()
         playingLine = nil
+    }
+
+    /// Les corrections de toute la conversation. Sans phrase de l'apprenant, rien à
+    /// demander. Se relance après un échec.
+    func requestReview() async {
+        guard learnerSpoke else {
+            review = .done([])
+            return
+        }
+        review = .loading
+        do {
+            review = .done(try await service.review(history: history))
+        } catch {
+            review = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+        }
     }
 
     /// Le bouton micro : un premier appui écoute, un second envoie.
@@ -317,11 +346,26 @@ struct FakeConversationService: ConversationService {
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply {
-        TurnReply(heard: text ?? "He ido al mercado.",
-                  reply: PartnerReply(text: "¡Qué bien! ¿Qué has comprado?", audio: Data(),
+        TurnReply(heard: text ?? "Hoy yo soy cansado.",
+                  reply: PartnerReply(text: "¡Vaya! ¿Has dormido mal?", audio: Data(),
                                       timings: ConversationTimings(listen: 0, think: 0, speak: 0)))
     }
 
-    func review(history: [ConversationMessage]) async throws -> [ConversationCorrection] { [] }
+    func review(history: [ConversationMessage]) async throws -> [ConversationCorrection] {
+        [ConversationCorrection(said: "Hoy yo soy cansado.", corrected: "Hoy estoy cansado.",
+                                explanation: "Un état passager se dit avec « estar », pas avec « ser ».")]
+    }
+}
+
+/// Le micro des tests d'interface : il « enregistre » sans demander l'autorisation
+/// que le simulateur réclamerait, et ne joue rien.
+@MainActor
+final class SilentSound: ConversationSound {
+    func begin() {}
+    func end() {}
+    func startRecording() async -> Bool { true }
+    func stopRecording() -> Data? { Data("silence".utf8) }
+    func play(_ audio: Data, onFinish: @escaping @MainActor () -> Void) { onFinish() }
+    func stopPlayback() {}
 }
 #endif
