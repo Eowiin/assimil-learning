@@ -27,7 +27,7 @@ curl -fsSL https://ollama.com/install.sh | sh    # le moteur de l'IA
 ollama pull qwen3:8b                             # l'IA par défaut, environ 5 Go
 ollama pull gemma3:12b                           # celle à comparer, environ 8 Go
 cd assimil-learning/server
-uv sync --group essais                           # PyTorch (CUDA 12.8), Whisper, XTTS : plusieurs Go
+uv sync                           # PyTorch (CUDA 12.8), Whisper, XTTS : plusieurs Go
 ```
 
 Au premier lancement, Whisper large-v3-turbo et XTTS v2 se téléchargent. **XTTS
@@ -39,13 +39,13 @@ Si `ollama serve` ne tourne pas déjà, lance-le dans un autre terminal. Ensuite
 
 ```bash
 # 1. Au clavier : la qualité de l'IA, sans micro. Tu réponds à ses questions.
-uv run --group essais python essais/conversation.py --interactif
+uv run python essais/conversation.py --interactif
 
 # 2. Avec ta voix : des enregistrements (wav, m4a, mp3), un par tour.
-uv run --group essais python essais/conversation.py tour1.m4a tour2.m4a --interactif
+uv run python essais/conversation.py tour1.m4a tour2.m4a --interactif
 
 # 3. La même chose avec l'autre IA, pour comparer.
-uv run --group essais python essais/conversation.py --ia gemma3:12b --interactif
+uv run python essais/conversation.py --ia gemma3:12b --interactif
 ```
 
 En mode `--interactif`, chaque tour se tape : une phrase, ou le chemin d'un audio.
@@ -75,7 +75,7 @@ garder.
   Whisper : faster-whisper cherche les bibliothèques de NVIDIA installées avec
   PyTorch. Indique-lui le chemin :
   ```bash
-  export LD_LIBRARY_PATH=$(uv run --group essais python -c \
+  export LD_LIBRARY_PATH=$(uv run python -c \
     'import nvidia.cublas.lib as b, nvidia.cudnn.lib as d; print(b.__path__[0] + ":" + d.__path__[0])')
   ```
 - **La mémoire affiche `?`** : `nvidia-smi` ne répond pas dans WSL2, et les modèles

@@ -5,8 +5,16 @@ ne peut pas porter : la conversation et la prononciation (`docs/cadrage-v2.md`).
 L'app l'interroge par Tailscale, à la maison comme dehors. Il ne garde rien de
 l'apprenant : tout l'état reste sur l'iPhone.
 
-Pour l'instant, il n'a qu'une route : `GET /health`, interrogée par le voyant des
-Réglages de l'app.
+| Route | Rôle |
+|---|---|
+| `GET /health` | le voyant des Réglages : version, carte graphique, modules prêts |
+| `POST /conversation/start` | l'IA ouvre la conversation et propose un sujet |
+| `POST /conversation/turn` | un tour : l'audio (ou un texte) et l'historique, puis ce qui a été compris et la réponse, en texte et en audio |
+| `POST /conversation/review` | le récapitulatif : les phrases fautives, corrigées et expliquées |
+
+Le plan du module est dans `docs/module-conversation.md`. Les modèles sont ceux
+mesurés par `essais/conversation.py` : Whisper large-v3-turbo, Qwen3 8B servi par
+Ollama, et XTTS v2.
 
 ## Le chemin d'une requête
 
@@ -39,10 +47,16 @@ iPhone ──HTTPS──▶ Tailscale (Windows) ── tailscale serve ──▶
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # si uv n'est pas installé
+sudo apt install ffmpeg                            # lecture et encodage de l'audio
+curl -fsSL https://ollama.com/install.sh | sh      # le moteur de l'IA
+ollama pull qwen3:8b
 cd assimil-learning/server
-uv sync
-uv run pytest -q                                   # 3 tests
+uv sync                                            # PyTorch (CUDA 12.8), Whisper, XTTS : plusieurs Go
+uv run pytest -q
 ```
+
+Au premier lancement, Whisper et XTTS v2 se téléchargent, et **XTTS demande
+d'accepter sa licence** (CPML, usage non commercial).
 
 ### 3. L'exposer par Tailscale, dans PowerShell (Windows)
 
@@ -55,12 +69,33 @@ tailscale serve status    # doit montrer https://nom-du-pc....ts.net -> http://1
 
 ## Lancer le serveur
 
-Dans WSL2 :
+Dans WSL2, Ollama lancé (`ollama serve`, s'il ne tourne pas déjà en service) :
 
 ```bash
 cd assimil-learning/server
+export ASSIMIL_VOIX=~/voix/ma-voix.wav     # la voix clonée : un extrait de 6 à 15 s
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+Le démarrage prend une vingtaine de secondes. Le serveur charge Whisper et XTTS, puis
+fait un **tour à vide** : le premier passage sur la carte graphique est lent (20 s),
+et il ne doit jamais tomber en pleine conversation. Le terminal affiche « Tour à vide
+fait », puis « Application startup complete ». Avant ça, le voyant reste rouge.
+
+Les réglages passent par des variables d'environnement, pour que rien de propre au
+PC n'entre dans le dépôt public :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `ASSIMIL_VOIX` | aucune | l'extrait de la voix que XTTS imite (wav) |
+| `ASSIMIL_LOCUTEUR` | `Ana Florence` | la voix fournie avec XTTS, sans `ASSIMIL_VOIX` |
+| `ASSIMIL_IA` | `qwen3:8b` | le modèle Ollama |
+| `ASSIMIL_WHISPER` | `large-v3-turbo` | le modèle Whisper |
+| `ASSIMIL_GARDER_IA` | `30m` | combien de temps Ollama garde l'IA en mémoire après un tour |
+| `ASSIMIL_APPAREIL` | `cuda` | `cpu` pour essayer sans carte graphique |
+
+Si une bibliothèque CUDA est introuvable au chargement de Whisper, voir
+`essais/README.md`, « Si ça coince ».
 
 Vérifier, du plus proche au plus loin :
 
@@ -75,11 +110,22 @@ Refais l'étape 3 en 4G ou en 5G, Wi-Fi coupé : c'est le cas « de n'importe o�
 La réponse ressemble à :
 
 ```json
-{"status": "ok", "version": "0.1.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti"}
+{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation"]}
 ```
 
 `gpu` vaut `null` quand `nvidia-smi` ne répond pas dans WSL2. Dans ce cas, le pilote
 NVIDIA de Windows n'est pas vu, et les modèles tourneront sur le processeur.
+
+## Converser sans l'app
+
+`essais/appel.py` parle au serveur comme le fera l'app : l'ouverture, les tours
+(enregistrements ou phrases tapées), puis le récapitulatif. Les répliques parlées
+vont dans `essais/sortie/`.
+
+```bash
+uv run python essais/appel.py                    # au clavier
+uv run python essais/appel.py tour1.m4a tour2.m4a
+```
 
 ## Essais de modèles
 
