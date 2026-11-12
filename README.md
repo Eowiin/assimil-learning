@@ -709,7 +709,8 @@ moi / natif. « Reprendre » relance la séance là où elle était.
 ajoutait le tempo, le moteur de reconnaissance, l'écart médian en demi-tons et ce que
 la machine avait compris : des chiffres justes, mais qui n'aidaient pas à se corriger.
 Seule la courbe servait ; elle est passée dans le panneau. La logique de l'essai vit
-dans `VoiceTrial`. Une analyse qui dise quel son corriger est cherchée à part (#44).
+dans `VoiceTrial`. Une analyse qui dise quel son corriger a été essayée sur le
+téléphone et écartée (#44, voir « L'accent au phonème »).
 
 **Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
 *passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
@@ -754,7 +755,8 @@ montée de question qu'on a aplatie se voit d'un coup d'œil.
 
 C'est la seule des deux questions posées (accent, intonation) à laquelle on puisse
 répondre honnêtement en local et sans payer. L'évaluation d'accent au phonème
-n'existe ni chez Apple, ni en auto-hébergé calibré pour l'espagnol.
+n'existe pas chez Apple, et le modèle ouvert essayé ne repère pas les fautes d'un
+francophone (voir plus bas, #44).
 
 **La hauteur est calculée ici, pas empruntée.** `SFVoiceAnalytics` d'Apple donne une
 courbe de pitch, mais par le chemin de la reconnaissance vocale — or il faut la même
@@ -793,6 +795,38 @@ l'échelle réelle est quatre fois plus resserrée.
 Ce qu'aucun corpus ne donne : une phrase dite par Ethan tombe *entre* les deux
 groupes, et savoir où demanderait ses propres enregistrements. Les seuils sont donc
 posés sur ce qui est mesuré, pas sur ce qu'on voudrait qu'ils disent.
+
+### L'accent au phonème, essayé et écarté (#44)
+
+Dire *quel son* corriger, en local, a été essayé sur Mac avant toute intégration :
+un modèle de reconnaissance de phonèmes (`facebook/wav2vec2-xlsr-53-espeak-cv-ft`),
+le texte converti en phonèmes castillans par des règles écrites à la main, un score
+par phonème (GOP) et des seuils par phonème tirés des 1 637 phrases natives. Sur les
+voix natives, c'était propre : 1,7 % de phonèmes signalés à tort.
+
+**Le test sur la voix d'Ethan l'a écarté.** Huit phrases riches en sons pièges, dites
+une fois soignées, une fois avec les fautes d'un francophone faites exprès partout :
+
+| Faute faite exprès | détectée | signalée à tort dans la prise soignée |
+|---|---|---|
+| θ dit s | 4 / 7 | 2 / 7 |
+| jota dite r français | 0 / 4 | 1 / 4 |
+| r et rr dits r français | 1 / 18 | 3 / 18 |
+| v dit v | 3 / 5 | 2 / 5 |
+
+24 % des fautes détectées, et 11 % des phonèmes de la prise soignée signalés (24 sur
+218) : *plus* que dans la prise fautive (16). Ce n'est pas un réglage de seuil : la
+transcription libre du modèle, qui n'en dépend pas, écrit le r français « r », la
+jota dite en r français « x », et entend le θ d'Ethan comme un s dans les deux
+prises. Les deux fautes les plus courantes d'un francophone lui sont invisibles.
+
+Pas de Core ML ni d'intégration, donc : ce modèle est écarté, et aucun modèle assez
+bon ne tiendrait sur l'iPhone 11. L'écran garde ce qui est vérifiable — les mots
+qui passent, la courbe d'intonation, la réécoute côte à côte. Le prototype reste sur
+les branches `recherche/prononciation-locale` et `recherche/prononciation-essai-voix`,
+hors de `dev`. La piste suivante est un modèle plus gros, servi par un PC de la maison
+(carte graphique) plutôt que calculé sur le téléphone : à mesurer sur les mêmes
+enregistrements avant toute intégration.
 
 ## Interface
 
