@@ -128,6 +128,14 @@ class Cerveau:
             corps["think"] = False
         return corps
 
+    def decharger(self) -> None:
+        """Retire le modèle de la mémoire graphique, où Ollama le garde quelques
+        minutes après usage : sinon, la mesure « avant » le compte déjà."""
+        try:
+            self.client.post("/api/generate", json={"model": self.modele, "keep_alive": 0})
+        except httpx.HTTPError:
+            pass  # Ollama éteint : rien à décharger, l'erreur viendra au préchauffage.
+
     def prechauffer(self) -> None:
         """Charge le modèle en mémoire avant le premier tour, pour que le premier
         délai mesuré ne compte pas le chargement."""
@@ -220,6 +228,9 @@ def main() -> int:
 
     args.sortie.mkdir(parents=True, exist_ok=True)
     bilan = Bilan(ia=args.ia, whisper=args.whisper, appareil=args.appareil)
+    cerveau = Cerveau(args.ia)
+    cerveau.decharger()
+    time.sleep(1)  # le temps que la mémoire soit rendue
     bilan.vram_mo["avant"] = vram_utilisee()
 
     print(f"Chargement de Whisper {args.whisper}…", flush=True)
@@ -231,7 +242,6 @@ def main() -> int:
     bilan.vram_mo["+ xtts chargé"] = vram_utilisee()
 
     print(f"Chargement de {args.ia} dans Ollama…", flush=True)
-    cerveau = Cerveau(args.ia)
     try:
         _, bilan.chargement_s["ia"] = chrono(cerveau.prechauffer)
     except httpx.HTTPError as erreur:
@@ -239,6 +249,13 @@ def main() -> int:
               f"Lance `ollama serve`, puis `ollama pull {args.ia}`.", file=sys.stderr)
         return 1
     bilan.vram_mo["+ ia chargée"] = vram_utilisee()
+
+    # Le premier passage sur la carte graphique prépare son code : XTTS y met
+    # plusieurs secondes de plus. Le serveur fera de même au démarrage.
+    print("Tour à vide…", flush=True)
+    _, bilan.chargement_s["tour à vide"] = chrono(voix.dire, "Hola.", args.sortie / "vide.wav")
+    if args.audio:
+        oreille.ecouter(args.audio[0])
     pic = bilan.vram_mo["+ ia chargée"]
 
     def tours():
