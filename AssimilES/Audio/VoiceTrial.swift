@@ -5,9 +5,8 @@ import Combine
 /// que la reconnaissance a compris et comparer sa mélodie à celle du natif.
 ///
 /// Il vit dans le lecteur : le micro arrête la séance et enregistre d'un même geste,
-/// le résultat s'affiche sous la phrase, et « Reprendre » relance la séance là où elle
-/// était. La feuille de détail (`PronunciationView`) montre le même essai, courbe
-/// comprise.
+/// le résultat s'affiche au-dessus du transport — les mots, la courbe —, et
+/// « Reprendre » relance la séance là où elle était.
 ///
 /// **Ce qu'il affirme, et ce qu'il n'affirme pas.** Il ne note pas un accent — aucune
 /// API d'Apple ne le fait. Il dit si les mots passent, et de combien la mélodie
@@ -34,10 +33,8 @@ final class VoiceTrial: ObservableObject {
     @Published private(set) var phase: Phase = .ready
     /// Les mots de la phrase, ceux qui ne sont pas passés marqués.
     @Published private(set) var verdicts: [WordVerdict] = []
-    @Published private(set) var heard: String?
     @Published private(set) var intonation: Intonation?
     @Published private(set) var intonationFailed = false
-    @Published private(set) var myDuration: Double = 0
 
     let recorder = VoiceRecorder()
     let speech = SpeechCheck()
@@ -57,11 +54,11 @@ final class VoiceTrial: ObservableObject {
     var isOpen: Bool { step != nil }
     var isRecording: Bool { phase == .recording }
     var reference: String? { step?.sentenceText?.es }
-    var canRecord: Bool { reference != nil && step?.markKey != nil }
+    var canRecord: Bool { reference != nil && step?.recordingKey != nil }
 
     /// La dernière prise gardée pour cette phrase, s'il y en a une.
     var myTake: URL? {
-        guard let key = step?.markKey, VoiceRecorder.exists(for: key) else { return nil }
+        guard let key = step?.recordingKey, VoiceRecorder.exists(for: key) else { return nil }
         return VoiceRecorder.url(for: key)
     }
 
@@ -76,7 +73,6 @@ final class VoiceTrial: ObservableObject {
         }
         self.step = step
         recorder.takeOver()
-        myDuration = myTake.map(VoiceRecorder.duration) ?? 0
     }
 
     /// Rend la sortie audio. La prise reste sur le disque, une par phrase.
@@ -90,15 +86,13 @@ final class VoiceTrial: ObservableObject {
     // MARK: - Enregistrer
 
     func toggleRecording() async {
-        guard let key = step?.markKey, let reference else { return }
+        guard let key = step?.recordingKey, let reference else { return }
 
         if recorder.isRecording {
             guard let url = recorder.stopRecording() else { return }
             phase = .analysing
-            myDuration = VoiceRecorder.duration(of: url)
             await compareMelody(mine: url)
             if let heard = await speech.recognize(url) {
-                self.heard = heard
                 verdicts = SpanishMatch.compare(reference: reference, heard: heard)
                 phase = .done
             } else if case .failed(let message) = speech.status {
@@ -143,23 +137,10 @@ final class VoiceTrial: ObservableObject {
         return "\(ok) mot\(ok > 1 ? "s" : "") sur \(total) \(ok > 1 ? "sont passés" : "est passé")"
     }
 
-    /// Le tempo compare deux durées, ce qui est mesurable — contrairement à un
-    /// jugement sur l'accent. Assimil se dit lentement au début : c'est un repère
-    /// utile, pas une faute.
-    var tempoLabel: String? {
-        guard let step, myDuration > 0, step.duration > 0 else { return nil }
-        let percent = Int(((myDuration / step.duration - 1) * 100).rounded())
-        if abs(percent) <= 15 { return "Même tempo que le natif" }
-        return percent > 0
-            ? "\(percent) % plus lent que le natif"
-            : "\(-percent) % plus rapide que le natif"
-    }
-
     // MARK: - Calcul
 
     private func clearResult() {
         verdicts = []
-        heard = nil
         intonation = nil
         intonationFailed = false
     }

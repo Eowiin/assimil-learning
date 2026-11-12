@@ -179,30 +179,49 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Leçon 2 · 7 phrases"].exists || app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Leçon 2'")).firstMatch.exists)
         snapshot(app, "10-lendemain")
-    }
 
-    func testMarkSurvivesAbruptQuit() throws {
-        // Une phrase marquée est enregistrée tout de suite : un arrêt brutal juste
-        // après ne la perd pas (#4).
-        let store = newStore()
-        var app = launch(store: store, lesson: 1)
-        app.tabBars.buttons["Leçons"].tap()
-        tap(app.staticTexts["Lección ficticia"])
-        // La page de la leçon, puis son écoute.
-        tap(app.buttons["lesson-listen"])
-        // Le titre ouvre la leçon et ne se marque pas : on passe à la phrase 1.
-        tap(app.buttons["Phrase suivante"])
-        app.buttons["play-pause"].tap()
-        waitEnabled(app.buttons["Marquer à revoir"])
-        tap(app.buttons["Marquer à revoir"])
-        XCTAssertTrue(app.buttons["Retirer des phrases à revoir"].waitForExistence(timeout: 3))
+        // Les mots de la leçon validée la veille arrivent : trois nouveaux.
+        XCTAssertFalse(app.buttons["Marquer à revoir"].exists, "le drapeau est retiré")
+        let vocab = app.buttons["start-vocab"]
+        XCTAssertTrue(vocab.waitForExistence(timeout: 5))
+        XCTAssertTrue(vocab.label.contains("3 nouveaux"), vocab.label)
+        tap(vocab)
+
+        // Recto, verso, note : « Facile » l'envoie à plusieurs jours.
+        XCTAssertEqual(app.staticTexts["vocab-front"].label, "frase")
+        snapshot(app, "18-vocabulaire-recto")
+        tap(app.buttons["vocab-show"])
+        XCTAssertEqual(app.staticTexts["vocab-back"].label, "phrase")
+        XCTAssertTrue(app.staticTexts["Frase de prueba uno."].exists, "la phrase de la leçon manque")
+        XCTAssertTrue(app.buttons["vocab-rate-4"].label.contains("j"), app.buttons["vocab-rate-4"].label)
+        snapshot(app, "19-vocabulaire-verso")
+        tap(app.buttons["vocab-rate-4"])
+        XCTAssertEqual(app.staticTexts["vocab-front"].label, "prueba")
+
+        // Un arrêt brutal ne perd pas la note : deux nouveaux au retour.
         app.terminate()
+        app = launch(store: store, lesson: 1, dayOffset: 1)
+        XCTAssertTrue(app.buttons["start-vocab"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["start-vocab"].label.contains("2 nouveaux"), app.buttons["start-vocab"].label)
+        tap(app.buttons["start-vocab"])
 
-        app = launch(store: store, lesson: 1)
-        app.tabBars.buttons["Réviser"].tap()
-        XCTAssertTrue(app.staticTexts["Frase de prueba uno."].waitForExistence(timeout: 5),
-                      "la phrase marquée a été perdue")
-        snapshot(app, "16-drapeau-apres-relance")
+        // « À revoir » : la carte revient dans la séance, après l'autre.
+        XCTAssertEqual(app.staticTexts["vocab-front"].label, "prueba")
+        tap(app.buttons["vocab-show"])
+        tap(app.buttons["vocab-rate-1"])
+        XCTAssertEqual(app.staticTexts["vocab-front"].label, "ejercicio")
+        // Retirer ce mot : il ne reviendra pas.
+        tap(app.buttons["vocab-menu"])
+        tap(app.buttons["Retirer ce mot"])
+        XCTAssertEqual(app.staticTexts["vocab-front"].label, "prueba")
+        tap(app.buttons["vocab-show"])
+        tap(app.buttons["vocab-rate-4"])
+        XCTAssertTrue(app.otherElements["vocab-done"].waitForExistence(timeout: 5)
+                      || app.staticTexts["C'est tout pour aujourd'hui"].exists)
+        snapshot(app, "20-vocabulaire-fini")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.staticTexts["Vocabulaire à jour"].waitForExistence(timeout: 5))
     }
 
     func testWeeklyReviewWithoutExercises() throws {

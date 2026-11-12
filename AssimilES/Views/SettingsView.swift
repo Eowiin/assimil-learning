@@ -6,16 +6,20 @@ struct SettingsView: View {
     @EnvironmentObject private var player: SessionPlayer
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
-    @Query private var days: [StudyDay]
+    @Environment(\.manifest) private var manifest
+    @Query private var events: [StudyEvent]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @State private var showPosition = false
+    @State private var backupFolder: URL?
+    @State private var showBackupMover = false
+    @State private var backupError: String?
 
     private var dailyLesson: Int? {
         DailyCourse.status(anchorUnit: anchors.first?.unit ?? settings.currentLesson,
                            anchorSetAt: anchors.first?.setAt ?? .distantPast,
                            sessions: sessions,
-                           now: clock.today).plan?.headlineLesson
+                           now: clock.today, manifest: manifest).plan?.headlineLesson
     }
 
     var body: some View {
@@ -42,13 +46,11 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("Inclure l'exercice de traduction", isOn: $settings.includeExercise)
-                    Toggle("Annoncer le numéro de leçon", isOn: $settings.announceLesson)
                     Toggle("Afficher la traduction d'emblée", isOn: $settings.revealTranslation)
                 } header: {
-                    Text("Écoute libre")
+                    Text("Lecture")
                 } footer: {
-                    Text("Dans la séance du jour, les exercices ne suivent jamais le dialogue : on y passe soi-même.")
+                    Text("Sinon, le bouton Traduction de l'écran de lecture l'affiche.")
                 }
 
                 Section("Progression") {
@@ -71,21 +73,52 @@ struct SettingsView: View {
                     }
                     LabeledContent("Temps total") { Text(totalLabel) }
                 }
+
+                Section {
+                    Button("Exporter une sauvegarde", systemImage: "externaldrive.badge.timemachine") {
+                        exportBackup()
+                    }
+                } header: {
+                    Text("Sauvegarde")
+                } footer: {
+                    Text(backupError ?? "Une copie de la progression, des phrases marquées et du temps d'étude, "
+                         + "à ranger dans Fichiers. Le texte et l'audio des leçons n'en font pas partie.")
+                }
+            }
+            .fileMover(isPresented: $showBackupMover, file: backupFolder) { result in
+                // Annuler n'est pas une erreur ; le dossier reste dans le
+                // répertoire temporaire, que le système vide seul.
+                if case .failure(let error) = result,
+                   (error as? CocoaError)?.code != .userCancelled {
+                    backupError = error.localizedDescription
+                }
             }
             .studyListBackground()
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showPosition) {
-                CoursePositionSheet(lesson: dailyLesson ?? Manifest.shared.lessonCount) { lesson in
-                    DailyCourseStore(context: context)
+                CoursePositionSheet(lesson: dailyLesson ?? manifest.lessonCount) { lesson in
+                    DailyCourseStore(context: context, manifest: manifest)
                         .reposition(toLesson: lesson, now: clock.now(), legacyLesson: settings.currentLesson)
                 }
             }
         }
     }
 
+    /// Le dossier est déplacé, pas copié, vers l'emplacement choisi : rien ne
+    /// reste en double dans l'app.
+    private func exportBackup() {
+        do {
+            backupFolder = try StoreBackup.make(from: context, now: clock.now())
+            backupError = nil
+            showBackupMover = true
+        } catch {
+            backupError = "Export impossible : \(error.localizedDescription)"
+        }
+    }
+
     private var totalLabel: String {
-        durationLabel(days.reduce(0) { $0 + $1.seconds })
+        durationLabel(StudyTime.total(events))
     }
 
     private func durationLabel(_ seconds: Double) -> String {

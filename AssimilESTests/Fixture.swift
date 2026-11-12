@@ -80,3 +80,16 @@ enum Fixture {
         session.progress = progress
     }
 }
+
+extension DifficultSentence {
+    /// Une revue telle que l'ancien modèle l'écrivait, avant la bascule. L'app ne
+    /// l'écrit plus ; les tests s'en servent pour préparer un stockage d'avant.
+    func recordReview(at date: Date) {
+        // L'ancienne échelle (1, 3, 7, 21, 60 jours), retirée de l'app avec le drapeau.
+        let intervals = [1, 3, 7, 21, 60]
+        let days = intervals[min(max(0, reviewCount), intervals.count - 1)]
+        dueAt = Calendar.current.date(byAdding: .day, value: days, to: Calendar.current.startOfDay(for: date)) ?? date
+        reviewCount += 1
+        lastReviewedAt = date
+    }
+}

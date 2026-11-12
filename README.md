@@ -255,7 +255,7 @@ et sans quitter la machine.
   signal, juste une absence. Le redressement les a récupérées et a corrigé les
   accents au passage.
 
-**L'app fonctionne sans ce texte.** Les trois modes n'utilisent que l'audio. La
+**L'app fonctionne sans ce texte.** L'écoute n'utilise que l'audio. La
 saisie du livre peut donc suivre l'avancement des leçons sans jamais bloquer
 l'usage : elle ajoute la traduction sous la phrase, la prononciation figurée et les
 notes, elle ne conditionne rien.
@@ -408,13 +408,16 @@ et la sortie audio est rendue à la séance dès la prise terminée.
   d'heure et le retour au premier plan : l'accueil se met à jour app ouverte.
 - **Jours manqués** : aucune leçon sautée. **Séance inachevée** : reprise, quel que soit
   le jour. **Difficulté** : « Retravailler cette leçon demain » rouvre la même leçon.
-- L'**écoute libre** vit dans l'onglet Leçons : ses trois modes en tête de liste (le
-  choix est gardé), ◎ pour aller à la leçon en cours. Une leçon ouvre sa page — le
-  texte complet de l'étape Compréhension, chaque phrase réécoutable — et « Écouter »
-  lance le lecteur dans le mode choisi. « Reprendre » sur les leçons commencées, la
-  reprise dans
-  `LessonProgress`, sans effet sur la séance du jour. L'accueil ne parle plus que de
-  la séance et des révisions.
+- L'**écoute libre** vit dans l'onglet Leçons, ◎ pour aller à la leçon en cours. Une
+  leçon ouvre sa page — le texte complet de l'étape Compréhension, chaque phrase
+  réécoutable — et « Écouter la leçon » la joue d'un trait, exercice compris.
+  « Reprendre » sur les leçons commencées, la reprise dans `LessonProgress`, sans
+  effet sur la séance du jour. L'accueil ne parle que de la séance et des révisions.
+- **Un seul mode d'écoute libre** (#19). Répétition et La vague, l'annonce du
+  numéro de leçon et le choix d'inclure l'exercice ont été retirés après un mois
+  d'usage : seule la séance du jour servait. La répétition reste dans la séance du
+  jour et dans l'écoute de l'ancienne leçon de la deuxième vague ; la deuxième vague
+  elle-même ne change pas. Une reprise enregistrée dans un ancien mode est ignorée.
 - Le temps étudié n'est compté qu'une fois : le lecteur rend ses secondes une seule
   fois (`PlayTimeLedger`). Avant, quitter et rouvrir le lecteur les recomptait.
 
@@ -424,7 +427,7 @@ Leçons 7, 14… 98 : découverte, compréhension, répétition du dialogue de r
 validation — sans les deux exercices. La synthèse grammaticale du livre peut se
 saisir sous `"review": { "sections": [{ "title": …, "text": … }] }` ; faute de quoi
 l'écran renvoie au livre. Elles comptent comme la séance du jour. Rien à voir avec
-l'onglet **À revoir**, qui reste la file des phrases marquées.
+la révision des phrases marquées.
 
 ### La deuxième vague
 
@@ -441,8 +444,7 @@ l'auto-évaluation. Sans traduction importée — le cas de toutes les leçons a
 l'écran renvoie à la restitution dans le livre et propose l'écoute de l'ancienne leçon.
 
 Après la leçon 100, la vague continue seule (leçons 52 à 100), une par jour, pour ne
-laisser aucune leçon sans deuxième vague. Le mode « La vague » de l'écoute libre ne
-change pas.
+laisser aucune leçon sans deuxième vague.
 
 ### Stockage et migration
 
@@ -455,6 +457,189 @@ change pas.
   second mode ne créait pas de doublon : SwiftData *remplaçait* la ligne existante. Le
   lecteur met donc à jour la ligne de la leçon ; le test `lessonProgressIsUniquePerLesson`
   le vérifie. Changer la contrainte aurait demandé une migration de schéma pour rien.
+- Les phrases marquées et le temps d'étude vivent dans `Card`, `ReviewLog` et
+  `StudyEvent` : voir « Cartes, journal et temps d'étude ». `DifficultSentence` et
+  `StudyDay` restent dans le schéma, figés.
+
+### Sauvegarde avant migration
+
+Réglages › **Exporter une sauvegarde** range dans Fichiers un dossier daté
+(`AssimilES-sauvegarde-2026-11-06-1530/`) avec `default.store`, `default.store-wal`
+et `default.store-shm`. Les trois fichiers vont ensemble : SQLite garde les
+écritures récentes dans `-wal` tant qu'il ne les a pas reportées dans le fichier
+principal, et le `.store` seul pourrait perdre les derniers jours. Le contexte est
+sauvegardé juste avant la copie (`StoreBackup`).
+
+Pas de restauration dans l'app : c'est un filet de sécurité, pas une fonction
+d'usage. Pour restaurer, à la main :
+
+1. Récupérer le dossier sur le Mac (Fichiers → AirDrop, ou iCloud Drive).
+2. Xcode › Window › Devices and Simulators › l'iPhone › AssimilES › *Download
+   Container…*, remplacer les trois fichiers de
+   `AppData/Library/Application Support/` par ceux de la sauvegarde (en supprimant
+   un `-wal` ou `-shm` absent de la sauvegarde), puis *Replace Container…*.
+
+Pour simplement lire une sauvegarde sur le Mac : `sqlite3 default.store` ouvre les
+trois fichiers ensemble, ou lancer l'app dans le simulateur avec `ASSIMIL_STORE`
+pointant vers une copie.
+
+### Le contenu vient d'un paquet, l'état de SwiftData
+
+Le livre et l'audio ne sont pas des données de l'apprenant : ils n'entrent jamais
+dans SwiftData. Ils forment un **paquet** (`ContentPack`) que `PackStore` cherche
+dans `Application Support/Packs/assimil-es/`, puis dans le bundle, et qu'il passe
+aux vues par l'environnement. Le paquet a la même disposition que le bundle
+(`manifest.json`, `audio/L001/…`, `text/L001.json`) : le bundle en sert donc
+pendant la transition, sans rien déplacer. L'import depuis Fichiers viendra plus
+tard.
+
+`Manifest.shared` arrêtait l'app (`fatalError`) quand le manifest manquait. Un
+paquet absent est désormais un état normal : l'app affiche « Aucun contenu », et la
+progression attend intacte.
+
+L'état de l'apprenant désigne le contenu par un **identifiant global**
+(`ItemID`) : `assimil-es:L012:S04` pour une phrase du dialogue, `assimil-es:L012:T03`
+pour l'exercice. Il ne porte **pas de version** du paquet — un paquet corrigé ne
+doit pas orpheliner l'historique —, et seule la forme canonique est acceptée,
+pour qu'une phrase n'ait jamais deux clés. Ce qui suit le paquet lui appartient :
+`AssimilItem` lit `L012:S04`, un futur paquet de conjugaison écrira ses propres
+chemins.
+
+### Le vocabulaire
+
+Les mots des leçons sont calculés **sur le Mac** et rangés dans le paquet, à côté
+du texte : `text/vocab.json`, hors dépôt comme lui. L'iPhone ne découpe ni ne
+traduit rien, il lit. Pour régénérer (une trentaine de secondes) :
+
+```bash
+swift tools/vocabulaire/build-vocab.swift Resources/text content/vocab/corrections.json
+```
+
+Trois outils d'Apple, tous sur la machine. NaturalLanguage découpe les mots et
+retrouve leur forme de base (`estoy` → `estar`). Sa classe lexicale écarte les
+mots-outils (`el`, `de`, `que`) ; une majuscule hors début de phrase écarte les noms
+propres. Translation donne un premier sens en français ; les langues espagnol et
+français s'installent une fois, dans Réglages Système › Général › Langue et
+région › Langues de traduction.
+
+Mesuré sur les 100 leçons : **environ 1 930 mots, 21 nouveaux par leçon**. La forme
+de base est juste à 93 % environ, la traduction d'un mot isolé à 85-90 %
+(`docs/cadrage-app.md`). Le reste se corrige dans `content/vocab/corrections.json`,
+hors dépôt — **à sauvegarder avec le texte des leçons**, il ne se régénère pas :
+
+```json
+{
+  "forms":        { "barran": "barrer" },
+  "lemmas":       { "gracia": "gracias" },
+  "translations": { "pesadilla": "cauchemar", "ni hablar": "pas question" },
+  "excluded":     [ "fa" ],
+  "expressions":  { "qué tal": [], "tener ganas de": ["tengo ganas de"] }
+}
+```
+
+**Les expressions sont des cartes à part entière.** Découpé mot par mot, « ¿Qué
+tal? » ne laissait que `tal` (`qué` est un mot-outil), traduit « tel » : faux, et
+sans rapport avec la phrase. Le script reconnaît donc d'abord les expressions de la
+liste, par leur forme écrite, leurs variantes ou la suite de leurs formes de base
+(« tienes ganas de » → `tener gana de`), et les mots qu'elles couvrent ne comptent
+pas seuls à cet endroit. `tal` ne reste une carte que s'il apparaît hors
+expression. La liste (67 expressions, 344 occurrences) vient d'un calcul de
+cooccurrence sur les 100 leçons — les suites de 2 à 4 mots qui reviennent au moins 3
+fois plus souvent que le hasard ne le dit —, triée à la main : le calcul trouve aussi
+`los niños` ou `mi marido`, qui ne sont pas des expressions. Translation traduit bien
+mieux une expression qu'un mot (`qué tal` → « comment ça va ») ; une quinzaine sont
+tout de même corrigées (`un ojo de la cara` → « les yeux de la tête »). Le résumé
+du script liste les expressions jamais trouvées.
+
+**La phrase d'exemple est traduite aussi.** Le livre ne donne le français que des
+leçons 1 à 5 ; pour les autres, le script traduit la phrase d'exemple de chaque mot
+(`sentences` dans `vocab.json`, environ 900 phrases), et le verso l'affiche avec la
+mention « Traduction automatique ». C'est la phrase qui donne le sens.
+
+**Une carte orpheline est écartée.** Quand un mot quitte le vocabulaire (`tal`,
+absorbé par `qué tal`), sa carte n'est plus proposée ni comptée, mais elle reste en
+base avec son journal : le mot peut revenir.
+
+Un mot se désigne par sa forme de base : `assimil-es:V:estar`, une expression de
+même : `assimil-es:V:qué tal` (`VocabItem`), sous forme canonique — minuscules,
+Unicode composé, sans « : » ni « # », les mots séparés par une seule espace. La
+composition se vérifie scalaire par scalaire : pour Swift, `"á" == "a\u{301}"`,
+alors que deux clés de carte ainsi écrites diffèrent dans le stockage.
+
+**Corriger une forme de base ne perd pas de carte.** `vocab.json` garde les
+renommages (`renamed` : `barrar` → `barrer`), d'une génération à l'autre, pour que
+l'app déplace une carte posée sur l'ancienne forme. Le script prévient si un mot
+disparaît sans renommage.
+
+**Les cartes de mots sont notées, et FSRS les espace** (`Model/FSRS.swift`). C'est
+FSRS-6, porté de l'implémentation officielle (py-fsrs 6.3.2) et vérifié contre elle
+revue par revue (`FSRSTests`, valeurs tirées de `tools/vocabulaire/fsrs-reference.py`).
+Paramètres par défaut, rétention visée 90 %, sans optimisation ni « fuzz » ; étapes
+d'apprentissage d'Anki (1 puis 10 minutes, 10 minutes en réapprentissage). Quatre
+notes : À revoir, Difficile, Bien, Facile ; chaque revue va au journal avec sa note
+(`ReviewLog.rating`, contexte `graded`), ce qui permettra d'optimiser un jour.
+`Card` garde l'état FSRS (`fsrsState`, `fsrsStep`, `stability`, `difficulty`) ; une
+carte de mot est « connue » quand elle est passée en révision (`Card.isKnown`).
+
+Deux détails de portage : `round` en Python arrondit les demis au pair (2,5 → 2),
+et les jours écoulés y sont des tranches de 24 h, pas des jours calendaires. Le
+port fait de même, sinon les échéances divergent d'un jour.
+
+### Cartes, journal et temps d'étude
+
+Quatre tables s'ajoutent, par migration légère, à côté des anciennes :
+`Card` (une phrase sous un angle — `assimil-es:L012:S04#listen`), `ReviewLog`
+(chaque revue, ajoutée et jamais modifiée), `StudyEvent` (du temps d'étude, par
+activité) et `DataMigration` (les migrations de données terminées, inscrites
+dans le stockage pour voyager avec une sauvegarde).
+
+**La bascule est faite** : la révision et le temps d'étude ne lisent et
+n'écrivent plus que ces tables. `DifficultSentence` et `StudyDay` restent dans le
+schéma, figés, jamais écrits.
+
+- **La copie ne passe qu'une fois.** Avant la bascule, `LegacyCopy`
+  synchronisait l'ancien modèle à chaque lancement (une carte par phrase marquée,
+  désactivée quand la phrase était démarquée ; un `StudyEvent` « assimil.legacy »
+  par jour d'étude ; aucun `ReviewLog`, l'ancien modèle n'ayant pas d'historique).
+  Au premier lancement de la bascule, `LegacyCopy.finishIfNeeded` fait une
+  dernière synchronisation et l'inscrit dans `DataMigration` (« legacy-copy »),
+  dans le même enregistrement. Ensuite elle ne relit plus rien : la relancer
+  désactiverait les phrases marquées depuis. Restaurer une sauvegarde d'avant la
+  bascule ramène un stockage sans inscription, et la copie repasse.
+- **Le journal est la source de vérité** ; les champs de la carte en sont le
+  cache. Les revues des phrases marquées (retirées depuis) y sont sans note,
+  celles des mots avec leur note.
+- **Le temps d'étude** : un `StudyEvent` par enregistrement, avec son activité
+  (`assimil.daily`, `assimil.listen`, `vocab` ; `review` pour l'ancienne révision
+  des phrases) ; les extraits lancés depuis la
+  séance du jour comptent en `assimil.daily`. Réglages › Temps total en fait la
+  somme, jours recopiés compris — eux ne sont plus écrits, rien n'est compté deux
+  fois. `StudyTime.secondsByDay` agrège par jour, prête pour un affichage futur.
+- **Les prises de voix gardent leur nom** (`L012-S04.m4a`, `SessionStep.recordingKey`) :
+  la clé de carte a changé, mais renommer les fichiers n'apportait rien.
+
+Une clé illisible lors de la copie est ignorée et journalisée (catégorie `data`
+dans Console.app), jamais fatale.
+
+Les choix de la refonte, à garder en tête pour la suite :
+
+- **Le contenu n'entre pas dans SwiftData**, l'état de l'apprenant seul (voir
+  plus haut). Ce qui est propre à Assimil le reste : `DailySession`,
+  `CourseAnchor` et `LessonProgress` n'ont pas de `courseID`, inutile tant qu'il
+  n'y a qu'un cours (une migration légère l'ajoutera).
+- **Pas de FSRS pendant la refonte**, mais la place était prise : `Card.scheduler`,
+  `stability` et `difficulty` optionnels, `rating` nil dans le journal. FSRS est
+  arrivé ensuite avec le vocabulaire (voir « Le vocabulaire »).
+- **Pas de migration SwiftData personnalisée** (`MigrationStage.custom`) : on ajoute
+  des tables, et une tâche de l'app (`LegacyCopy`) recopie les données.
+- **`key` et non `id`** : sous `@Model`, `id` entre en conflit avec celui
+  d'`Identifiable`. Le journal dit donc `cardKey`.
+- **`Card.activatedAt`**, absent du schéma de départ : la liste « À revoir »
+  (retirée depuis, #19) était triée par date de marquage, et une phrase remarquée
+  devait remonter en tête. Le champ reste, il date chaque activation.
+
+Le plan de la refonte, terminée, reste dans `docs/refonte-modele-donnees.md` pour
+l'historique.
 
 ### Vérifier
 
@@ -470,52 +655,68 @@ séance dans le simulateur grâce à trois variables lues **en Debug seulement**
 `ASSIMIL_STORE` (stockage isolé), `ASSIMIL_TEXT_DIR` (textes fictifs) et
 `ASSIMIL_DAY_OFFSET` (décaler « aujourd'hui » pour vérifier le lendemain).
 
-## La révision des phrases marquées
+## Réviser le vocabulaire
 
-Pendant l'écoute, le drapeau met une phrase de côté. Ces phrases reviennent
-d'elles-mêmes : l'onglet **À revoir** propose chaque jour celles qui sont dues, et
-l'écran du jour les annonce à côté de la séance.
+Les mots des leçons reviennent en cartes, à la Anki, depuis l'accueil : une ligne
+« Vocabulaire · 14 à revoir · 20 nouveaux » sous la séance du jour. Le recto montre
+le mot espagnol (carte `recognize`) ou son sens (carte `recall`, français →
+espagnol) ; « Voir la réponse » montre le sens ou le mot, ses autres formes, et la
+phrase de la leçon où il apparaît, texte et audio. Quatre notes : **À revoir,
+Difficile, Bien, Facile**, avec sous chacune le délai qu'elle donnerait. FSRS
+espace les cartes (voir « Le vocabulaire »). « Retirer ce mot », dans le menu,
+désactive ses deux cartes : il ne revient plus.
 
-Une phrase revient à intervalle croissant — **1, 3, 7, 21 puis 60 jours**. Elle ne
-sort jamais de la file toute seule : c'est le **drapeau**, le même qu'en écoute,
-qui l'en retire quand elle est acquise, et qui enchaîne alors sur la suivante.
+La logique est dans `VocabStudy` et `VocabSession` (`VocabStudyTests`), l'écran dans
+`VocabReviewView`. Les règles :
 
-**Pas de notation.** Un « facile / difficile » après chaque phrase serait plus fin,
-mais il demanderait l'œil sur l'écran et un appui à chaque pause — exactement ce
-dont l'app affranchit. Un seul geste, déjà connu, qui ne sert qu'à dire « celle-là,
-c'est bon ». La séance de révision se conduit sinon comme une leçon, y compris
-depuis l'écran verrouillé.
+- **Les mots d'une leçon arrivent le lendemain de sa validation**, et ceux des
+  leçons d'avant le point de départ du parcours sont d'emblée disponibles : elles
+  ont été faites, simplement pas dans l'app.
+- **Au plus 20 nouvelles cartes par jour**, dans l'ordre du livre (première leçon,
+  puis fréquence). Une carte n'existe en base qu'à sa première note : le plafond
+  compte les cartes créées aujourd'hui.
+- **La carte `recall` d'un mot n'arrive qu'une fois `recognize` connue** : en
+  révision **et** réussie un autre jour que celui de sa découverte. « Facile »
+  d'emblée met une carte en révision le jour même, ce qui ne suffit pas.
+- **Ce qui est dû** : une carte en révision due ce soir l'est dès ce matin, la
+  révision est quotidienne. Une carte en apprentissage (1 puis 10 minutes) attend
+  ses minutes, et revient dans la même séance ; s'il ne reste qu'elle, elle passe
+  en avance (jusqu'à 20 minutes), comme dans Anki.
+- **Le temps** : celui de l'écran, plafonné à une minute par carte (le téléphone
+  posé ne fait pas du temps d'étude), inscrit en `vocab`. Chaque revue garde sa
+  durée au journal.
+- **Une forme de base corrigée** dans le paquet déplace la carte et son journal à
+  l'ouverture de la révision (`VocabStudy.applyRenames`).
 
-Deux points de calcul, dans `ReviewSchedule` :
+### Le drapeau, retiré
 
-- L'échéance est calée sur le **début de journée**. Une phrase revue le soir revient
-  le lendemain, pas le lendemain soir : la séance est quotidienne, l'heure n'a pas à
-  décider de ce qui est dû.
-- La suite **s'arrête à 60 jours**. Une phrase encore marquée après cinq reprises
-  mérite de repasser de temps en temps, pas de disparaître.
-
-Une phrase compte comme revue dès qu'elle est **jouée** : c'est de l'avoir
-réentendue et redite qui la révise. La rejouer dans la même séance ne repousse pas
-son échéance une seconde fois.
+Avant le vocabulaire, le drapeau de l'écran de lecture marquait une phrase, qui
+revenait à intervalle fixe (1, 3, 7, 21, 60 jours), sans note, dans une séance de
+révision mains libres. Il n'a jamais servi à l'usage (#19) ; il est retiré avec sa
+révision. Ses cartes (`#listen`) restent en base, désactivées au lancement
+(`CardReview.retireListenCards`), avec leur journal. `DifficultSentence`, l'ancien
+modèle, reste dans le schéma pour la copie (`LegacyCopy`).
 
 ## S'enregistrer et se comparer au natif
 
 Sur l'écran de lecture, le micro (à droite du transport) **arrête la séance et
 enregistre d'un même geste** ; un second appui termine la prise. Le résultat s'affiche
-au-dessus du transport : les mots de la phrase, ceux qui ne sont pas passés en orange,
-la mélodie en un mot, la réécoute moi / natif. « Reprendre » relance la séance là où
-elle était. La courbe, le tempo et ce que la machine a compris sont à un appui (ⓘ).
-Trois gestes au lieu de six, quand c'était une feuille à part.
+au-dessus du transport, tout au même endroit : les mots de la phrase, ceux qui ne
+sont pas passés en orange, la mélodie en un mot et sa courbe natif / moi, la réécoute
+moi / natif. « Reprendre » relance la séance là où elle était.
 
-La logique de l'essai vit dans `VoiceTrial`, partagé par le panneau du lecteur et la
-feuille de détail (`PronunciationView`).
+**Pas de feuille de détail** (#19). Elle répétait les commandes d'enregistrement et
+ajoutait le tempo, le moteur de reconnaissance, l'écart médian en demi-tons et ce que
+la machine avait compris : des chiffres justes, mais qui n'aidaient pas à se corriger.
+Seule la courbe servait ; elle est passée dans le panneau. La logique de l'essai vit
+dans `VoiceTrial`. Une analyse qui dise quel son corriger a été essayée sur le
+téléphone et écartée (#44, voir « L'accent au phonème »).
 
 **Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
 *passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
-L'écran affiche donc trois choses vérifiables — les mots de la phrase, ceux qui ne
-sont pas passés en orange ; ce que la machine a compris, mot pour mot ; et le tempo,
-qui compare deux durées. Pour l'accent, c'est la réécoute côte à côte qui tranche,
-pas une note.
+L'écran affiche donc deux choses vérifiables — les mots de la phrase, ceux qui ne
+sont pas passés en orange, et la courbe d'intonation. Pour l'accent, c'est la
+réécoute côte à côte qui tranche, pas une note.
 
 C'est le même signal que sur le corpus : c'est ce contrôle qui avait fait ressortir
 `Ejem` comme le seul mot manqué sur les cinq leçons de contrôle.
@@ -531,8 +732,7 @@ signale rien, `XH 553` contre `XH553` non plus, `Yujú` contre `Youjú` non plus
 **Deux moteurs, selon l'appareil.** `SpeechTranscriber` — celui qui a transcrit le
 corpus — expose `isAvailable` : il demande un appareil capable d'Apple Intelligence,
 ce que l'iPhone 11 (A13) n'est pas. `DictationTranscriber` n'a pas cette condition et
-rend la même chose. L'app prend le premier quand il est là, le second sinon, et
-affiche en petit lequel a parlé. Dans les deux cas, l'app doit **réserver** la locale
+rend la même chose. L'app prend le premier quand il est là, le second sinon. Dans les deux cas, l'app doit **réserver** la locale
 auprès d'`AssetInventory` avant d'en toucher les assets : sans cette souscription, le
 système refuse jusqu'à dire où en est le téléchargement. Le portage direct de
 `tools/transcribe.swift`, qui n'y est pas soumis en ligne de commande, échouait sur
@@ -540,7 +740,8 @@ les deux points.
 
 Modèle es-ES installé une fois, **rien ne sort du téléphone**. Il s'agit ici de la voix
 d'Ethan, ce qui est une raison de plus de rester hors ligne. Les prises vivent dans
-`Documents/voice/`, une par phrase, nommées comme la clé de marquage (`L012-S04`).
+`Documents/voice/`, une par phrase, nommées par l'ancienne clé de phrase marquée
+(`L012-S04`, `SessionStep.recordingKey`), qui n'est plus celle des cartes.
 
 Cet écran demande **iOS 26** (`SpeechTranscriber`), d'où la cible de déploiement.
 L'iPhone de test est en 26.6 ; l'app est personnelle et n'a qu'un appareil.
@@ -549,12 +750,13 @@ L'iPhone de test est en 26.6 ; l'app est personnelle et n'a qu'un appareil.
 
 Après l'enregistrement, l'écran superpose **deux courbes d'intonation** : celle du
 natif et la tienne, alignées dans le temps et ramenées chacune au registre de son
-locuteur. Un chiffre dit de combien ça s'écarte, la courbe dit où — une montée de
-question qu'on a aplatie se voit d'un coup d'œil.
+locuteur. Le verdict en un mot dit de combien ça s'écarte, la courbe dit où — une
+montée de question qu'on a aplatie se voit d'un coup d'œil.
 
 C'est la seule des deux questions posées (accent, intonation) à laquelle on puisse
 répondre honnêtement en local et sans payer. L'évaluation d'accent au phonème
-n'existe ni chez Apple, ni en auto-hébergé calibré pour l'espagnol.
+n'existe pas chez Apple, et le modèle ouvert essayé ne repère pas les fautes d'un
+francophone (voir plus bas, #44).
 
 **La hauteur est calculée ici, pas empruntée.** `SFVoiceAnalytics` d'Apple donne une
 courbe de pitch, mais par le chemin de la reconnaissance vocale — or il faut la même
@@ -593,6 +795,38 @@ l'échelle réelle est quatre fois plus resserrée.
 Ce qu'aucun corpus ne donne : une phrase dite par Ethan tombe *entre* les deux
 groupes, et savoir où demanderait ses propres enregistrements. Les seuils sont donc
 posés sur ce qui est mesuré, pas sur ce qu'on voudrait qu'ils disent.
+
+### L'accent au phonème, essayé et écarté (#44)
+
+Dire *quel son* corriger, en local, a été essayé sur Mac avant toute intégration :
+un modèle de reconnaissance de phonèmes (`facebook/wav2vec2-xlsr-53-espeak-cv-ft`),
+le texte converti en phonèmes castillans par des règles écrites à la main, un score
+par phonème (GOP) et des seuils par phonème tirés des 1 637 phrases natives. Sur les
+voix natives, c'était propre : 1,7 % de phonèmes signalés à tort.
+
+**Le test sur la voix d'Ethan l'a écarté.** Huit phrases riches en sons pièges, dites
+une fois soignées, une fois avec les fautes d'un francophone faites exprès partout :
+
+| Faute faite exprès | détectée | signalée à tort dans la prise soignée |
+|---|---|---|
+| θ dit s | 4 / 7 | 2 / 7 |
+| jota dite r français | 0 / 4 | 1 / 4 |
+| r et rr dits r français | 1 / 18 | 3 / 18 |
+| v dit v | 3 / 5 | 2 / 5 |
+
+24 % des fautes détectées, et 11 % des phonèmes de la prise soignée signalés (24 sur
+218) : *plus* que dans la prise fautive (16). Ce n'est pas un réglage de seuil : la
+transcription libre du modèle, qui n'en dépend pas, écrit le r français « r », la
+jota dite en r français « x », et entend le θ d'Ethan comme un s dans les deux
+prises. Les deux fautes les plus courantes d'un francophone lui sont invisibles.
+
+Pas de Core ML ni d'intégration, donc : ce modèle est écarté, et aucun modèle assez
+bon ne tiendrait sur l'iPhone 11. L'écran garde ce qui est vérifiable — les mots
+qui passent, la courbe d'intonation, la réécoute côte à côte. Le prototype reste sur
+les branches `recherche/prononciation-locale` et `recherche/prononciation-essai-voix`,
+hors de `dev`. La piste suivante est un modèle plus gros, servi par un PC de la maison
+(carte graphique) plutôt que calculé sur le téléphone : à mesurer sur les mêmes
+enregistrements avant toute intégration.
 
 ## Interface
 
@@ -682,9 +916,8 @@ l'arrêt, téléphone en main.
 
 
 **C'est l'étape qui porte sa leçon, jamais la séance.** Une séance n'est pas « une
-leçon dans un mode » : la vague en enchaîne deux (la leçon du jour puis celle d'il y
-a 49 jours), et la file de révision en traverse autant qu'il y a de phrases
-marquées. Tant que l'écran de lecture tirait son texte d'une leçon supposée unique,
+leçon dans un mode » : la file de révision traverse autant de leçons qu'il y a
+de phrases marquées (le mode « La vague », retiré depuis, en enchaînait deux). Tant que l'écran de lecture tirait son texte d'une leçon supposée unique,
 il affichait la mauvaise — pendant l'exercice il surlignait les phrases 1 à 5 du
 *dialogue*, et le drapeau enregistrait leur clé. `SessionStep` porte donc son
 `lessonNumber` et son `isExercise`, y compris sur les pauses, et l'écran comme

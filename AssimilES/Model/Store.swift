@@ -34,8 +34,9 @@ final class LessonProgress {
     }
 }
 
-/// Phrase marquée difficile d'un geste pendant l'écoute. C'est la file de
-/// révision : une liste que l'usage remplit tout seul, sans effort de saisie.
+/// Phrase marquée difficile d'un geste pendant l'écoute — l'ancienne file de
+/// révision. **Plus écrite depuis la bascule** : c'est `Card` qui tient la file. La
+/// table reste dans le schéma, figée, et `LegacyCopy` la lit une dernière fois.
 @Model
 final class DifficultSentence {
     #Unique<DifficultSentence>([\.key])
@@ -47,12 +48,9 @@ final class DifficultSentence {
     var isExercise: Bool = false
     var markedAt: Date = Date.now
 
-    /// Quand la phrase doit revenir. Une phrase fraîchement marquée est due tout
-    /// de suite : c'est le jour même qu'elle résiste.
+    /// Échéance et nombre de revues tels que l'ancienne file les tenait, figés à la
+    /// bascule : `Card.dueAt` et `Card.reps` ont pris le relais.
     var dueAt: Date = Date.now
-    /// Nombre de fois où elle est revenue. C'est lui qui donne l'intervalle
-    /// suivant — la phrase ne sort jamais de la file d'elle-même, seul le
-    /// drapeau l'en retire.
     var reviewCount: Int = 0
     var lastReviewedAt: Date?
 
@@ -65,52 +63,14 @@ final class DifficultSentence {
         self.dueAt = .now
     }
 
-    var isDue: Bool { dueAt <= .now }
-
-    /// Appelée quand la phrase vient d'être rejouée en révision. L'intervalle est
-    /// choisi sur le nombre de passages **avant** celui-ci : la première reprise
-    /// tombe le lendemain.
-    func recordReview(at date: Date = .now) {
-        dueAt = ReviewSchedule.next(after: reviewCount, from: date)
-        reviewCount += 1
-        lastReviewedAt = date
-    }
-
     static func makeKey(_ lesson: Int, _ sentence: Int, _ isExercise: Bool) -> String {
         String(format: "L%03d-%@%02d", lesson, isExercise ? "T" : "S", sentence)
     }
 }
 
-/// Révision espacée des phrases marquées.
-///
-/// Pas de notation : l'app sert à marcher en écoutant, et noter chaque phrase
-/// demanderait l'œil sur l'écran à chaque pause. La phrase revient donc à
-/// intervalle croissant tant qu'elle est marquée, et c'est le même drapeau qu'en
-/// écoute qui l'enlève quand elle est acquise — un seul geste, déjà connu.
-enum ReviewSchedule {
-    /// Intervalles en jours. La suite s'arrête à 60 : au-delà, une phrase qu'on
-    /// n'a pas retirée du drapeau mérite de revenir de temps en temps, pas de
-    /// disparaître.
-    static let intervals = [1, 3, 7, 21, 60]
-
-    /// L'échéance est calée sur le début de journée : une phrase revue le soir
-    /// revient le lendemain, pas le lendemain soir. La séance est quotidienne,
-    /// l'heure n'a pas à décider de ce qui est dû.
-    static func next(after reviewCount: Int,
-                     from date: Date = .now,
-                     calendar: Calendar = .current) -> Date {
-        let days = intervals[min(max(0, reviewCount), intervals.count - 1)]
-        let start = calendar.startOfDay(for: date)
-        return calendar.date(byAdding: .day, value: days, to: start) ?? date
-    }
-
-    static func due(in marks: [DifficultSentence], now: Date = .now) -> [DifficultSentence] {
-        marks.filter { $0.dueAt <= now }
-    }
-}
-
-/// Un jour d'étude. Assimil ne tient que sur la régularité : c'est la série de
-/// jours consécutifs qui est motivante, pas le volume total.
+/// Le temps écouté, un total par jour — l'ancien modèle. **Plus écrit depuis la
+/// bascule** : `StudyEvent` le remplace, et les jours recopiés y restent
+/// (« assimil.legacy »).
 @Model
 final class StudyDay {
     #Unique<StudyDay>([\.day])
@@ -121,26 +81,6 @@ final class StudyDay {
     init(day: Date, seconds: Double = 0) {
         self.day = day
         self.seconds = seconds
-    }
-}
-
-enum StudyTime {
-    /// Ajoute du temps écouté au jour en cours. L'appelant passe ce que le lecteur
-    /// n'a pas encore rendu (`SessionPlayer.takeUnrecordedSeconds`) : rouvrir un
-    /// écran ne recompte rien.
-    @MainActor
-    static func record(_ seconds: Double, in context: ModelContext, now: Date = .now,
-                       calendar: Calendar = .current) {
-        guard seconds > 0 else { return }
-        let today = calendar.startOfDay(for: now)
-        let existing = (try? context.fetch(FetchDescriptor<StudyDay>()))?.first {
-            calendar.isDate($0.day, inSameDayAs: today)
-        }
-        if let existing {
-            existing.seconds += seconds
-        } else {
-            context.insert(StudyDay(day: today, seconds: seconds))
-        }
     }
 }
 
@@ -179,8 +119,11 @@ final class DailySession {
 
     var progress: DailyProgress {
         get {
+            // Un avancement illisible repart de la découverte. Le modèle ne connaît
+            // pas le paquet de contenu, donc pas les étapes exactes de la séance :
+            // la vue les applique (une étape absente du plan n'est jamais ouverte).
             (try? JSONDecoder().decode(DailyProgress.self, from: progressData))
-                ?? DailyProgress(stages: Curriculum.plan(unit: unit)?.stages ?? [])
+                ?? DailyProgress(stages: DailyStage.allCases)
         }
         set {
             guard let data = try? JSONEncoder().encode(newValue), data != progressData else { return }

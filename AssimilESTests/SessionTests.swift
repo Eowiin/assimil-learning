@@ -48,15 +48,29 @@ struct SessionTests {
         #expect(steps[firstOfSentence2].repetition == 1)
     }
 
-    @Test("File de révision : deux phrases 3 de leçons différentes restent distinctes")
-    func reviewQueueSameNumber() throws {
-        let a = DifficultSentence(lessonNumber: 4, sentenceNumber: 3, isExercise: false)
-        let b = DifficultSentence(lessonNumber: 9, sentenceNumber: 3, isExercise: false)
-        b.dueAt = a.dueAt.addingTimeInterval(1)
-        let steps = SessionBuilder.build(.review, marks: [a, b], manifest: manifest)
-        #expect(steps.count == 4)
-        #expect(SessionNavigation.navigableIndex(after: 0, in: steps) == 2)
-        #expect(steps[2].lessonNumber == 9)
+    @Test("L'étape désigne sa phrase ; la prise de voix garde l'ancien nom")
+    func stepKeys() throws {
+        let steps = SessionBuilder.build(.lesson(number: 12, mode: .shadowing), manifest: manifest)
+        let dialogue = try #require(steps.first { $0.kind == .dialogue && $0.sentenceNumber == 3 })
+        #expect(dialogue.item?.itemID().rawValue == "assimil-es:L012:S03")
+        #expect(dialogue.recordingKey == "L012-S03")
+        let exercise = try #require(steps.first { $0.kind == .exercise && $0.sentenceNumber == 2 })
+        #expect(exercise.item?.itemID().rawValue == "assimil-es:L012:T02")
+        #expect(exercise.recordingKey == "L012-T02")
+        // La pause qui suit une phrase désigne la même phrase.
+        let pause = try #require(steps.first { $0.isPause && $0.isExercise && $0.sentenceNumber == 2 })
+        #expect(pause.item == exercise.item)
+        let title = try #require(steps.first { $0.kind == .title })
+        #expect(title.item == nil)
+    }
+
+    @Test("Le temps compte pour l'activité de l'écran")
+    func studyActivity() {
+        #expect(SessionRequest.daily(lessonNumber: 3, audio: .discovery).studyActivity == .assimilDaily)
+        #expect(SessionRequest.excerpt(lessonNumber: 3).studyActivity == .assimilDaily)
+        #expect(StudyActivity.vocab.courseID == "assimil-es")
+        #expect(SessionRequest.lesson(number: 3, mode: .passive).studyActivity == .assimilListen)
+        #expect(SessionRequest.lesson(number: 3, mode: .passive).studyActivity.courseID == "assimil-es")
     }
 
     @Test("Le temps écouté n'est rendu qu'une fois")

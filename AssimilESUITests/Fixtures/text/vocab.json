@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "words": [
+    {"lemma": "frase", "forms": ["frase"], "translation": "phrase", "firstLesson": 1, "count": 5,
+     "occurrences": [{"lesson": 1, "isExercise": false, "n": 1}, {"lesson": 1, "isExercise": false, "n": 2}]},
+    {"lemma": "prueba", "forms": ["prueba"], "translation": "essai", "firstLesson": 1, "count": 5,
+     "occurrences": [{"lesson": 1, "isExercise": false, "n": 1}]},
+    {"lemma": "ejercicio", "forms": ["ejercicio"], "translation": "exercice", "firstLesson": 1, "count": 5,
+     "occurrences": [{"lesson": 1, "isExercise": true, "n": 1}]}
+  ],
+  "renamed": {}
+}

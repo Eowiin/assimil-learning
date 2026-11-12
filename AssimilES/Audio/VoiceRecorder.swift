@@ -27,9 +27,9 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
     // MARK: - Fichiers
 
-    /// Une prise par phrase, nommée comme la clé de marquage (`L012-S04`) : même
-    /// vocabulaire dans toute l'app, et une seule prise à la fois — c'est la
-    /// dernière qui vaut.
+    /// Une prise par phrase, nommée par `SessionStep.recordingKey` (`L012-S04`,
+    /// l'ancienne clé de phrase marquée, gardée pour ne renommer aucun fichier) ;
+    /// une seule prise à la fois — c'est la dernière qui vaut.
     static func url(for key: String) -> URL {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("voice", isDirectory: true)
@@ -39,12 +39,6 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
     static func exists(for key: String) -> Bool {
         FileManager.default.fileExists(atPath: url(for: key).path)
-    }
-
-    static func duration(of url: URL) -> Double {
-        (try? AVAudioFile(forReading: url)).map {
-            Double($0.length) / $0.processingFormat.sampleRate
-        } ?? 0
     }
 
     // MARK: - Session audio

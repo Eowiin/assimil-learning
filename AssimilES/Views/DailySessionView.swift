@@ -15,14 +15,15 @@ struct DailySessionView: View {
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.manifest) private var manifest
 
     /// Une écoute par langue de réponse : le français pour traduire, l'espagnol pour
     /// la deuxième vague. Chacune garde son modèle prêt d'une phrase à l'autre.
     @StateObject private var frenchListener = AnswerListener(locale: Locale(identifier: "fr-FR"))
     @StateObject private var spanishListener = AnswerListener(locale: Locale(identifier: "es-ES"))
 
-    private var plan: DailyPlan? { Curriculum.plan(unit: session.unit) }
-    private var store: DailyCourseStore { DailyCourseStore(context: context) }
+    private var plan: DailyPlan? { Curriculum.plan(unit: session.unit, manifest: manifest) }
+    private var store: DailyCourseStore { DailyCourseStore(context: context, manifest: manifest) }
 
     /// Toute modification de l'avancement est écrite aussitôt.
     private var progress: Binding<DailyProgress> {
@@ -53,7 +54,9 @@ struct DailySessionView: View {
         .onDisappear {
             AudioLog.info("\(#fileID) disparaît")
             player.pause()
-            StudyTime.record(player.takeUnrecordedSeconds(), in: context, now: clock.now())
+            // Les étapes audio enregistrent leur propre temps ; reste ici surtout
+            // celui des extraits joués depuis les exercices.
+            StudyTime.record(player.takeUnrecordedSeconds(), as: .assimilDaily, in: context, now: clock.now())
             store.save()
         }
     }
@@ -133,7 +136,7 @@ struct DailySessionView: View {
 
     @ViewBuilder
     private func comprehension(_ plan: DailyPlan) -> some View {
-        if let number = plan.newLesson, let lesson = Manifest.shared.lesson(number) {
+        if let number = plan.newLesson, let lesson = manifest.lesson(number) {
             let text = LessonTextStore.text(for: number)
             let content = LessonContent.comprehension(text)
             let review = LessonContent.reviewSummary(lesson, text)
@@ -151,7 +154,7 @@ struct DailySessionView: View {
 
     @ViewBuilder
     private func translation(_ plan: DailyPlan) -> some View {
-        if let number = plan.newLesson, let lesson = Manifest.shared.lesson(number) {
+        if let number = plan.newLesson, let lesson = manifest.lesson(number) {
             let text = LessonTextStore.text(for: number)
             let items = LessonContent.translationItems(lesson, text)
             let numbers = items.map(\.n)
@@ -182,7 +185,7 @@ struct DailySessionView: View {
 
     @ViewBuilder
     private func completion(_ plan: DailyPlan) -> some View {
-        if let number = plan.newLesson, let lesson = Manifest.shared.lesson(number) {
+        if let number = plan.newLesson, let lesson = manifest.lesson(number) {
             let text = LessonTextStore.text(for: number)
             let content = LessonContent.completion(lesson, text)
             let numbers = content == .available ? (text?.exercise2?.items.map(\.n) ?? []) : []
@@ -203,7 +206,7 @@ struct DailySessionView: View {
 
     @ViewBuilder
     private func secondWave(_ plan: DailyPlan) -> some View {
-        if let number = plan.waveLesson, let lesson = Manifest.shared.lesson(number) {
+        if let number = plan.waveLesson, let lesson = manifest.lesson(number) {
             let text = LessonTextStore.text(for: number)
             let items = LessonContent.waveItems(lesson, text)
             let numbers = items.map(\.n)
@@ -373,7 +376,7 @@ struct DailySessionView: View {
         let next = DailyCourse.nextUnit(anchorUnit: anchor?.unit ?? session.unit,
                                         anchorSetAt: anchor?.setAt ?? .distantPast,
                                         sessions: store.sessions())
-        return Curriculum.plan(unit: next)
+        return Curriculum.plan(unit: next, manifest: manifest)
     }
 
     private func summary(_ plan: DailyPlan) -> String {
@@ -485,6 +488,7 @@ struct ComprehensionView: View {
     let reviewContent: ActivityContent
 
     @EnvironmentObject private var player: SessionPlayer
+    @Environment(\.manifest) private var manifest
 
     var body: some View {
         ScrollView {
@@ -568,7 +572,7 @@ struct ComprehensionView: View {
             Spacer(minLength: 0)
             Button {
                 player.start(.excerpt(lessonNumber: lesson.number),
-                             steps: SessionBuilder.excerpt(clip, isExercise: false, in: lesson))
+                             steps: SessionBuilder.excerpt(clip, isExercise: false, in: lesson, manifest: manifest))
             } label: {
                 Image(systemName: "speaker.wave.2").frame(width: 44, height: 44)
             }
