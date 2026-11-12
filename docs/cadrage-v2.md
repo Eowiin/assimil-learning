@@ -77,23 +77,24 @@ iPhone ──Tailscale──▶ PC fixe (Windows, WSL2, RTX 5070 Ti)
 
 ### Deux chemins pour l'audio
 
-| | Prononciation | Conversation |
+| | Talkie-walkie (d'abord) | Temps réel (plus tard, si besoin) |
 |---|---|---|
-| Échange | Une phrase, puis un verdict | Un échange continu, avec des tours de parole |
+| Échange | On appuie, on parle, on relâche, puis vient la réponse | Un flux continu, où l'on peut couper la parole à l'IA |
 | Transport | Envoi HTTP de l'enregistrement à FastAPI | WebRTC, avec le SDK LiveKit sur l'iPhone |
-| Côté PC | Une route FastAPI | Le serveur LiveKit, et LiveKit Agents en Python |
+| Côté PC | Des routes FastAPI | Le serveur LiveKit, et LiveKit Agents en Python |
 | Compression, écho | iOS (session audio en mode voix) | LiveKit |
+| Sert à | La prononciation, et la conversation au début | La conversation, si le talkie-walkie gêne |
 
-La prononciation n'a pas besoin du temps réel. Un simple envoi suffit, et ce chemin se
-teste sans LiveKit. LiveKit n'arrive qu'avec la conversation : il gère le flux continu,
-la détection de fin de phrase et le droit de couper la parole à l'IA.
+On commence par le talkie-walkie, pour les deux modes : rien à installer en plus de
+FastAPI, et pas de question de qui parle quand. LiveKit ne viendra que si l'attente
+entre deux tours gêne à l'usage.
 
 ### Les modèles
 
 | Rôle | Modèle | État |
 |---|---|---|
 | Voix de synthèse | XTTS v2 (Coqui) | Testé par Ethan : bon. Sa licence interdit l'usage commercial, ce qui ne pose pas de problème ici |
-| Analyse de prononciation | *à préciser* | Testé par Ethan : bon. À mesurer sur les 16 enregistrements (plus bas) |
+| Analyse de prononciation | wav2vec2 (lequel exactement : à préciser) | Ethan a mesuré environ 90 % sur le PC. Le test du 10 novembre (`wav2vec2-xlsr-53-espeak-cv-ft`) ne repérait que 24 % des fautes. On tranche sur les 16 enregistrements (plus bas) |
 | Reconnaissance (voix → texte) | Qwen ASR | En test (Whisper si Qwen ASR ne convient pas) |
 | IA de conversation | Qwen (taille à fixer) | En test : qualité en espagnol, vitesse |
 
@@ -131,6 +132,16 @@ pas la transcription.
 Ethan parle, l'IA comprend, répond, relance et pose des questions. L'échange se fait
 à la voix, avec le texte affiché à l'écran, conformément à l'usage écran en main.
 
+**Au début, en talkie-walkie.** L'iPhone envoie l'enregistrement. Le PC enchaîne
+Qwen ASR, puis Qwen, puis XTTS v2. Il renvoie ce qu'il a compris, sa réponse en texte
+et sa réponse en audio.
+
+**Choix de départ, à ajuster à l'usage :**
+- **Sujets** : l'IA propose un sujet de la vie courante (la journée, un repas, un
+  voyage). Ethan peut en demander un autre, ou choisir le sien.
+- **Corrections** : rien ne coupe l'échange. À la fin, un récapitulatif montre les
+  phrases fautives, leur version corrigée et une courte explication.
+
 Ce qu'elle pourrait faire, à trancher dans le plan du module :
 - **parler à son niveau**, avec les mots qu'il connaît déjà (les cartes FSRS) et
   quelques mots nouveaux ;
@@ -144,7 +155,8 @@ Ce qu'elle pourrait faire, à trancher dans le plan du module :
 - le délai entre la fin de la phrase d'Ethan et le début de la réponse ;
 - ce délai à la maison, et dehors en 4G ou 5G.
 
-Une conversation devient pénible au-delà d'environ 1,5 seconde de silence.
+En temps réel, une conversation devient pénible au-delà d'environ 1,5 seconde de silence.
+En talkie-walkie, on attend la réponse, donc on tolère un peu plus.
 
 ### Plus tard : le profil d'apprenant
 
@@ -170,29 +182,31 @@ Ce ne sont que des pistes. Aucune n'entre dans l'ordre ci-dessous.
 
 ## Ordre proposé
 
-0. **Les fondations du serveur.** FastAPI sous WSL2, Tailscale, le réglage
-   « Serveur » et son voyant dans l'app. On vérifie l'aller-retour iPhone → PC →
-   iPhone, à la maison et dehors.
-1. **Mesurer la prononciation** sur les 16 enregistrements. C'est rapide, et ça
-   décide si le module se fait.
-2. **Le module de prononciation**, par le chemin HTTP, sans LiveKit.
-3. **Mesurer la conversation** : Qwen, Qwen ASR, XTTS v2, la mémoire, le délai.
-4. **Le module de conversation**, avec LiveKit.
+0. **Les fondations du serveur.** FastAPI sous WSL2, dans `server/`, Tailscale, et le
+   réglage « Serveur » avec son voyant dans l'app. On vérifie l'aller-retour iPhone →
+   PC → iPhone, à la maison et dehors.
+1. **Mesurer la conversation** : la qualité de Qwen et de Qwen ASR, XTTS v2, la
+   mémoire graphique, le délai.
+2. **La conversation en talkie-walkie.** Les trois modèles sont éprouvés, et le
+   chemin est le plus simple.
+3. **En parallèle, mesurer la prononciation** sur les 16 enregistrements, avec le
+   wav2vec2 d'Ethan. Si la mesure est bonne, le module de prononciation suit, par le
+   même chemin HTTP.
+4. **LiveKit**, si l'attente du talkie-walkie gêne.
 5. **Le profil d'apprenant.**
 
-La prononciation passe en premier parce que son chemin est le plus simple (pas de
-LiveKit), et parce que la mesure existe déjà. La conversation est peut-être celle qui
-apporte le plus. Si tu préfères commencer par elle, les étapes 3 et 4 passent devant,
-et l'étape 0 ne change pas.
+## Décisions (2026-11-12)
 
-## Questions pour toi
+1. **Le code du serveur va dans ce dépôt**, dans `server/`, pour le moment.
+2. **Les données restent sur l'iPhone ; le serveur ne garde rien** (option A).
+   À chaque échange, l'iPhone envoie ce qu'il faut : la phrase, la conversation en
+   cours, et plus tard le niveau et les mots connus. Les erreurs relevées reviennent
+   sur l'iPhone, qui les range avec le reste. Il n'y a qu'une source de vérité et
+   qu'une sauvegarde. On changera probablement d'architecture avec les fonctions à venir.
+3. **Le modèle de prononciation est un wav2vec2.** Lequel exactement, et ce que mesuraient
+   les 90 %, restent à préciser.
 
-1. **Le modèle de prononciation** que tu as testé : lequel, et que renvoie-t-il ?
-   Une note par phonème, par mot, ou la transcription de ce que tu as réellement dit ?
-2. **L'ordre** : la prononciation d'abord, ou la conversation ?
-3. **La conversation** : sur quels sujets ? Libres, tirés des leçons, en mise en
-   situation ? Et les corrections : pendant l'échange, ou à la fin ?
-4. **Le code du serveur** : dans ce dépôt (un dossier `server/`), ou dans un dépôt à
-   part ? Le dépôt commun garde ensemble l'app et le serveur qui évoluent ensemble.
-5. **L'état de l'apprenant** reste sur l'iPhone, comme aujourd'hui, et le serveur
-   ne garde rien ? Ça compte pour le profil, plus tard.
+## À valider
+
+- **L'ordre** : la conversation en talkie-walkie d'abord.
+- **Les choix de départ** pour les sujets et les corrections (section Conversation).
