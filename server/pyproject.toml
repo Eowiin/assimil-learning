@@ -1,27 +1,26 @@
 [project]
 name = "assimil-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "Le serveur de la maison : les modèles que l'iPhone ne peut pas faire tourner."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-]
-
-[dependency-groups]
-dev = [
-    "pytest>=8.3",
-    "httpx2",
-]
-# Les essais de modèles (essais/), sur le PC : uv sync --group essais
-essais = [
-    "httpx>=0.28",
+    "python-multipart>=0.0.20",  # l'audio d'un tour arrive en formulaire
+    "httpx>=0.28",               # pour parler à Ollama
+    # Les modèles : Whisper, XTTS v2 (et PyTorch, compilé pour CUDA 12.8 sous Linux).
     "faster-whisper>=1.1",
     "coqui-tts[codec]>=0.26",
     "soundfile>=0.12",
     "six",  # importé par coqui-tts sans être déclaré
     "torch>=2.7",
     "torchaudio>=2.7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx2",
 ]
 
 [tool.pytest.ini_options]

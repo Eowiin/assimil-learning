@@ -9,10 +9,10 @@ le temps de chaque étape, et enregistre la réponse parlée. Le bilan final don
 la mémoire graphique, modèles chargés ensemble. Rien n'est gardé ailleurs que
 dans le dossier de sortie.
 
-    uv run --group essais python essais/conversation.py tour1.m4a tour2.m4a
-    uv run --group essais python essais/conversation.py --ia gemma3:12b tour1.m4a
-    uv run --group essais python essais/conversation.py --texte "Hola, ¿qué tal?"
-    uv run --group essais python essais/conversation.py --interactif
+    uv run python essais/conversation.py tour1.m4a tour2.m4a
+    uv run python essais/conversation.py --ia gemma3:12b tour1.m4a
+    uv run python essais/conversation.py --texte "Hola, ¿qué tal?"
+    uv run python essais/conversation.py --interactif
 
 Voir `essais/README.md` pour l'installation (Ollama, modèles, voix).
 """
