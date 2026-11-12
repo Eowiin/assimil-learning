@@ -29,3 +29,7 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+
+# Serveur
+server/.venv/
+server/.pytest_cache/
