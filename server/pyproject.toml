@@ -13,7 +13,27 @@ dev = [
     "pytest>=8.3",
     "httpx2",
 ]
+# Les essais de modèles (essais/), sur le PC : uv sync --group essais
+essais = [
+    "httpx>=0.28",
+    "faster-whisper>=1.1",
+    "coqui-tts[codec]>=0.26",
+    "soundfile>=0.12",
+    "six",  # importé par coqui-tts sans être déclaré
+    "torch>=2.7",
+    "torchaudio>=2.7",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# La 5070 Ti (Blackwell) demande PyTorch compilé pour CUDA 12.8 ou plus.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+torchaudio = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
