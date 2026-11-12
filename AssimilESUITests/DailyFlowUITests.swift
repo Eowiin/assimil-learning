@@ -12,8 +12,9 @@ final class DailyFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launch(store: URL, lesson: Int, dayOffset: Int = 0) -> XCUIApplication {
+    private func launch(store: URL, lesson: Int, dayOffset: Int = 0, fakeServer: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
+        if fakeServer { app.launchEnvironment["ASSIMIL_FAKE_SERVER"] = "1" }
         app.launchEnvironment["ASSIMIL_STORE"] = store.path
         app.launchEnvironment["ASSIMIL_TEXT_DIR"] = fixtures.path
         app.launchEnvironment["ASSIMIL_DAY_OFFSET"] = String(dayOffset)
@@ -222,6 +223,24 @@ final class DailyFlowUITests: XCTestCase {
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.staticTexts["Vocabulaire à jour"].waitForExistence(timeout: 5))
+    }
+
+    /// La conversation n'apparaît que si le serveur l'offre. Le micro n'est pas
+    /// touché : le simulateur demanderait l'autorisation.
+    func testConversationOnlyWithServer() throws {
+        var app = launch(store: newStore(), lesson: 1)
+        XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["start-conversation"].exists)
+        app.terminate()
+
+        app = launch(store: newStore(), lesson: 1, fakeServer: true)
+        tap(app.buttons["start-conversation"])
+        XCTAssertTrue(app.staticTexts["¡Hola! ¿Qué has hecho hoy?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["conversation-mic"].isEnabled)
+        snapshot(app, "conversation-ouverture")
+
+        tap(app.buttons["conversation-end"])
+        XCTAssertTrue(app.buttons["start-conversation"].waitForExistence(timeout: 5))
     }
 
     func testWeeklyReviewWithoutExercises() throws {

@@ -843,6 +843,28 @@ pas (Tailscale éteint, serveur non lancé, certificat, version d'API). Sans ser
 rien ne change : les modules qui en dépendent ne s'afficheront que s'il est en ligne.
 Le serveur ne garde rien de l'apprenant, et toutes les données restent sur l'iPhone.
 
+### La conversation
+
+Quand `/health` annonce `conversation`, l'accueil montre une ligne Conversation
+(`ConversationView`). On y parle en **talkie-walkie** : l'IA ouvre et propose un
+sujet. On touche le micro pour parler, puis on touche à nouveau pour envoyer. Ce
+que Whisper a compris s'affiche en bulle, et la réponse se lit à voix haute ; on peut
+la réécouter. La règle vit dans `ConversationSession`. `ConversationClient` parle au
+serveur, et `ConversationAudio` passe par `VoiceRecorder`. Les deux se remplacent par
+des faux dans les tests.
+
+- **L'iPhone tient l'historique** et l'envoie à chaque tour. Les prises et les
+  répliques ne vivent que le temps de la conversation, dans le dossier temporaire.
+- **Un échec ne perd rien** : le tour reste prêt, et « Réessayer » le renvoie tel
+  quel. La raison affichée vient du serveur quand il en donne une (« Ollama est-il
+  lancé ? »).
+- **Le texte de l'IA peut se masquer** (Réglages, Conversation). On écoute d'abord,
+  et un appui montre la réplique écrite.
+- **Le temps compte** dans `StudyEvent`, activité `conversation`, sans cours. Un
+  silence de plus de deux minutes ne compte que pour deux.
+- `ASSIMIL_FAKE_SERVER=1` (Debug) simule un serveur en ligne, pour les tests
+  d'interface.
+
 ## Interface
 
 L'app suit iOS 26 et ses composants système ; un composant maison ne remplace un

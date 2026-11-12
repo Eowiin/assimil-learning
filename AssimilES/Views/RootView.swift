@@ -50,6 +50,7 @@ struct RootView: View {
 struct TodayView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var clock: DayClock
+    @Environment(ServerStatus.self) private var server
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
     /// Toutes les cartes, inactives comprises : un mot retiré ne doit pas revenir
@@ -356,6 +357,30 @@ struct TodayView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("start-vocab")
             }
+        }
+        conversationRow
+    }
+
+    /// La conversation, quand le PC de la maison répond et l'a chargée. Sinon rien :
+    /// pas de ligne grisée pour une fonction qu'on ne peut pas utiliser.
+    @ViewBuilder
+    private var conversationRow: some View {
+        if let service = server.conversation {
+            NavigationLink {
+                ConversationView(service: service)
+            } label: {
+                HStack(spacing: 14) {
+                    reviewsRow(title: "Conversation",
+                               detail: "Parler en espagnol avec l'IA",
+                               symbol: "bubble.left.and.text.bubble.right")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-conversation")
         }
     }
 

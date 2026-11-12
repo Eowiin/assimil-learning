@@ -24,41 +24,12 @@ struct HomeServerAddressTests {
     }
 }
 
-/// Répond à la place du réseau. Un seul gestionnaire à la fois : la suite est en série.
-private final class StubProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, Data))?
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        do {
-            let (code, data) = try Self.handler!(request)
-            let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
-    }
-
-    override func stopLoading() {}
-
-    static func session() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [StubProtocol.self]
-        return URLSession(configuration: configuration)
-    }
-}
-
 @Suite("Serveur de la maison : le voyant", .serialized)
 @MainActor
 struct ServerStatusTests {
 
     private func status(_ handler: @escaping (URLRequest) throws -> (Int, Data)) -> ServerStatus {
-        StubProtocol.handler = handler
-        return ServerStatus(session: StubProtocol.session())
+        ServerStatus(session: StubProtocol.session(host: "pc.ts.net", handler))
     }
 
     private let healthy = Data(#"{"status":"ok","version":"0.1.0","api":1,"gpu":"NVIDIA GeForce RTX 5070 Ti"}"#.utf8)
@@ -73,7 +44,10 @@ struct ServerStatusTests {
         await server.check(address: "pc.ts.net")
         #expect(asked?.absoluteString == "https://pc.ts.net/health")
         #expect(server.state == .online(ServerHealth(status: "ok", version: "0.1.0", api: 1,
-                                                     gpu: "NVIDIA GeForce RTX 5070 Ti")))
+                                                     gpu: "NVIDIA GeForce RTX 5070 Ti", modules: nil)))
+        #expect(server.baseURL?.absoluteString == "https://pc.ts.net")
+        // Un serveur 0.1 n'annonce aucun module : pas de conversation.
+        #expect(server.conversation == nil)
         #expect(server.isOnline)
     }
 

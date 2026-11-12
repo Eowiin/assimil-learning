@@ -7,6 +7,10 @@ struct ServerHealth: Decodable, Equatable {
     let version: String
     let api: Int
     let gpu: String?
+    /// Les modules prêts sur le serveur (`conversation`). Absent avant la version 0.2.
+    let modules: [String]?
+
+    static let conversation = "conversation"
 }
 
 /// Le serveur de la maison : le PC fixe, joint par Tailscale (`docs/cadrage-v2.md`).
@@ -52,7 +56,13 @@ final class ServerStatus {
     }
 
     private(set) var state: State = .unset
+    /// L'adresse du serveur, quand il répond.
+    private(set) var baseURL: URL?
     private let session: URLSession
+    #if DEBUG
+    /// Les tests d'interface : un serveur imaginaire, en ligne, qui répond tout de suite.
+    private var fake = false
+    #endif
     /// Une vérification plus récente l'emporte sur une plus ancienne encore en route.
     private var generation = 0
 
@@ -65,11 +75,39 @@ final class ServerStatus {
         return false
     }
 
+    /// La conversation, si le serveur est en ligne et l'a chargée. Nil sinon : la
+    /// ligne Conversation de l'accueil n'apparaît pas.
+    var conversation: (any ConversationService)? {
+        #if DEBUG
+        if fake { return FakeConversationService() }
+        #endif
+        guard case .online(let health) = state, health.modules?.contains(ServerHealth.conversation) == true,
+              let baseURL
+        else { return nil }
+        return ConversationClient(baseURL: baseURL, session: session)
+    }
+
+    /// Le serveur imaginaire des tests d'interface. En Release, un voyant ordinaire.
+    static func fakeOnline() -> ServerStatus {
+        let status = ServerStatus()
+        #if DEBUG
+        status.fake = true
+        status.state = .online(ServerHealth(status: "ok", version: "test", api: HomeServer.supportedAPI,
+                                            gpu: nil, modules: [ServerHealth.conversation]))
+        #endif
+        return status
+    }
+
     func check(address: String) async {
+        #if DEBUG
+        if fake { return }
+        #endif
         generation += 1
         let current = generation
         let result = await Self.probe(address: address, session: session)
-        if current == generation { state = result }
+        guard current == generation else { return }
+        state = result
+        baseURL = isOnline ? HomeServer.baseURL(from: address) : nil
     }
 
     private static func probe(address: String, session: URLSession) async -> State {
@@ -92,13 +130,16 @@ final class ServerStatus {
             }
             return .online(health)
         } catch let error as URLError {
-            return .offline(message(for: error))
+            return .offline(HomeServer.message(for: error))
         } catch {
             return .offline(error.localizedDescription)
         }
     }
+}
 
-    private static func message(for error: URLError) -> String {
+extension HomeServer {
+    /// Une erreur réseau, dite pour quelqu'un qui sait où est son PC.
+    static func message(for error: URLError) -> String {
         switch error.code {
         case .notConnectedToInternet: "Pas de réseau"
         case .cannotFindHost, .dnsLookupFailed: "PC introuvable : Tailscale est-il allumé ?"

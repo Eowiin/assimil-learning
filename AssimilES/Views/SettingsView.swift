@@ -96,6 +96,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Afficher le texte de l'IA", isOn: $settings.conversationShowsText)
+                } header: {
+                    Text("Conversation")
+                } footer: {
+                    Text("Sinon, on écoute d'abord : un appui sur une réplique montre son texte.")
+                }
+
+                Section {
                     Button("Exporter une sauvegarde", systemImage: "externaldrive.badge.timemachine") {
                         exportBackup()
                     }

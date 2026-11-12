@@ -9,7 +9,7 @@ struct AssimilESApp: App {
     @StateObject private var clock = DayClock()
     @State private var nowPlaying: NowPlayingController?
     @State private var packs: PackStore
-    @State private var server = ServerStatus()
+    @State private var server = AppEnvironment.fakeServer ? ServerStatus.fakeOnline() : ServerStatus()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {

@@ -21,6 +21,9 @@ final class VoiceRecorder: NSObject, ObservableObject {
     /// Durée de la dernière prise, pour la comparer au débit du natif.
     @Published private(set) var lastDuration: Double = 0
 
+    /// Appelé quand une lecture va à son terme (pas quand on l'arrête).
+    var onPlaybackFinished: (() -> Void)?
+
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
     private var startedAt: Date?
@@ -113,7 +116,10 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
     func play(_ url: URL, as kind: Playing) {
         stopPlayback()
-        guard let player = try? AVAudioPlayer(contentsOf: url) else { return }
+        guard let player = try? AVAudioPlayer(contentsOf: url) else {
+            onPlaybackFinished?()
+            return
+        }
         self.player = player
         player.delegate = self
         player.play()
@@ -132,6 +138,7 @@ extension VoiceRecorder: AVAudioPlayerDelegate {
         Task { @MainActor in
             self.player = nil
             self.playing = .none
+            self.onPlaybackFinished?()
         }
     }
 }

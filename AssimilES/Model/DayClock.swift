@@ -71,6 +71,11 @@ enum AppEnvironment {
         values["ASSIMIL_DAY_OFFSET"].flatMap(Int.init) ?? 0
     }
 
+    /// Un serveur de la maison imaginaire, en ligne, pour les tests d'interface.
+    static var fakeServer: Bool {
+        values["ASSIMIL_FAKE_SERVER"] == "1"
+    }
+
     /// Stockage SwiftData isolé, pour ne pas toucher aux données réelles.
     static var storeURL: URL? {
         values["ASSIMIL_STORE"].map { URL(fileURLWithPath: $0) }
