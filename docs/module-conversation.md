@@ -60,7 +60,7 @@ ne montre la conversation que si le serveur l'annonce.
 
 ## Étapes
 
-### 1 · Le serveur converse (PC)
+### 1 · Le serveur converse (PC) — fait (PR #64)
 
 - Les dépendances du groupe `essais` passent dans celles du serveur.
 - `app/conversation.py` : l'enchaînement Whisper → Qwen → XTTS, repris de
@@ -73,7 +73,7 @@ ne montre la conversation que si le serveur l'annonce.
 - **Test sur le PC** : un petit script appelle les routes avec tes enregistrements,
   comme le fera l'app. On vérifie le délai et le récapitulatif.
 
-### 2 · L'écran de conversation (app)
+### 2 · L'écran de conversation (app) — fait (PR #65)
 
 - `ConversationClient` : les trois appels, et la lecture des réponses. Il est testé
   avec un faux réseau, comme `ServerStatus`.
@@ -90,7 +90,7 @@ ne montre la conversation que si le serveur l'annonce.
   elle ne dépend pas d'Assimil.
 - **Test sur l'iPhone** : une vraie conversation, à la maison puis dehors.
 
-### 3 · Le récapitulatif (app et serveur)
+### 3 · Le récapitulatif (app et serveur) — fait (branche feat/conversation-recap)
 
 - La route `review` et sa consigne, si elles n'ont pas été faites à l'étape 1.
 - L'écran du récapitulatif, après « Terminer » : la phrase dite, la phrase

@@ -95,6 +95,41 @@ struct MigrationTests {
         #expect(LegacyCopy.run(in: context) == LegacyCopy.Report())
     }
 
+    @Test("Un stockage d'avant les conversations s'ouvre, cartes intactes, et en garde une")
+    func storeBeforeConversationsOpens() throws {
+        let url = Fixture.storeURL()
+        let previous = AssimilESApp.models.filter { ObjectIdentifier($0) != ObjectIdentifier(ConversationRecord.self) }
+        #expect(previous.count == AssimilESApp.models.count - 1)
+
+        do {
+            let container = try Fixture.container(at: url, models: previous)
+            let item = try #require(VocabItem(lemma: "estar")).itemID()
+            container.mainContext.insert(Card(item: item, angle: Card.Angle.recognize, language: "es",
+                                              scheduler: Card.Scheduler.fsrs, at: Fixture.date(day: 8)))
+            try container.mainContext.save()
+        }
+
+        // Le conteneur est gardé : un contexte seul ne le retient pas.
+        let current = try Fixture.container(at: url)
+        let context = current.mainContext
+        #expect(try context.fetch(FetchDescriptor<Card>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<ConversationRecord>()).isEmpty)
+
+        let messages = [ConversationMessage(role: .assistant, content: "¿Qué tal?"),
+                        ConversationMessage(role: .user, content: "Yo soy cansado.")]
+        let record = ConversationRecord(startedAt: Fixture.date(day: 9), endedAt: Fixture.date(day: 9, hour: 21),
+                                        messages: messages)
+        context.insert(record)
+        try context.save()
+        let saved = try #require(try context.fetch(FetchDescriptor<ConversationRecord>()).first)
+        #expect(saved.messages == messages)
+        #expect(saved.reviewedCorrections == nil)
+        saved.reviewedCorrections = [ConversationCorrection(said: "Yo soy cansado.", corrected: "Estoy cansado.",
+                                                            explanation: "Un état : estar.")]
+        try context.save()
+        #expect(try context.fetch(FetchDescriptor<ConversationRecord>()).first?.reviewedCorrections?.count == 1)
+    }
+
     @Test("Ancien réglage hors limites ramené dans le catalogue")
     func legacyLessonClamped() throws {
         let container = try Fixture.container()
