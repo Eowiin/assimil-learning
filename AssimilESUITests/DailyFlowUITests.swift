@@ -253,6 +253,38 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-conversation"].waitForExistence(timeout: 5))
     }
 
+    /// La prononciation n'apparaît que si le serveur l'offre. Le faux serveur juge
+    /// fautif le premier mot qui a un r.
+    func testPronunciationOnlyWithServer() throws {
+        var app = launch(store: newStore(), lesson: 1)
+        XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["start-pronunciation"].exists)
+        app.terminate()
+
+        app = launch(store: newStore(), lesson: 1, fakeServer: true)
+        tap(app.buttons["start-pronunciation"])
+        XCTAssertTrue(app.staticTexts["pronunciation-progress"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["pronunciation-progress"].label.hasPrefix("Phrase 1 sur"))
+        XCTAssertFalse(app.buttons["pronunciation-next"].exists)
+        snapshot(app, "prononciation-phrase")
+
+        // Une faute : la phrase se retente avant de passer.
+        tap(app.buttons["pronunciation-mic"])
+        tap(app.buttons["pronunciation-mic"])
+        XCTAssertTrue(app.staticTexts["pronunciation-correction"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["word-fault"].exists)
+        XCTAssertFalse(app.buttons["pronunciation-next"].exists)
+        snapshot(app, "prononciation-faute")
+
+        tap(app.buttons["pronunciation-mic"])
+        tap(app.buttons["pronunciation-mic"])
+        tap(app.buttons["pronunciation-next"])
+        XCTAssertTrue(app.staticTexts["pronunciation-progress"].label.hasPrefix("Phrase 2 sur"))
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["start-pronunciation"].waitForExistence(timeout: 5))
+    }
+
     func testWeeklyReviewWithoutExercises() throws {
         let app = launch(store: newStore(), lesson: 7)
         XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))

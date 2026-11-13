@@ -240,3 +240,69 @@ struct FakePronunciationService: PronunciationService {
     }
 }
 #endif
+
+// MARK: - Les lettres du son fautif
+
+/// Où un son s'écrit dans un mot : « ja**rr**a » pour le r roulé de « jarra ». Le
+/// serveur dit quel son est fautif, pas quelles lettres le portent ; l'app les
+/// retrouve à l'orthographe, pour les sons qu'elle sait travailler.
+enum SpanishSpelling {
+
+    /// Les sons qui s'écrivent de la même façon : le r battu et le r roulé, le b et
+    /// sa forme douce.
+    private static func family(_ symbol: String) -> String? {
+        switch symbol {
+        case "θ": "θ"
+        case "x": "x"
+        case "r", "ɾ": "r"
+        case "b", "β": "b"
+        default: nil
+        }
+    }
+
+    /// Les lettres du son fautif dans le mot affiché. Nil si le son n'est pas de
+    /// ceux-là, ou si l'orthographe ne le montre pas : on soulignera le mot entier.
+    static func letters(of phone: JudgedPhone, in word: DisplayedWord) -> Range<String.Index>? {
+        guard let judged = word.judged, let family = family(phone.expected),
+              let position = judged.phonemes.firstIndex(of: phone)
+        else { return nil }
+        // Le k-ième son de la même famille dans le mot.
+        let occurrence = judged.phonemes[..<position].filter { Self.family($0.expected) == family }.count
+        let spots = spellings(of: family, in: word.text)
+        return occurrence < spots.count ? spots[occurrence] : nil
+    }
+
+    /// Chaque endroit du mot où la famille s'écrit, dans l'ordre.
+    static func spellings(of family: String, in text: String) -> [Range<String.Index>] {
+        // Chaque caractère, réduit à sa lettre de base : « é » → « e ».
+        let indices = Array(text.indices)
+        let base = indices.map { i in
+            String(text[i]).lowercased().decomposedStringWithCanonicalMapping.unicodeScalars.first.map(Character.init)
+        }
+        func letter(_ k: Int) -> Character? { k < base.count ? base[k] : nil }
+        func range(_ k: Int, length: Int) -> Range<String.Index> {
+            indices[k]..<(k + length < indices.count ? indices[k + length] : text.endIndex)
+        }
+
+        var spots: [Range<String.Index>] = []
+        var k = 0
+        while k < indices.count {
+            let c = letter(k), next = letter(k + 1)
+            var length = 0
+            switch family {
+            case "θ": if c == "z" || (c == "c" && (next == "e" || next == "i")) { length = 1 }
+            case "x": if c == "j" || (c == "g" && (next == "e" || next == "i")) { length = 1 }
+            case "r": if c == "r" { length = next == "r" ? 2 : 1 }
+            case "b": if c == "b" || c == "v" { length = 1 }
+            default: break
+            }
+            if length > 0 {
+                spots.append(range(k, length: length))
+                k += length
+            } else {
+                k += 1
+            }
+        }
+        return spots
+    }
+}

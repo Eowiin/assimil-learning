@@ -359,6 +359,30 @@ struct TodayView: View {
             }
         }
         conversationRow
+        pronunciationRow
+    }
+
+    /// La prononciation, quand le PC de la maison l'a chargée. Sinon rien, comme la
+    /// conversation.
+    @ViewBuilder
+    private var pronunciationRow: some View {
+        if let service = server.pronunciation {
+            NavigationLink {
+                PronunciationEntry(service: service, lessons: PronunciationDrill.lessons(available: vocabLessons))
+            } label: {
+                HStack(spacing: 14) {
+                    reviewsRow(title: "Prononciation",
+                               detail: "Cinq phrases, tes sons corrigés",
+                               symbol: "mouth")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-pronunciation")
+        }
     }
 
     /// La conversation, quand le PC de la maison répond et l'a chargée. Sinon rien :

@@ -27,6 +27,8 @@ final class VoiceRecorder: NSObject, ObservableObject {
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
     private var startedAt: Date?
+    /// La fin d'un passage joué seul.
+    private var segmentEnd: Task<Void, Never>?
 
     // MARK: - Fichiers
 
@@ -114,7 +116,8 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
     // MARK: - Écoute
 
-    func play(_ url: URL, as kind: Playing) {
+    /// `range` : un passage seulement, en secondes (un mot de la prise).
+    func play(_ url: URL, as kind: Playing, range: ClosedRange<Double>? = nil) {
         stopPlayback()
         guard let player = try? AVAudioPlayer(contentsOf: url) else {
             onPlaybackFinished?()
@@ -122,11 +125,23 @@ final class VoiceRecorder: NSObject, ObservableObject {
         }
         self.player = player
         player.delegate = self
+        if let range {
+            player.currentTime = max(0, range.lowerBound)
+            let length = range.upperBound - range.lowerBound
+            segmentEnd = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(length))
+                guard !Task.isCancelled, let self, self.player === player else { return }
+                self.stopPlayback()
+                self.onPlaybackFinished?()
+            }
+        }
         player.play()
         playing = kind
     }
 
     func stopPlayback() {
+        segmentEnd?.cancel()
+        segmentEnd = nil
         player?.stop()
         player = nil
         playing = .none
