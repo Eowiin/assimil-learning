@@ -19,7 +19,7 @@ from functools import lru_cache
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from .conversation import (Correction, Message, Moteurs, messages_correction,
+from .conversation import (Correction, Message, Moteurs, derniere_replique, messages_correction,
                            messages_ouverture, messages_tour)
 from .moteurs import OllamaIndisponible
 from .prononciation.jugement import par_mots
@@ -232,7 +232,7 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
             raise HTTPException(422, "Il faut un audio ou un texte.")
         with verrou:
             if audio is not None:
-                compris, ecoute = chrono(m.ecouter, audio.file.read())
+                compris, ecoute = chrono(m.ecouter, audio.file.read(), derniere_replique(historique))
             else:
                 compris, ecoute = text.strip(), None
             if not compris:

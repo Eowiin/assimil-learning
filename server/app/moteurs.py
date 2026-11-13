@@ -29,6 +29,9 @@ class Reglages:
     locuteur: str = "Ana Florence"
     # Combien de temps Ollama garde l'IA en mémoire après le dernier tour.
     garder_ia: str = "30m"
+    # À l'essai, désactivé tant qu'il n'est pas mesuré (`essais/whisper_contexte.py`) :
+    # Whisper reçoit la dernière réplique de l'IA comme amorce.
+    whisper_contexte: bool = False
 
     @classmethod
     def depuis_environnement(cls) -> "Reglages":
@@ -42,6 +45,7 @@ class Reglages:
             voix=Path(voix).expanduser() if voix else None,
             locuteur=env("ASSIMIL_LOCUTEUR", cls.locuteur),
             garder_ia=env("ASSIMIL_GARDER_IA", cls.garder_ia),
+            whisper_contexte=env("ASSIMIL_WHISPER_CONTEXTE", "") == "1",
         )
 
 
@@ -75,6 +79,16 @@ def encoder_aac(wav: Path) -> bytes:
         return sortie.read_bytes()
 
 
+def transcrire(whisper, audio, amorce: str | None = None) -> str:
+    """Whisper, l'espagnol imposé : sans ça, un accent français peut faire détecter
+    du français. `amorce` (`initial_prompt`) : un texte que Whisper prend pour ce
+    qui précède, et dont il reprend plus volontiers les mots. Partagé avec
+    `essais/whisper_contexte.py`, pour mesurer exactement ce que fait le serveur."""
+    segments, _ = whisper.transcribe(audio, language="es", beam_size=5, vad_filter=True,
+                                     initial_prompt=amorce)
+    return " ".join(s.text.strip() for s in segments).strip()
+
+
 class Reels:
     def __init__(self, reglages: Reglages):
         from faster_whisper import WhisperModel
@@ -90,10 +104,9 @@ class Reels:
 
     # --- Écouter --------------------------------------------------------------
 
-    def ecouter(self, audio: bytes) -> str:
-        segments, _ = self.whisper.transcribe(decoder_16k(audio), language="es", beam_size=5,
-                                              vad_filter=True)
-        return " ".join(s.text.strip() for s in segments).strip()
+    def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
+        amorce = contexte if self.reglages.whisper_contexte and contexte else None
+        return transcrire(self.whisper, decoder_16k(audio), amorce)
 
     # --- Penser ---------------------------------------------------------------
 

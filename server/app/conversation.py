@@ -32,6 +32,10 @@ conversation entre un élève francophone (niveau A2-B1) et son partenaire. Les 
 l'élève ont été transcrites depuis sa voix : ignore la ponctuation, les majuscules et les \
 accents écrits, qui viennent de la transcription.
 
+La transcription (Whisper) se trompe parfois : un mot qui n'a pas de sens dans la phrase, \
+ou qui ne ressemble à rien, vient sans doute d'elle et non de l'élève. Ne le corrige pas, \
+et ne relève pas une phrase pour ça.
+
 Relève uniquement les vraies fautes de l'élève : grammaire (accords, conjugaison, \
 prépositions, ser/estar…), vocabulaire, ou tournure qu'un Espagnol ne dirait pas. \
 Ne relève pas le style, ni une phrase correcte qu'on pourrait dire autrement.
@@ -39,7 +43,11 @@ Ne relève pas le style, ni une phrase correcte qu'on pourrait dire autrement.
 Pour chaque phrase fautive, donne :
 - "said" : la phrase de l'élève, telle quelle ;
 - "corrected" : la même phrase corrigée, en changeant le moins possible ;
-- "explanation" : en français, une phrase courte qui dit la règle.
+- "explanation" : en français, une phrase courte qui dit la règle ;
+- "category" : "grammaire", "vocabulaire" ou "tournure" (une tournure qu'un Espagnol \
+ne dirait pas) ;
+- "tag" : le point précis, en quelques mots, toujours nommé de la même façon \
+(par exemple "ser/estar", "accord du verbe", "por/para", "gustar").
 
 Si l'élève n'a fait aucune faute, renvoie une liste vide."""
 
@@ -54,6 +62,10 @@ class Correction(BaseModel):
     said: str
     corrected: str
     explanation: str
+    # Pour le profil d'apprenant : quel genre de faute, et sur quel point. Le
+    # point est du texte libre tant qu'on n'a pas vu ce que l'IA en fait.
+    category: Literal["grammaire", "vocabulaire", "tournure"]
+    tag: str
 
 
 class Corrections(BaseModel):
@@ -64,8 +76,10 @@ class Moteurs(Protocol):
     """Ce que le serveur attend des modèles. `moteurs.Reels` les charge vraiment ;
     les tests en passent un faux."""
 
-    def ecouter(self, audio: bytes) -> str:
-        """La transcription d'un enregistrement (n'importe quel format lu par ffmpeg)."""
+    def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
+        """La transcription d'un enregistrement (n'importe quel format lu par ffmpeg).
+        `contexte` : la dernière réplique de l'IA, que Whisper peut recevoir pour
+        mieux reconnaître les mots qu'elle vient d'employer."""
         ...
 
     def repondre(self, messages: list[dict]) -> str:
@@ -90,6 +104,11 @@ def messages_tour(historique: list[Message], phrase: str) -> list[dict]:
     return ([{"role": "system", "content": CONSIGNE}]
             + [m.model_dump() for m in historique]
             + [{"role": "user", "content": phrase}])
+
+
+def derniere_replique(historique: list[Message]) -> str | None:
+    """Ce que l'IA vient de dire, à quoi l'apprenant répond."""
+    return next((m.content for m in reversed(historique) if m.role == "assistant"), None)
 
 
 def messages_correction(historique: list[Message]) -> list[dict]:
