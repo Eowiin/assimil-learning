@@ -20,11 +20,18 @@ struct PronunciationView: View {
     /// posé ne fait pas du temps d'étude.
     private static let maxGap: Double = 120
 
-    init(sentences: [DrillSentence], service: any PronunciationService, manifest: Manifest) {
+    /// `context` : chaque prise jugée y est gardée (`PronunciationRecord`).
+    init(sentences: [DrillSentence], service: any PronunciationService, manifest: Manifest,
+         context: ModelContext) {
         _session = State(initialValue: PronunciationSession(
             sentences: sentences, service: service, sound: Self.sound(),
             nativeURL: { sentence in
                 manifest.lesson(sentence.lesson).flatMap { manifest.url(for: sentence.clip, in: $0) }
+            },
+            onJudged: { sentence, attempt, result in
+                context.insert(PronunciationRecord(judgedAt: DayClock.systemNow(), sentence: sentence,
+                                                   attempt: attempt, result: result))
+                try? context.save()
             }))
     }
 
@@ -442,11 +449,12 @@ struct PronunciationEntry: View {
     let lessons: Set<Int>
 
     @Environment(\.manifest) private var manifest
+    @Environment(\.modelContext) private var context
     @State private var sentences: [DrillSentence]?
 
     var body: some View {
         if let sentences {
-            PronunciationView(sentences: sentences, service: service, manifest: manifest)
+            PronunciationView(sentences: sentences, service: service, manifest: manifest, context: context)
         } else {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
