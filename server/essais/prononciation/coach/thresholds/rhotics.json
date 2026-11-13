@@ -1,0 +1,12 @@
+{
+ "tap_max_duration": 0.045,
+ "trill_min_contacts": 2,
+ "long_duration": 0.099,
+ "contexts": [
+  "V_V",
+  "#_V"
+ ],
+ "uvular_min": 0.5,
+ "model": "xlsr53",
+ "uvular_model": "zipa-s"
+}
