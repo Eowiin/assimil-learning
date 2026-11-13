@@ -7,10 +7,11 @@ fois soignée et une fois avec les fautes d'un francophone. Elles viennent du Ma
 (`empaqueter.py`), un .wav et un .json par prise, hors dépôt.
 
     uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
-    ASSIMIL_PRONONCIATION_MODELE=autre/modele uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
+    ASSIMIL_PRONONCIATION_MODELE=lv60 uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
 
-Le résultat de référence, avec le modèle par défaut : 8 fautes repérées sur 34,
-et 24 phonèmes signalés à tort sur 218 dans la prise soignée.
+Le prototype du 10 novembre repérait 8 fautes sur 34, et signalait 24 phonèmes sur 218
+dans la prise soignée. La méthode de spanish-pronunciation-coach (analyse.py), le
+13 novembre : 29 sur 34, et 13 sur 218.
 """
 import argparse
 import glob
@@ -43,7 +44,7 @@ def main():
     print(f"Modèle : {MODELE}")
     debut = time.perf_counter()
     analyseur = Analyseur()
-    print(f"Chargé en {time.perf_counter() - debut:.1f} s, sur {next(analyseur.modele.parameters()).device}")
+    print(f"Chargé en {time.perf_counter() - debut:.1f} s, sur {analyseur.modele.device} (ZIPA sur cpu)")
 
     durees = []
     for chemin in fichiers:

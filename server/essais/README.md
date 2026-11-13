@@ -84,10 +84,24 @@ garder.
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris
-pour tourner sur le PC. Un wav2vec2 phonétique transcrit la prise, et chaque phonème
-attendu reçoit une note : le modèle entend-il mieux ce son-là, ou un autre ?
-`rejouer.py` le fait passer sur les 16 prises du test (8 phrases, soignées puis avec
-les fautes d'un francophone), puis donne le bilan.
+pour tourner sur le PC, puis remplacé le 13 novembre par la méthode de
+spanish-pronunciation-coach, le projet de recherche du PC (modules repris dans
+`prononciation/coach/`) :
+
+- **GOP aligné** : la phrase attendue est alignée de force sur les sorties du wav2vec2
+  phonétique, et chaque phonème reçoit la probabilité de ses réalisations acceptées.
+  Seuils par phonème tirés de 1899 phrases natives d'Assimil (quantile 0,002 ; 0,01
+  pour /θ/), là où le prototype n'avait que quelques voix natives.
+- **Les r jugés dans le signal** : battu ou roulé se compte aux contacts de la langue
+  dans l'énergie. Aucun modèle ne sépare les deux de façon fiable.
+- **ZIPA** (un second modèle phonétique, petit, en ONNX sur le CPU) entend ce que le
+  wav2vec2 n'entend pas : le r français ([ʁ]) à la place d'un r ou d'une jota, et le
+  [v] à la place d'un /b/ écrit v. Ses seuils (`seuils_zipa.json`) sont tirés des
+  mêmes natives par `calibrer_zipa.py`. Licence CC-BY-NC-SA : bon pour l'essai, pas
+  pour une app publiée.
+
+`rejouer.py` fait passer l'analyse sur les 16 prises du test (8 phrases, soignées
+puis avec les fautes d'un francophone), puis donne le bilan.
 
 ```bash
 # Sur le Mac, une fois : les prises et leur texte, hors dépôt, à copier sur le PC.
@@ -95,17 +109,40 @@ python3 server/essais/prononciation/empaqueter.py ~/Desktop/prises-10-novembre
 
 # Sur le PC :
 uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
-ASSIMIL_PRONONCIATION_MODELE=autre/modele uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
+ASSIMIL_PRONONCIATION_MODELE=lv60 uv run python essais/prononciation/rejouer.py ~/prises-10-novembre
 ```
 
-**Le chiffre à battre**, avec le modèle par défaut (`facebook/wav2vec2-xlsr-53-espeak-cv-ft`),
-retrouvé à l'identique le 12 novembre :
+`ASSIMIL_PRONONCIATION_MODELE` choisit le wav2vec2 parmi ceux dont les seuils sont
+calibrés : `xlsr53` (le défaut, `facebook/wav2vec2-xlsr-53-espeak-cv-ft`), `lv60`, `cnam`.
 
-| | θ dit s | jota dite r français | r dit r français | v dit v | **Total** |
-|---|---|---|---|---|---|
-| Fautes repérées | 4/7 | 0/4 | 1/18 | 3/5 | **8/34** |
-| Signalés à tort (prise soignée) | | | | | **24/218** |
+**Les résultats**, sur les mêmes 16 prises :
 
-Un même modèle donne le même résultat sur le Mac et sur le PC : la carte graphique
-change la vitesse, pas le jugement. Pour faire mieux, il faut un autre modèle (la
-variable `ASSIMIL_PRONONCIATION_MODELE`), ou une autre méthode.
+| | θ dit s | jota dite r français | r dit r français | v dit v | **Total** | Signalés en prise soignée |
+|---|---|---|---|---|---|---|
+| Prototype du 10 novembre | 4/7 | 0/4 | 1/18 | 3/5 | **8/34** | **24/218** |
+| Méthode du coach (13 novembre) | 6/7 | 3/4 | 17/18 | 3/5 | **29/34** | **13/218** |
+
+Les signalés de la prise soignée ne sont pas tous à tort : sur 13, il y a 4 θ dits
+[s] et 3 r battus ou roulés à contretemps, deux habitudes déjà relevées sur les
+autres prises de la même voix (dans le coach).
+
+`extraits.py` découpe chaque mot signalé en un court wav, pour juger la faute à
+l'oreille.
+
+**Sur des voix inconnues** : `common_voice.py` tire des phrases de Common Voice
+espagnol (lu en flux dans l'archive de 52 Go, hors dépôt), et `evaluer.py` mesure
+l'analyse sur ce manifeste.
+
+```bash
+uv run --with datacollective python essais/prononciation/common_voice.py ~/common-voice-es --archive ARCHIVE
+uv run python essais/prononciation/evaluer.py ~/common-voice-es/manifeste.tsv
+```
+
+Sur 400 phrases de 270 natifs d'Espagne, 1,4 % des sons sont signalés (281/19 713),
+et 250 phrases sur 400 n'ont aucune alerte. Fausses alertes par faute visée : θ 4/335,
+jota 0/129 par ZIPA, r français 5/1312, v 4/204. Une partie vient des mots anglais des
+phrases (*price*, *Jennifer*…). Seul point faible : le jugement « r roulé dit battu »
+classe battus 34 des 64 /r/ natifs jugés, contre 13,6 % sur Assimil. Les lecteurs
+d'Assimil roulent plus que la moyenne. Common Voice n'a pas de francophones
+utilisables (un seul, d'accent mexicain) : la détection chez d'autres francophones
+reste à mesurer.

@@ -1,14 +1,21 @@
-"""Note chaque phonème attendu d'une phrase prononcée.
+"""Juge chaque phonème attendu d'une phrase prononcée.
 
-Pour chaque position, on compare la vraisemblance CTC de la phrase attendue à celle
-de la même phrase où ce seul phonème est remplacé par un autre son, ou supprimé
-(GOP sans alignement préalable). Score = écart de log-vraisemblance entre la
-meilleure variante et l'attendu : positif, l'attendu l'emporte ; négatif, le modèle
-a plutôt entendu la variante, qu'on rapporte.
+La méthode vient de spanish-pronunciation-coach (le projet de recherche sur le PC), reprise
+dans `coach/` :
 
-Une faute n'est signalée que si le score passe sous le seuil du phonème (seuils.json),
-tiré des voix natives : le modèle se trompe aussi sur elles, il ne faut pas
-reprocher à l'élève ce que le modèle reproche déjà au natif.
+1. GOP aligné : la phrase attendue (G2P castillan, `coach/g2p.py`) est alignée de force
+   sur les sorties du wav2vec2 phonétique ; chaque phonème est noté par la probabilité
+   de ses réalisations acceptées à sa meilleure trame. Il est fautif sous le seuil de son
+   phonème (`coach/thresholds/gop_<modèle>.json`), le quantile 0,002 de 1899 phrases
+   natives d'Assimil (0,01 pour /θ/).
+2. Les r : battu ou roulé se juge dans le signal (`coach/rhotic.py` : les contacts de la
+   langue dans l'énergie 400-4000 Hz), là où les natifs sont réguliers (entre voyelles,
+   en début de mot). Un r français se reconnaît à ZIPA, qui connaît [ʁ].
+3. ZIPA juge aussi deux fautes que le wav2vec2 n'entend pas (essai du 13 novembre) :
+   - la jota dite en r français : part de [ʁ χ ʀ] autour du /x/ aligné ;
+   - le v dit [v] : part de [v] autour d'un /b/ écrit v. Le wav2vec2 entend du [v] chez
+     les natifs ; ZIPA presque jamais.
+   Seuils dans `seuils_zipa.json`, tirés des natifs par `calibrer_zipa.py`.
 
 Usage : analyse.py AUDIO "phrase attendue"
 """
@@ -16,117 +23,111 @@ import json
 import os
 import sys
 
-import torch
-import torch.nn.functional as F
+import numpy as np
 
-from entendre import charger_audio, charger_modele, decoder
-from phonemes import phonemiser
+from coach.acoustic import load_model
+from coach.ctc import BLANK, collapse, greedy_decode
+from coach.g2p import transcribe
+from coach.gop import Thresholds, score_utterance
+from coach.rhotic import Calibration, analyze, uvular_evidence
+from entendre import MODELE, charger_audio
 
-# Sons proposés en remplacement : l'inventaire espagnol, plus les sons qu'un
-# francophone risque d'y substituer (r grasseyé, voyelles nasales, u français…).
-ESPAGNOL = "a e i o u j w p b β t d ð k ɡ ɣ f θ s x tʃ m n ɲ l ʎ ɾ r aɪ eɪ oɪ aʊ eʊ".split()
-FRANCAIS = "ʁ ʒ ʃ v z y ø œ ə ɛ ɔ ɑ̃ ɔ̃ ɛ̃ h ŋ ɹ dʒ".split()
-SUPPRESSION = "∅"
-# Réalisations tolérées pour un phonème attendu : pas une faute. Orientées : un r
-# roulé à la place du battu passe, un r battu à la place du roulé (perro → pero) non.
-# Le modèle distingue mal occlusives et spirantes (b/β, d/ð, g/ɣ) même chez les natifs.
-TOLERANCES = {
-    "ɾ": {"r"}, "s": {"z"}, "n": {"ŋ"}, "e": {"ɛ"}, "o": {"ɔ"},
-    "b": {"β"}, "β": {"b"}, "d": {"ð"}, "ð": {"d"}, "ɡ": {"ɣ"}, "ɣ": {"ɡ"},
-    "j": {"i", "ʎ", "dʒ"}, "ʎ": {"j", "dʒ"}, "w": {"u"}, "i": {"j"}, "u": {"w"},
-}
-SEUILS = os.path.join(os.path.dirname(__file__), "seuils.json")
-LOT = 512
+SEUILS_ZIPA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seuils_zipa.json")
+ZIPA = "zipa-s"
+UVULAIRES = ("ʁ", "χ", "ʀ")
+# Ce qu'un verdict sur le r fait entendre.
+ENTENDU_R = {"tap": "ɾ", "trill": "r", "uvular": "ʁ", "long": "ʁ"}
 
 
-def _tolere(p):
-    return {p} | TOLERANCES.get(p, set())
+def lettres_v(utt):
+    """{(mot, k)} des /b/ écrits v : chaque b ou v écrit donne un /b/, dans l'ordre."""
+    sortie = set()
+    for wi, w in enumerate(utt.words):
+        lettres = [c for c in w.text.lower() if c in "bvw"]
+        b = [k for k, p in enumerate(w.phonemes()) if p == "b"]
+        sortie |= {(wi, k) for k, l in zip(b, lettres) if l == "v"}
+    return sortie
 
 
-def _perte(log_probs, sequence, vocab_ids, vide):
-    cible = torch.tensor([vocab_ids[p] for p in sequence])
-    return F.ctc_loss(log_probs, cible, torch.tensor(log_probs.shape[0]),
-                      torch.tensor(len(sequence)), blank=vide, reduction="sum").item()
+def parts_zipa(utt, pp):
+    """Pour chaque /x/ : part uvulaire ; pour chaque /b/ écrit v : part de [v].
 
+    Part = probabilité des symboles parmi les sorties non vides, au maximum sur la fenêtre
+    alignée élargie (comme `uvular_evidence` pour les r). → {(mot, k): (faute, part)}"""
+    probs = np.exp(pp.log_probs.astype(np.float64))
+    non_vide = np.maximum(1e-6, 1 - probs[:, pp.index(BLANK)])
 
-def choisir_variantes(log_probs, attendus, variantes, vocab_ids, vide):
-    """Applique chaque variante si elle rend l'enregistrement plus probable.
+    def part(symboles):
+        idx = [i for s in symboles if (i := pp.index(s)) is not None]
+        return probs[:, idx].sum(axis=1) / non_vide
 
-    De droite à gauche, pour que les indices des variantes restantes restent valides.
-    """
-    attendus = list(attendus)
-    perte = _perte(log_probs, [p for p, _ in attendus], vocab_ids, vide)
-    for debut, longueur, remplacement in sorted(variantes, reverse=True):
-        mot = attendus[debut][1]
-        essai = attendus[:debut] + [(p, mot) for p in remplacement] + attendus[debut + longueur:]
-        perte_essai = _perte(log_probs, [p for p, _ in essai], vocab_ids, vide)
-        if perte_essai < perte:
-            attendus, perte = essai, perte_essai
-    return attendus
-
-
-def noter(log_probs, attendus, vocab_ids, vide):
-    """log_probs : (T, C) log-softmax. Retourne [(score, variante la plus probable)]."""
-    candidats = [p for p in ESPAGNOL + FRANCAIS if p in vocab_ids]
-    colonnes = sorted({vide} | {vocab_ids[p] for p in candidats + attendus})
-    local = {c: k for k, c in enumerate(colonnes)}
-    lp = log_probs[:, colonnes]
-    cible = [local[vocab_ids[p]] for p in attendus]
-
-    variantes, etiquettes = [cible], [(None, None)]
-    for i, p in enumerate(attendus):
-        for q in candidats:
-            if q not in _tolere(p):
-                variantes.append(cible[:i] + [local[vocab_ids[q]]] + cible[i + 1:])
-                etiquettes.append((i, q))
-        variantes.append(cible[:i] + cible[i + 1:])
-        etiquettes.append((i, SUPPRESSION))
-
-    pertes = []
-    for debut in range(0, len(variantes), LOT):
-        lot = variantes[debut:debut + LOT]
-        longueurs = torch.tensor([len(v) for v in lot])
-        cibles = torch.tensor([x for v in lot for x in v])
-        entree = lp.unsqueeze(1).expand(-1, len(lot), -1)
-        pertes.append(F.ctc_loss(entree, cibles, torch.full((len(lot),), lp.shape[0]),
-                                 longueurs, blank=local[vide], reduction="none"))
-    pertes = torch.cat(pertes)
-
-    reference = pertes[0].item()
-    meilleures = [(float("inf"), None)] * len(attendus)
-    for (i, q), perte in zip(etiquettes[1:], pertes[1:].tolist()):
-        if perte < meilleures[i][0]:
-            meilleures[i] = (perte, q)
-    return [(perte - reference, q) for perte, q in meilleures]
+    uvulaire, v = part(UVULAIRES), part(("v",))
+    ecrits_v = lettres_v(utt)
+    sortie = {}
+    for s in score_utterance(utt, pp):
+        fenetre = slice(max(0, s.start - 2), s.end + 3)
+        if s.phoneme == "x":
+            sortie[s.word, s.k] = ("jota", float(uvulaire[fenetre].max()))
+        elif (s.word, s.k) in ecrits_v:
+            sortie[s.word, s.k] = ("v", float(v[fenetre].max()))
+    return sortie
 
 
 class Analyseur:
     def __init__(self):
-        self.extracteur, self.modele, self.vocabulaire = charger_modele()
-        self.vocab_ids = {p: i for i, p in self.vocabulaire.items()}
-        self.vide = self.modele.config.pad_token_id
-        self.seuils = json.load(open(SEUILS)) if os.path.exists(SEUILS) else {}
-
-    def log_probs(self, audio):
-        entree = self.extracteur(audio, sampling_rate=16000, return_tensors="pt")
-        dispositif = next(self.modele.parameters()).device
-        with torch.no_grad():
-            logits = self.modele(entree.input_values.to(dispositif)).logits[0]
-        return F.log_softmax(logits.float(), dim=-1).cpu()
+        self.modele = load_model(MODELE)
+        self.seuils = Thresholds.load(MODELE)
+        if self.seuils is None:
+            raise SystemExit(f"Pas de seuils GOP pour {MODELE} (coach/thresholds/)")
+        self.calibration = Calibration.load()
+        self.zipa = load_model(ZIPA)
+        self.seuils_zipa = json.load(open(SEUILS_ZIPA))
 
     def analyser(self, audio, phrase):
-        mots, attendus, variantes = phonemiser(phrase)
-        lp = self.log_probs(audio)
-        attendus = choisir_variantes(lp, attendus, variantes, self.vocab_ids, self.vide)
-        notes = noter(lp, [p for p, _ in attendus], self.vocab_ids, self.vide)
-        entendu = decoder(lp.argmax(-1).tolist(), self.vocabulaire, self.vide)
-        return {
-            "mots": mots,
-            "phonemes": [{"attendu": p, "mot": m, "score": round(s, 2), "variante": q,
-                          "faute": s < self.seuils.get(p, 0.0)}
-                         for (p, m), (s, q) in zip(attendus, notes)],
-            "entendu": entendu,
-        }
+        utt = transcribe(phrase)
+        post = self.modele.posteriors(audio)
+        notes = {(s.word, s.k): s for s in score_utterance(utt, collapse(post))}
+        fs = post.frame_seconds
+        spans = {cle: (s.start * fs, (s.end + 1) * fs) for cle, s in notes.items()}
+        pp_zipa = collapse(self.zipa.posteriors(audio))
+        r = {(x.word, x.k): x for x in analyze(audio, utt, spans, self.calibration,
+                                               uvular_evidence(utt, pp_zipa))}
+        zipa = parts_zipa(utt, pp_zipa)
+
+        phonemes = []
+        for wi, w in enumerate(utt.words):
+            for k, p in enumerate(w.phonemes()):
+                n = notes.get((wi, k))
+                ph = {"attendu": p, "mot": wi, "score": None, "variante": None,
+                      "faute": False, "raison": None}
+                phonemes.append(ph)
+                if n is None:  # mot non noté (sigle, emprunt) ou son inconnu du modèle
+                    continue
+                seuil = self.seuils(p)
+                debut, fin = spans[wi, k]  # secondes, d'après l'alignement
+                ph |= {"score": round(n.score, 2), "seuil": round(seuil, 2), "variante": n.competitor,
+                       "debut": round(debut, 3), "fin": round(fin, 3)}
+                if n.score < seuil:
+                    ph |= {"faute": True, "raison": "gop",
+                           "variante": n.competitor if n.competitor_score > n.score else "∅"}
+                # Le r jugé dans le signal peut ajouter une faute, jamais en effacer une
+                # du GOP : un [l] fait aussi un seul contact, et passerait pour battu.
+                rh = r.get((wi, k))
+                if rh and rh.ok is not None and rh.reliable:
+                    ph["r"] = rh.verdict
+                    if not rh.ok:
+                        ph |= {"faute": True, "raison": "r",
+                               "variante": ENTENDU_R.get(rh.verdict, rh.verdict)}
+                if (wi, k) in zipa:
+                    faute, part = zipa[wi, k]
+                    ph["part_zipa"] = round(part, 3)
+                    if part >= self.seuils_zipa[faute] and not ph["faute"]:
+                        ph |= {"faute": True, "raison": "zipa",
+                               "variante": "ʁ" if faute == "jota" else "v"}
+
+        entendu = [s.symbol for s in greedy_decode(post.log_probs, post.vocab, post.blank)]
+        return {"mots": [w.text.lower() for w in utt.words], "phonemes": phonemes,
+                "entendu": entendu}
 
 
 def afficher(resultat):
@@ -134,7 +135,7 @@ def afficher(resultat):
     for indice, mot in enumerate(resultat["mots"]):
         sons = [p for p in resultat["phonemes"] if p["mot"] == indice]
         rendu = " ".join(
-            f"[{p['attendu']}→{p['variante']} {p['score']:+.1f}]" if p["faute"] else p["attendu"]
+            f"[{p['attendu']}→{p['variante']} {p['raison']}]" if p["faute"] else p["attendu"]
             for p in sons)
         print(f"  {mot:15} {rendu}")
 

@@ -17,10 +17,7 @@ import os
 import statistics
 import sys
 
-from analyse import SEUILS
 from fautes import FAUTES, cibles
-
-SEUILS_PAR_SON = json.load(open(SEUILS))
 
 
 def dernieres_prises(dossier):
@@ -52,7 +49,7 @@ def main():
         for p, faute in zip(prise["phonemes"], visees):
             totaux[essai] += 1
             if faute:
-                vises[essai, faute].append((p["score"], SEUILS_PAR_SON.get(p["attendu"], 0.0),
+                vises[essai, faute].append((p["score"], p.get("seuil"),
                                             p["faute"], p["variante"]))
             elif p["faute"]:
                 alertes[essai].append((n, prise["mots"][p["mot"]], p["attendu"], p["variante"], p["score"]))
@@ -67,20 +64,20 @@ def main():
                 continue
             signales = sum(s for _, _, s, _ in notes)
             manques = collections.Counter(v for _, _, s, v in notes if not s)
-            seuils = sorted({seuil for _, seuil, _, _ in notes})
+            seuils = sorted({seuil for _, seuil, _, _ in notes if seuil is not None})
             print(f"   {faute:6} {signales:3}/{len(notes):<3}"
-                  f"   {mediane([sc for sc, _, _, _ in notes]):>12}  {'/'.join(f'{x:.1f}' for x in seuils):>5}"
+                  f"   {mediane([sc for sc, _, _, _ in notes if sc is not None]):>12}  {'/'.join(f'{x:.1f}' for x in seuils):>5}"
                   f"   {', '.join(f'{v} {c}' for v, c in manques.most_common(3))}")
         hors = alertes[essai]
         print(f"   autres phonèmes signalés : {len(hors)}")
         for n, mot, attendu, variante, score in hors:
-            print(f"     {n}. {mot:12} {attendu}→{variante} {score:+.1f}")
+            print(f"     {n}. {mot:12} {attendu}→{variante} {score if score is not None else float('nan'):+.1f}")
 
     # Le cœur de la question : un son visé fait juste et fait faux, se séparent-ils ?
     print("\n== Écart soigné / fautes, par son visé (scores médians)")
     for faute in FAUTES:
-        soigne = [sc for sc, *_ in vises["soigne", faute]]
-        fautif = [sc for sc, *_ in vises["fautes", faute]]
+        soigne = [sc for sc, *_ in vises["soigne", faute] if sc is not None]
+        fautif = [sc for sc, *_ in vises["fautes", faute] if sc is not None]
         if soigne or fautif:
             print(f"   {faute:6} soigné {mediane(soigne)}   fautes {mediane(fautif)}")
 
