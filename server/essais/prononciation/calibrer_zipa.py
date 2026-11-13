@@ -21,9 +21,9 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 
 from analyse import SEUILS_ZIPA, ZIPA, parts_zipa  # noqa: E402
-from coach.acoustic import load_audio, load_model  # noqa: E402
-from coach.ctc import collapse  # noqa: E402
-from coach.g2p import transcribe  # noqa: E402
+from app.prononciation.coach.acoustic import load_audio, load_model  # noqa: E402
+from app.prononciation.coach.ctc import collapse  # noqa: E402
+from app.prononciation.coach.g2p import transcribe  # noqa: E402
 
 QUANTILE = 0.998
 

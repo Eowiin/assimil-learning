@@ -15,6 +15,11 @@ dependencies = [
     "six",  # importé par coqui-tts sans être déclaré
     "torch>=2.7",
     "torchaudio>=2.7",
+    # La prononciation : le wav2vec2 phonétique, et ZIPA en ONNX sur le processeur.
+    "transformers>=4.40",
+    "huggingface-hub>=0.23",
+    "onnxruntime>=1.18",
+    "numpy>=1.26",
 ]
 
 [dependency-groups]

@@ -5,12 +5,12 @@ Usage : entendre.py FICHIER_AUDIO [...]
 import os
 import sys
 
-from coach.acoustic import MODELS, load_audio, load_model
-from coach.ctc import greedy_decode
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
-# Le modèle phonétique, parmi ceux dont les seuils GOP sont calibrés sur les natifs
-# (coach/thresholds/gop_<nom>.json) : xlsr53 (le défaut, celui du 10 novembre), lv60, cnam.
-MODELE = os.environ.get("ASSIMIL_PRONONCIATION_MODELE", "xlsr53")
+from app.prononciation.analyse import MODELE  # noqa: E402
+from app.prononciation.coach.acoustic import MODELS, load_audio, load_model  # noqa: E402
+from app.prononciation.coach.ctc import greedy_decode  # noqa: E402
+
 charger_audio = load_audio
 
 
