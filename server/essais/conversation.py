@@ -13,6 +13,7 @@ dans le dossier de sortie.
     uv run python essais/conversation.py --ia gemma3:12b tour1.m4a
     uv run python essais/conversation.py --texte "Hola, ¿qué tal?"
     uv run python essais/conversation.py --interactif
+    uv run python essais/conversation.py --voix ma-voix.wav --comparer-voix
 
 Voir `essais/README.md` pour l'installation (Ollama, modèles, voix).
 """
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import subprocess
 import sys
 import time
@@ -28,6 +30,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import httpx
+
+# Le serveur lui-même (`app/`), pour mesurer exactement ce qu'il fait.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.moteurs import VOIX_CLONEE, inscrire_voix  # noqa: E402
 
 CONSIGNE = """Eres un compañero de conversación para un estudiante francés de español \
 (nivel A2-B1, español de España). Habláis de forma natural, como dos amigos.
@@ -92,23 +98,81 @@ class Oreille:
 
 class Voix:
     """XTTS v2, par coqui-tts. Une voix de référence (un extrait de 6 à 15 s) donne
-    le timbre et l'accent ; sinon, une voix fournie avec le modèle."""
+    le timbre et l'accent ; sinon, une voix fournie avec le modèle.
+
+    Comme le serveur, l'empreinte de la voix de référence est calculée une fois, au
+    chargement. `empreinte=False` refait l'ancienne façon (`speaker_wav` à chaque
+    réplique), pour la comparaison."""
 
     def __init__(self, appareil: str, reference: Path | None, locuteur: str):
         from TTS.api import TTS
         self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(appareil)
         self.reference = reference
         self.locuteur = locuteur
+        self.empreinte_s = None
+        if reference:
+            debut = time.perf_counter()
+            inscrire_voix(self.tts, reference)
+            self.empreinte_s = time.perf_counter() - debut
 
-    def dire(self, texte: str, sortie: Path) -> float:
-        if self.reference:
+    def dire(self, texte: str, sortie: Path, empreinte: bool = True) -> float:
+        if self.reference and not empreinte:
             self.tts.tts_to_file(text=texte, speaker_wav=str(self.reference), language="es",
                                  file_path=str(sortie))
         else:
-            self.tts.tts_to_file(text=texte, speaker=self.locuteur, language="es",
-                                 file_path=str(sortie))
+            locuteur = VOIX_CLONEE if self.reference else self.locuteur
+            self.tts.tts_to_file(text=texte, speaker=locuteur, language="es", file_path=str(sortie))
         import soundfile
         return soundfile.info(str(sortie)).duration
+
+
+# Des répliques comme celles de l'IA : une à trois phrases, terminées par une question.
+# XTTS les découpe en phrases, et l'ancienne façon recalculait l'empreinte pour chacune.
+REPLIQUES = [
+    "¡Hola! ¿Qué tal te ha ido el día?",
+    "¡Qué bien! A mí también me gusta mucho la paella. ¿La preparas tú en casa?",
+    "Vaya, eso suena muy cansado. Yo trabajo mejor por la mañana. ¿Y tú, cuándo prefieres estudiar?",
+]
+
+
+def comparer_voix(voix: Voix, sortie: Path, repetitions: int) -> int:
+    """Le temps de la voix, l'ancienne façon (`speaker_wav` à chaque réplique) contre
+    la nouvelle (empreinte calculée une fois). Les deux s'alternent sur les mêmes
+    répliques, carte déjà chaude, pour que rien d'autre ne les sépare.
+
+    XTTS tire au sort : deux rendus de la même phrase n'ont pas la même durée. On
+    compare donc aussi le temps par seconde de parole produite."""
+    print("Tour à vide (les deux façons)…", flush=True)
+    voix.dire("Hola.", sortie / "vide.wav", empreinte=False)
+    voix.dire("Hola.", sortie / "vide.wav", empreinte=True)
+
+    mesures: dict[str, list[tuple[float, float]]] = {"avant": [], "apres": []}
+    for r in range(repetitions):
+        for i, texte in enumerate(REPLIQUES):
+            for facon in ("avant", "apres"):
+                fichier = sortie / f"voix-{facon}-{i + 1}-{r + 1}.wav"
+                duree, temps = chrono(voix.dire, texte, fichier, facon == "apres")
+                mesures[facon].append((temps, duree))
+                print(f"  {facon:<5} réplique {i + 1}, essai {r + 1} : {temps:.2f} s "
+                      f"pour {duree:.1f} s de parole")
+
+    def resume(facon: str) -> tuple[float, float]:
+        temps = statistics.median(t for t, _ in mesures[facon])
+        par_seconde = statistics.median(t / d for t, d in mesures[facon] if d)
+        return temps, par_seconde
+
+    (av, av_s), (ap, ap_s) = resume("avant"), resume("apres")
+    print("\n— Voix : avant / après " + "—" * 40)
+    print(f"Empreinte calculée une fois au chargement : {voix.empreinte_s:.2f} s")
+    print(f"Avant (speaker_wav)  : médiane {av:.2f} s par réplique · {av_s:.3f} s par s de parole")
+    print(f"Après (empreinte)    : médiane {ap:.2f} s par réplique · {ap_s:.3f} s par s de parole")
+    print(f"Gain                 : {av - ap:+.2f} s par réplique ({(av - ap) / av:+.0%})")
+    print(f"À écouter : {sortie}/voix-avant-*.wav et voix-apres-*.wav (même voix ?)")
+    (sortie / "voix.json").write_text(json.dumps(
+        {"empreinte_s": voix.empreinte_s, "repliques": REPLIQUES, "mesures": mesures,
+         "mediane_s": {"avant": av, "apres": ap},
+         "par_seconde_de_parole": {"avant": av_s, "apres": ap_s}}, indent=2, ensure_ascii=False))
+    return 0
 
 
 class Cerveau:
@@ -217,7 +281,20 @@ def main() -> int:
                    help="voix fournie avec XTTS, sans --voix (défaut : Ana Florence)")
     p.add_argument("--sortie", type=Path, default=Path("essais/sortie"))
     p.add_argument("--appareil", default="cuda", choices=["cuda", "cpu"])
+    p.add_argument("--comparer-voix", action="store_true",
+                   help="seulement XTTS : l'empreinte de --voix recalculée à chaque réplique, "
+                        "ou calculée une fois")
+    p.add_argument("--repetitions", type=int, default=3,
+                   help="avec --comparer-voix : passages sur les répliques (défaut : 3)")
     args = p.parse_args()
+
+    if args.comparer_voix:
+        if not args.voix or not args.voix.exists():
+            p.error("--comparer-voix demande --voix, un extrait de ta voix (wav)")
+        args.sortie.mkdir(parents=True, exist_ok=True)
+        print("Chargement de XTTS v2…", flush=True)
+        return comparer_voix(Voix(args.appareil, args.voix, args.locuteur), args.sortie,
+                             args.repetitions)
 
     entrees = [("audio", a) for a in args.audio] + [("texte", t) for t in args.texte]
     if not entrees and not args.interactif:

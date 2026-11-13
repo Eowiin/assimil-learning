@@ -79,6 +79,30 @@ def encoder_aac(wav: Path) -> bytes:
         return sortie.read_bytes()
 
 
+# Le nom sous lequel la voix clonée est rangée parmi les voix de XTTS.
+VOIX_CLONEE = "assimil-voix"
+
+
+def inscrire_voix(tts, wav: Path, nom: str = VOIX_CLONEE) -> None:
+    """Calcule une fois l'empreinte de la voix à imiter, et la range parmi les voix
+    fournies avec XTTS. Sans ça, `tts_to_file(speaker_wav=...)` relit l'extrait et
+    recalcule l'empreinte à chaque phrase de chaque réplique.
+
+    Mêmes réglages que XTTS quand il la calcule lui-même (`Xtts.synthesize`) : la
+    voix rendue ne change pas, seul le travail répété disparaît."""
+    modele = tts.synthesizer.tts_model
+    reglages = modele.config
+    latents, empreinte = modele.get_conditioning_latents(
+        audio_path=[str(wav)],
+        gpt_cond_len=reglages["gpt_cond_len"],
+        gpt_cond_chunk_len=reglages["gpt_cond_chunk_len"],
+        max_ref_length=reglages["max_ref_len"],
+        sound_norm_refs=reglages["sound_norm_refs"],
+    )
+    # Dans l'ordre des voix fournies : XTTS les déballe par position.
+    modele.speaker_manager.speakers[nom] = {"gpt_cond_latent": latents, "speaker_embedding": empreinte}
+
+
 def transcrire(whisper, audio, amorce: str | None = None) -> str:
     """Whisper, l'espagnol imposé : sans ça, un accent français peut faire détecter
     du français. `amorce` (`initial_prompt`) : un texte que Whisper prend pour ce
@@ -100,6 +124,9 @@ class Reels:
         self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(reglages.appareil)
         if reglages.voix and not reglages.voix.exists():
             raise FileNotFoundError(f"ASSIMIL_VOIX : {reglages.voix} introuvable")
+        if reglages.voix:
+            inscrire_voix(self.tts, reglages.voix)
+        self.locuteur = VOIX_CLONEE if reglages.voix else reglages.locuteur
         self.ollama = httpx.Client(base_url=reglages.ollama, timeout=120)
 
     # --- Écouter --------------------------------------------------------------
@@ -139,12 +166,8 @@ class Reels:
     def dire(self, texte: str) -> bytes:
         with tempfile.TemporaryDirectory() as dossier:
             wav = Path(dossier) / "reponse.wav"
-            if self.reglages.voix:
-                self.tts.tts_to_file(text=texte, speaker_wav=str(self.reglages.voix),
-                                     language="es", file_path=str(wav))
-            else:
-                self.tts.tts_to_file(text=texte, speaker=self.reglages.locuteur,
-                                     language="es", file_path=str(wav))
+            self.tts.tts_to_file(text=texte, speaker=self.locuteur, language="es",
+                                 file_path=str(wav))
             return encoder_aac(wav)
 
     # --- Démarrage ------------------------------------------------------------
