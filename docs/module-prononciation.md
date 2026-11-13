@@ -69,8 +69,8 @@ tip, score, threshold, start, end}]}], heard, seconds}`.
   serveur.
 - **De 4 à 12 mots.** Plus court, il y a peu à juger. Plus long, la prise devient
   une lecture, et l'erreur se perd.
-- Au début, tirées au hasard parmi celles-là. Plus tard, le profil d'apprenant
-  choisira selon les fautes passées.
+- Tirées au hasard parmi celles-là, sauf trois sur cinq qui visent les sons les
+  plus ratés du dernier mois (`docs/module-profil.md`, étape 1).
 
 ## Les sons, dits en clair
 
@@ -134,7 +134,6 @@ Un symbole absent de la table s'affiche tel quel, entre crochets.
 
 ## Plus tard (hors de ce plan)
 
-- Choisir les phrases selon les fautes passées (le profil d'apprenant).
 - Le natif mot par mot. Il faudrait la place de chaque mot dans l'audio d'Assimil :
   le serveur pourrait l'aligner une fois pour toutes.
 - Des phrases hors d'Assimil, ou des mots seuls pour un son difficile.

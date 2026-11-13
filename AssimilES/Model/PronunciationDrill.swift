@@ -77,11 +77,52 @@ enum PronunciationDrill {
         return result
     }
 
-    /// Les phrases d'une séance, au hasard, en couvrant d'abord chacun des sons, les
-    /// plus rares en premier : le r est partout, le θ beaucoup moins. Moins de `size`
-    /// candidates : toutes, mélangées.
+    /// Les phrases qui visent les sons les plus ratés, quand le profil en désigne
+    /// (décision 2 de `docs/module-profil.md`). Les autres continuent de mesurer les
+    /// sons restants : un son jamais travaillé ne doit pas disparaître.
+    static let focused = 3
+
+    /// Les phrases d'une séance. `focus` : les sons les plus ratés, le plus raté
+    /// d'abord (`PhonemeStats.weakest`). `focused` phrases en contiennent un, chacun
+    /// au moins une fois ; les autres sont tirées comme sans profil. Sans `focus`,
+    /// le tirage d'avant le profil.
     static func pick<G: RandomNumberGenerator>(from candidates: [DrillSentence], count: Int = size,
+                                               focus: [SpanishTarget] = [],
                                                using generator: inout G) -> [DrillSentence] {
+        guard !focus.isEmpty else { return cover(candidates, count: count, using: &generator) }
+        var pool = candidates.shuffled(using: &generator)
+        var picked: [DrillSentence] = []
+        let quota = min(focused, count)
+        for target in focus where picked.count < quota {
+            if let index = pool.firstIndex(where: { $0.targets.contains(target) }) {
+                picked.append(pool.remove(at: index))
+            }
+        }
+        while picked.count < quota, let index = pool.firstIndex(where: { !$0.targets.isDisjoint(with: focus) }) {
+            picked.append(pool.remove(at: index))
+        }
+        picked += cover(pool, count: count - picked.count, using: &generator)
+        return picked.shuffled(using: &generator)
+    }
+
+    static func pick(from candidates: [DrillSentence], count: Int = size,
+                     focus: [SpanishTarget] = []) -> [DrillSentence] {
+        var generator = SystemRandomNumberGenerator()
+        return pick(from: candidates, count: count, focus: focus, using: &generator)
+    }
+
+    /// Les sons de `focus` que la séance travaille vraiment : un son sans phrase
+    /// parmi les leçons vues n'est pas annoncé.
+    static func announced(_ focus: [SpanishTarget], in sentences: [DrillSentence]) -> [SpanishTarget] {
+        focus.filter { target in sentences.contains { $0.targets.contains(target) } }
+    }
+
+    /// Au hasard, en couvrant d'abord chacun des sons, les plus rares en premier :
+    /// le r est partout, le θ beaucoup moins. Moins de `count` candidates : toutes,
+    /// mélangées.
+    private static func cover<G: RandomNumberGenerator>(_ candidates: [DrillSentence], count: Int,
+                                                        using generator: inout G) -> [DrillSentence] {
+        guard count > 0 else { return [] }
         var pool = candidates.shuffled(using: &generator)
         var picked: [DrillSentence] = []
         let rarestFirst = SpanishTarget.allCases.shuffled(using: &generator).enumerated()
@@ -99,11 +140,6 @@ enum PronunciationDrill {
         }
         picked += pool.prefix(count - picked.count)
         return picked.shuffled(using: &generator)
-    }
-
-    static func pick(from candidates: [DrillSentence], count: Int = size) -> [DrillSentence] {
-        var generator = SystemRandomNumberGenerator()
-        return pick(from: candidates, count: count, using: &generator)
     }
 
     /// Les leçons d'où tirer les phrases : celles du vocabulaire (validées avant

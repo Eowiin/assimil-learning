@@ -94,7 +94,7 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
 
 ## Étapes
 
-### 1 · La prononciation choisit selon les sons ratés (app)
+### 1 · La prononciation choisit selon les sons ratés (app) — en test (branche feat/profil-prononciation)
 
 - **`PhonemeStats`**, un type sans stockage, calculé depuis les `PronunciationRecord` :
   - pour chaque son de `SpanishTarget`, le nombre de fois où il était attendu et le
