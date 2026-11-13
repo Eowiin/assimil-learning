@@ -11,10 +11,17 @@ l'apprenant : tout l'état reste sur l'iPhone.
 | `POST /conversation/start` | l'IA ouvre la conversation et propose un sujet |
 | `POST /conversation/turn` | un tour : l'audio (ou un texte) et l'historique, puis ce qui a été compris et la réponse, en texte et en audio |
 | `POST /conversation/review` | le récapitulatif : les phrases fautives, corrigées et expliquées |
+| `POST /pronunciation` | une phrase lue (l'audio et le texte attendu) : chaque son jugé, mot par mot, avec un conseil pour chaque faute |
 
 Le plan du module est dans `docs/module-conversation.md`. Les modèles sont ceux
 mesurés par `essais/conversation.py` : Whisper large-v3-turbo, Qwen3 8B servi par
 Ollama, et XTTS v2.
+
+La prononciation (`app/prononciation/`) reprend la méthode mesurée par
+`essais/prononciation/` : un wav2vec2 phonétique sur la carte graphique, ZIPA sur le
+processeur, et les r jugés dans le signal. Elle repère les fautes d'un francophone :
+le θ dit [s], la jota et le r dits à la française, le v dit [v]. Elle tourne sur le PC
+seulement, jamais sur l'iPhone : elle y perdrait trop en qualité.
 
 ## Le chemin d'une requête
 
@@ -77,7 +84,8 @@ export ASSIMIL_VOIX=~/voix/ma-voix.wav     # la voix clonée : un extrait de 6 �
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Le démarrage prend une vingtaine de secondes. Le serveur charge Whisper et XTTS, puis
+Le démarrage prend une vingtaine de secondes. Le serveur charge Whisper, XTTS et les
+deux modèles de la prononciation (téléchargés au premier lancement), puis
 fait un **tour à vide** : le premier passage sur la carte graphique est lent (20 s),
 et il ne doit jamais tomber en pleine conversation. Le terminal affiche « Tour à vide
 fait », puis « Application startup complete ». Avant ça, le voyant reste rouge.
@@ -93,6 +101,7 @@ PC n'entre dans le dépôt public :
 | `ASSIMIL_WHISPER` | `large-v3-turbo` | le modèle Whisper |
 | `ASSIMIL_GARDER_IA` | `30m` | combien de temps Ollama garde l'IA en mémoire après un tour |
 | `ASSIMIL_APPAREIL` | `cuda` | `cpu` pour essayer sans carte graphique |
+| `ASSIMIL_PRONONCIATION_MODELE` | `xlsr53` | le wav2vec2 de la prononciation : `xlsr53`, `lv60` ou `cnam` |
 
 Si une bibliothèque CUDA est introuvable au chargement de Whisper, voir
 `essais/README.md`, « Si ça coince ».
@@ -110,8 +119,11 @@ Refais l'étape 3 en 4G ou en 5G, Wi-Fi coupé : c'est le cas « de n'importe o�
 La réponse ressemble à :
 
 ```json
-{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation"]}
+{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation", "pronunciation"]}
 ```
+
+Si la prononciation ne se charge pas, le serveur démarre quand même : `modules` ne la
+cite pas, et le terminal dit pourquoi.
 
 `gpu` vaut `null` quand `nvidia-smi` ne répond pas dans WSL2. Dans ce cas, le pilote
 NVIDIA de Windows n'est pas vu, et les modèles tourneront sur le processeur.
@@ -126,6 +138,25 @@ vont dans `essais/sortie/`.
 uv run python essais/appel.py                    # au clavier
 uv run python essais/appel.py tour1.m4a tour2.m4a
 ```
+
+## Juger une phrase sans l'app
+
+```bash
+curl -F audio=@phrase.m4a -F "text=Una jarra, por favor." localhost:8000/pronunciation
+```
+
+La réponse, pour une jota et un r dits à la française (extrait) :
+
+```json
+{"words": [{"text": "jarra", "fault": true, "phonemes": [
+   {"expected": "x", "heard": "ʁ", "fault": true, "reason": "zipa", "hint": false,
+    "tip": "La jota se dit au fond de la gorge, comme un h fort et râpeux, sans vibrer comme le r français.",
+    "score": -0.11, "threshold": -5.73, "start": 1.162, "end": 1.182}, …]}, …],
+ "heard": "u n a x a r a p o r f a v o r", "seconds": 0.25}
+```
+
+`hint` marque un simple indice, pas une faute : un r roulé dit battu, ce que font
+beaucoup de natifs. Une phrase prend environ 0,2 s.
 
 ## Essais de modèles
 

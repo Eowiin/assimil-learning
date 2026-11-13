@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from .conversation import (Correction, Message, Moteurs, messages_correction,
                            messages_ouverture, messages_tour)
 from .moteurs import OllamaIndisponible
+from .prononciation.jugement import par_mots
 
 VERSION = "0.2.0"
 # Monte quand une route change de forme : l'app saura qu'elle parle à un serveur
@@ -71,6 +72,40 @@ class Review(BaseModel):
     corrections: list[Correction]
 
 
+class Phone(BaseModel):
+    """Un son attendu, jugé. `heard` : ce qui a été entendu à la place, pour une faute
+    ou un indice. `reason` : qui l'a repéré (gop, r, zipa). `hint` : un simple indice
+    (le r roulé dit battu, que beaucoup de natifs font), pas une faute. `start` et
+    `end` : sa place dans l'audio, en secondes. Un son non noté (mot étranger, sigle)
+    a `score` à null."""
+    expected: str
+    heard: str | None
+    fault: bool
+    reason: str | None
+    hint: bool
+    tip: str | None
+    score: float | None
+    threshold: float | None
+    start: float | None
+    end: float | None
+
+
+class Word(BaseModel):
+    text: str
+    fault: bool
+    phonemes: list[Phone]
+
+
+class Pronunciation(BaseModel):
+    """Le jugement d'une phrase. `heard` : les sons reconnus, sans la phrase attendue."""
+    words: list[Word]
+    heard: str
+    seconds: float
+
+
+DUREE_MIN = 0.3  # secondes d'audio : en dessous, rien à juger
+
+
 @lru_cache(maxsize=1)
 def gpu_name() -> str | None:
     """Le nom de la carte graphique, si `nvidia-smi` répond. Sous WSL2, il est
@@ -106,19 +141,40 @@ def charger_moteurs() -> Moteurs:
     return moteurs
 
 
-def create_app(moteurs: Moteurs | None = None, charger: bool = True) -> FastAPI:
-    """`moteurs` : des modèles déjà prêts (les tests passent un faux). Sans eux et
-    avec `charger`, les vrais sont chargés au démarrage ; sans eux et sans
-    `charger`, le serveur ne fait que répondre au voyant."""
+def charger_prononciation():
+    """Les deux modèles phonétiques (wav2vec2 sur la carte, ZIPA sur le processeur).
+    S'ils manquent, la conversation tourne quand même."""
+    from .prononciation.analyse import MODELE, Analyseur
+
+    journal.info("Chargement de la prononciation (%s et ZIPA)…", MODELE)
+    try:
+        analyseur = Analyseur()
+        # Le premier passage sur la carte est lent : fait ici, pas sur la première phrase.
+        import numpy
+        analyseur.analyser(numpy.zeros(16000, numpy.float32), "Hola")
+        return analyseur
+    except Exception:
+        journal.exception("La prononciation n'a pas pu être chargée : elle restera indisponible.")
+        return None
+
+
+def create_app(moteurs: Moteurs | None = None, charger: bool = True,
+               prononciation=None) -> FastAPI:
+    """`moteurs` et `prononciation` : des modèles déjà prêts (les tests passent des
+    faux). Sans eux et avec `charger`, les vrais sont chargés au démarrage ; sans eux
+    et sans `charger`, le serveur ne fait que répondre au voyant."""
 
     @asynccontextmanager
     async def demarrage(app: FastAPI):
         if app.state.moteurs is None and charger:
             app.state.moteurs = charger_moteurs()
+        if app.state.prononciation is None and charger:
+            app.state.prononciation = charger_prononciation()
         yield
 
     app = FastAPI(title="Assimil, serveur de la maison", version=VERSION, lifespan=demarrage)
     app.state.moteurs = moteurs
+    app.state.prononciation = prononciation
     # Une carte graphique, un utilisateur : les tours passent l'un après l'autre.
     verrou = threading.Lock()
 
@@ -148,7 +204,9 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True) -> FastAPI:
     def health(request: Request) -> Health:
         """Ce que le voyant de l'app interroge : le serveur répond, sur quelle carte,
         et quels modules sont prêts."""
-        modules = ["conversation"] if request.app.state.moteurs is not None else []
+        etat = request.app.state
+        modules = [nom for nom, pret in (("conversation", etat.moteurs), ("pronunciation", etat.prononciation))
+                   if pret is not None]
         return Health(status="ok", version=VERSION, api=API_VERSION, gpu=gpu_name(), modules=modules)
 
     @app.post("/conversation/start")
@@ -192,6 +250,33 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True) -> FastAPI:
         with verrou:
             corrections, _ = penser(m.corriger, messages_correction(body.history))
         return Review(corrections=corrections.corrections)
+
+    @app.post("/pronunciation")
+    def pronunciation(request: Request,
+                      audio: UploadFile = File(..., description="la phrase dite (m4a, wav…)"),
+                      text: str = Form(..., description="la phrase attendue")) -> Pronunciation:
+        """Juge chaque son d'une phrase lue : les fautes d'un francophone (θ, jota, r, v)
+        et tout son trop loin de ce que disent les natifs."""
+        analyseur = request.app.state.prononciation
+        if analyseur is None:
+            raise HTTPException(503, "La prononciation n'est pas chargée sur ce serveur.")
+        if not text.strip():
+            raise HTTPException(422, "Il faut la phrase attendue.")
+        from .moteurs import decoder_16k
+
+        try:
+            son = decoder_16k(audio.file.read())
+        except subprocess.CalledProcessError as erreur:
+            raise HTTPException(422, "Audio illisible.") from erreur
+        if len(son) < DUREE_MIN * 16000:
+            raise HTTPException(422, "L'enregistrement est trop court.")
+        with verrou:
+            try:
+                resultat, duree = chrono(analyseur.analyser, son, text)
+            except ValueError as erreur:  # la phrase ne se transcrit pas en sons
+                raise HTTPException(422, f"Phrase illisible : {erreur}") from erreur
+        return Pronunciation(words=par_mots(resultat), heard=" ".join(resultat["entendu"]),
+                             seconds=duree)
 
     return app
 

@@ -85,8 +85,9 @@ garder.
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris
 pour tourner sur le PC, puis remplacé le 13 novembre par la méthode de
-spanish-pronunciation-coach, le projet de recherche du PC (modules repris dans
-`prononciation/coach/`) :
+spanish-pronunciation-coach, le projet de recherche du PC. Depuis, l'analyse est
+passée dans le serveur (`app/prononciation/`, modules du coach dans
+`app/prononciation/coach/`) ; les scripts d'ici l'importent de là :
 
 - **GOP aligné** : la phrase attendue est alignée de force sur les sorties du wav2vec2
   phonétique, et chaque phonème reçoit la probabilité de ses réalisations acceptées.
@@ -96,7 +97,7 @@ spanish-pronunciation-coach, le projet de recherche du PC (modules repris dans
   dans l'énergie. Aucun modèle ne sépare les deux de façon fiable.
 - **ZIPA** (un second modèle phonétique, petit, en ONNX sur le CPU) entend ce que le
   wav2vec2 n'entend pas : le r français ([ʁ]) à la place d'un r ou d'une jota, et le
-  [v] à la place d'un /b/ écrit v. Ses seuils (`seuils_zipa.json`) sont tirés des
+  [v] à la place d'un /b/ écrit v. Ses seuils (`app/prononciation/seuils_zipa.json`) sont tirés des
   mêmes natives par `calibrer_zipa.py`. Licence CC-BY-NC-SA : bon pour l'essai, pas
   pour une app publiée.
 
