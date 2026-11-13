@@ -120,11 +120,12 @@ calibrés : `xlsr53` (le défaut, `facebook/wav2vec2-xlsr-53-espeak-cv-ft`), `lv
 | | θ dit s | jota dite r français | r dit r français | v dit v | **Total** | Signalés en prise soignée |
 |---|---|---|---|---|---|---|
 | Prototype du 10 novembre | 4/7 | 0/4 | 1/18 | 3/5 | **8/34** | **24/218** |
-| Méthode du coach (13 novembre) | 6/7 | 3/4 | 17/18 | 3/5 | **29/34** | **13/218** |
+| Méthode du coach (13 novembre) | 6/7 | 3/4 | 17/18 | 3/5 | **29/34** | **12/218** |
 
-Les signalés de la prise soignée ne sont pas tous à tort : sur 13, il y a 4 θ dits
-[s] et 3 r battus ou roulés à contretemps, deux habitudes déjà relevées sur les
-autres prises de la même voix (dans le coach).
+Les signalés de la prise soignée ne sont pas tous à tort : sur 12, il y a 4 θ dits
+[s] et des r battus ou roulés à contretemps, deux habitudes déjà relevées sur les
+autres prises de la même voix (dans le coach). Le r roulé dit battu n'est qu'un
+indice, pas une faute (voir plus bas).
 
 `extraits.py` découpe chaque mot signalé en un court wav, pour juger la faute à
 l'oreille.
@@ -138,11 +139,19 @@ uv run --with datacollective python essais/prononciation/common_voice.py ~/commo
 uv run python essais/prononciation/evaluer.py ~/common-voice-es/manifeste.tsv
 ```
 
-Sur 400 phrases de 270 natifs d'Espagne, 1,4 % des sons sont signalés (281/19 713),
-et 250 phrases sur 400 n'ont aucune alerte. Fausses alertes par faute visée : θ 4/335,
+Sur 400 phrases de 270 natifs d'Espagne, 1,3 % des sons sont signalés (247/19 713),
+et 272 phrases sur 400 n'ont aucune alerte. Fausses alertes par faute visée : θ 4/335,
 jota 0/129 par ZIPA, r français 5/1312, v 4/204. Une partie vient des mots anglais des
-phrases (*price*, *Jennifer*…). Seul point faible : le jugement « r roulé dit battu »
-classe battus 34 des 64 /r/ natifs jugés, contre 13,6 % sur Assimil. Les lecteurs
-d'Assimil roulent plus que la moyenne. Common Voice n'a pas de francophones
+phrases (*price*, *Jennifer*…). Le r roulé dit battu n'est plus qu'un indice : 34 des 64 /r/ natifs jugés sont
+battus, contre 18 sur 206 chez Assimil. Ce n'est pas le détecteur qui se trompe :
+sur le signal (*carrera*, *herramientas*, *concurrentes*), on voit un seul contact
+bref entre deux voyelles. En lecture courante, beaucoup de natifs ne roulent pas.
+
+**Un accent français de synthèse** : XTTS v2 lit les 8 phrases du test en espagnol,
+puis en mode français, ce qui donne un fort accent francophone (2 voix × 2 tirages).
+En espagnol, 0,7 % des sons sont signalés (surtout le θ dit [s] d'une des voix, qui
+fait vraiment le seseo). En mode français, les fautes visées sortent presque toutes :
+θ 24/28, jota 16/16 (dite [ʒ]), r 70/72, v 19/20. L'accent est caricatural (19 % des
+sons signalés), plus fort que celui d'un apprenant. Common Voice n'a pas de francophones
 utilisables (un seul, d'accent mexicain) : la détection chez d'autres francophones
 reste à mesurer.

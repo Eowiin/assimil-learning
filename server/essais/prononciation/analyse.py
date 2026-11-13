@@ -10,7 +10,8 @@ dans `coach/` :
    natives d'Assimil (0,01 pour /θ/).
 2. Les r : battu ou roulé se juge dans le signal (`coach/rhotic.py` : les contacts de la
    langue dans l'énergie 400-4000 Hz), là où les natifs sont réguliers (entre voyelles,
-   en début de mot). Un r français se reconnaît à ZIPA, qui connaît [ʁ].
+   en début de mot). Un r français se reconnaît à ZIPA, qui connaît [ʁ]. Le r roulé
+   jugé battu n'est qu'un indice (`indice`), pas une faute : les natifs le font souvent.
 3. ZIPA juge aussi deux fautes que le wav2vec2 n'entend pas (essai du 13 novembre) :
    - la jota dite en r français : part de [ʁ χ ʀ] autour du /x/ aligné ;
    - le v dit [v] : part de [v] autour d'un /b/ écrit v. Le wav2vec2 entend du [v] chez
@@ -115,7 +116,11 @@ class Analyseur:
                 rh = r.get((wi, k))
                 if rh and rh.ok is not None and rh.reliable:
                     ph["r"] = rh.verdict
-                    if not rh.ok:
+                    if not rh.ok and p == "r" and rh.verdict == "tap":
+                        # Roulé dit battu : simple indice. Les natifs de Common Voice
+                        # réduisent souvent le r roulé à un contact (34 des 64 /r/ jugés).
+                        ph["indice"] = "ɾ"
+                    elif not rh.ok:
                         ph |= {"faute": True, "raison": "r",
                                "variante": ENTENDU_R.get(rh.verdict, rh.verdict)}
                 if (wi, k) in zipa:
