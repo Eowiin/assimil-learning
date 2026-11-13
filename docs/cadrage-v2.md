@@ -142,7 +142,7 @@ Ethan parle, l'IA comprend, répond, relance et pose des questions. L'échange s
 à la voix, avec le texte affiché à l'écran, conformément à l'usage écran en main.
 
 **Au début, en talkie-walkie.** L'iPhone envoie l'enregistrement. Le PC enchaîne
-Qwen ASR, puis Qwen, puis XTTS v2. Il renvoie ce qu'il a compris, sa réponse en texte
+Whisper large-v3-turbo, puis Qwen, puis XTTS v2. Il renvoie ce qu'il a compris, sa réponse en texte
 et sa réponse en audio.
 
 **Choix de départ, à ajuster à l'usage :**
@@ -194,7 +194,7 @@ Ce ne sont que des pistes. Aucune n'entre dans l'ordre ci-dessous.
 0. **Les fondations du serveur.** FastAPI sous WSL2, dans `server/`, Tailscale, et le
    réglage « Serveur » avec son voyant dans l'app. On vérifie l'aller-retour iPhone →
    PC → iPhone, à la maison et dehors.
-1. **Mesurer la conversation** : la qualité de Qwen et de Qwen ASR, XTTS v2, la
+1. **Mesurer la conversation** : la qualité de Qwen et de Whisper, XTTS v2, la
    mémoire graphique, le délai.
 2. **La conversation en talkie-walkie.** Les trois modèles sont éprouvés, et le
    chemin est le plus simple.
