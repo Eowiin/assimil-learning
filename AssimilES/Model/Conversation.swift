@@ -38,18 +38,6 @@ struct ConversationCorrection: Codable, Equatable, Sendable {
     let explanation: String
 }
 
-enum ConversationError: LocalizedError, Equatable {
-    /// Le serveur a répondu, avec une raison lisible (`detail` de FastAPI).
-    case server(String)
-    case network(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .server(let reason), .network(let reason): reason
-        }
-    }
-}
-
 /// Ce que l'écran attend du serveur. `ConversationClient` le joint par Tailscale ;
 /// les tests passent un faux.
 protocol ConversationService: Sendable {
@@ -77,7 +65,7 @@ struct ConversationClient: ConversationService {
 
         func partner() throws -> PartnerReply {
             guard let data = Data(base64Encoded: audio) else {
-                throw ConversationError.server("Audio illisible dans la réponse du serveur")
+                throw ServerError.server("Audio illisible dans la réponse du serveur")
             }
             return PartnerReply(text: reply, audio: data, timings: timings)
         }
@@ -107,55 +95,20 @@ struct ConversationClient: ConversationService {
     /// Le formulaire d'un tour : l'historique en JSON, puis l'audio ou le texte.
     static func form(audio: Data?, text: String?, history: [ConversationMessage],
                      boundary: String = "assimil-\(UUID().uuidString)") -> (body: Data, contentType: String) {
-        var body = Data()
-        func field(_ name: String, _ value: String) {
-            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
-            body.append(Data(value.utf8))
-            body.append(Data("\r\n".utf8))
-        }
+        var form = MultipartForm(boundary: boundary)
         // Clés triées : le même historique donne toujours le même texte.
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let historyJSON = (try? encoder.encode(history)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-        field("history", historyJSON)
-        if let text { field("text", text) }
-        if let audio {
-            body.append(Data(("--\(boundary)\r\nContent-Disposition: form-data; name=\"audio\"; "
-                              + "filename=\"tour.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n").utf8))
-            body.append(audio)
-            body.append(Data("\r\n".utf8))
-        }
-        body.append(Data("--\(boundary)--\r\n".utf8))
-        return (body, "multipart/form-data; boundary=\(boundary)")
+        form.field("history", historyJSON)
+        if let text { form.field("text", text) }
+        if let audio { form.audio("audio", filename: "tour.m4a", audio) }
+        return form.finished()
     }
 
-    private struct Detail: Decodable { let detail: String }
-
-    private func post<T: Decodable>(_ path: String, body: Data, contentType: String, as: T.Type) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: path), timeoutInterval: Self.timeout)
-        request.httpMethod = "POST"
-        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let error as URLError {
-            throw ConversationError.network(HomeServer.message(for: error))
-        }
-        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard code == 200 else {
-            if let detail = try? JSONDecoder().decode(Detail.self, from: data) {
-                throw ConversationError.server(detail.detail)
-            }
-            throw ConversationError.server(code == 502 ? "Le serveur n'est pas lancé sur le PC"
-                                                       : "Erreur du serveur (code \(code))")
-        }
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw ConversationError.server("Réponse illisible du serveur")
-        }
+    private func post<T: Decodable>(_ path: String, body: Data, contentType: String, as type: T.Type) async throws -> T {
+        try await HomeServer.post(path, base: baseURL, body: body, contentType: contentType,
+                                  timeout: Self.timeout, session: session, as: type)
     }
 }
 

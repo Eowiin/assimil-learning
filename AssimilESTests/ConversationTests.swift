@@ -54,7 +54,7 @@ struct ConversationClientTests {
     @Test("Le serveur dit pourquoi : sa raison arrive telle quelle")
     func serverDetail() async {
         let failing = client { _ in (503, Data(#"{"detail":"L'IA ne répond pas : Ollama est-il lancé sur le PC ?"}"#.utf8)) }
-        await #expect(throws: ConversationError.server("L'IA ne répond pas : Ollama est-il lancé sur le PC ?")) {
+        await #expect(throws: ServerError.server("L'IA ne répond pas : Ollama est-il lancé sur le PC ?")) {
             try await failing.turn(audio: nil, text: "Hola", history: [])
         }
     }
@@ -62,7 +62,7 @@ struct ConversationClientTests {
     @Test("PC introuvable : la même phrase que le voyant")
     func network() async {
         let failing = client { _ in throw URLError(.cannotFindHost) }
-        await #expect(throws: ConversationError.network("PC introuvable : Tailscale est-il allumé ?")) {
+        await #expect(throws: ServerError.network("PC introuvable : Tailscale est-il allumé ?")) {
             try await failing.start(topic: nil)
         }
     }
@@ -81,7 +81,7 @@ struct ConversationClientTests {
 
 /// Un serveur qui répond ce qu'on lui dit, et note ce qu'il a reçu.
 private final class ScriptedService: ConversationService, @unchecked Sendable {
-    var failNext: ConversationError?
+    var failNext: ServerError?
     var histories: [[ConversationMessage]] = []
 
     func start(topic: String?) async throws -> PartnerReply {

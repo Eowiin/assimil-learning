@@ -11,6 +11,9 @@ struct ServerHealth: Decodable, Equatable {
     let modules: [String]?
 
     static let conversation = "conversation"
+    static let pronunciation = "pronunciation"
+
+    func has(_ module: String) -> Bool { modules?.contains(module) == true }
 }
 
 /// Le serveur de la maison : le PC fixe, joint par Tailscale (`docs/cadrage-v2.md`).
@@ -81,10 +84,24 @@ final class ServerStatus {
         #if DEBUG
         if fake { return FakeConversationService() }
         #endif
-        guard case .online(let health) = state, health.modules?.contains(ServerHealth.conversation) == true,
-              let baseURL
-        else { return nil }
+        guard let baseURL = base(for: ServerHealth.conversation) else { return nil }
         return ConversationClient(baseURL: baseURL, session: session)
+    }
+
+    /// Le jugement des sons, si le serveur est en ligne et l'a chargé. Nil sinon : la
+    /// ligne Prononciation de l'accueil n'apparaît pas.
+    var pronunciation: (any PronunciationService)? {
+        #if DEBUG
+        if fake { return FakePronunciationService() }
+        #endif
+        guard let baseURL = base(for: ServerHealth.pronunciation) else { return nil }
+        return PronunciationClient(baseURL: baseURL, session: session)
+    }
+
+    /// L'adresse du serveur, s'il est en ligne et annonce ce module.
+    private func base(for module: String) -> URL? {
+        guard case .online(let health) = state, health.has(module) else { return nil }
+        return baseURL
     }
 
     /// Le serveur imaginaire des tests d'interface. En Release, un voyant ordinaire.
@@ -93,7 +110,8 @@ final class ServerStatus {
         #if DEBUG
         status.fake = true
         status.state = .online(ServerHealth(status: "ok", version: "test", api: HomeServer.supportedAPI,
-                                            gpu: nil, modules: [ServerHealth.conversation]))
+                                            gpu: nil, modules: [ServerHealth.conversation,
+                                                                ServerHealth.pronunciation]))
         #endif
         return status
     }
@@ -137,7 +155,84 @@ final class ServerStatus {
     }
 }
 
+/// Un appel au serveur qui a échoué, dit en clair.
+enum ServerError: LocalizedError, Equatable {
+    /// Le serveur a répondu, avec une raison lisible (`detail` de FastAPI).
+    case server(String)
+    case network(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .server(let reason), .network(let reason): reason
+        }
+    }
+}
+
+/// Un formulaire `multipart/form-data`, pour envoyer une prise au serveur.
+struct MultipartForm {
+    let boundary: String
+    private(set) var body = Data()
+
+    init(boundary: String = "assimil-\(UUID().uuidString)") {
+        self.boundary = boundary
+    }
+
+    mutating func field(_ name: String, _ value: String) {
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
+        body.append(Data(value.utf8))
+        body.append(Data("\r\n".utf8))
+    }
+
+    /// Un fichier AAC (`audio/mp4`), comme le rend `VoiceRecorder`.
+    mutating func audio(_ name: String, filename: String, _ data: Data) {
+        body.append(Data(("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"; "
+                          + "filename=\"\(filename)\"\r\nContent-Type: audio/mp4\r\n\r\n").utf8))
+        body.append(data)
+        body.append(Data("\r\n".utf8))
+    }
+
+    /// Le corps clos, et l'en-tête qui va avec.
+    func finished() -> (body: Data, contentType: String) {
+        var closed = body
+        closed.append(Data("--\(boundary)--\r\n".utf8))
+        return (closed, "multipart/form-data; boundary=\(boundary)")
+    }
+}
+
 extension HomeServer {
+
+    private struct Detail: Decodable { let detail: String }
+
+    /// Un POST au serveur, et sa réponse décodée. Toute erreur devient une
+    /// `ServerError` qu'on peut afficher telle quelle.
+    static func post<T: Decodable>(_ path: String, base: URL, body: Data, contentType: String,
+                                   timeout: TimeInterval, session: URLSession, as: T.Type) async throws -> T {
+        var request = URLRequest(url: base.appending(path: path), timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw ServerError.network(message(for: error))
+        }
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard code == 200 else {
+            if let detail = try? JSONDecoder().decode(Detail.self, from: data) {
+                throw ServerError.server(detail.detail)
+            }
+            throw ServerError.server(code == 502 ? "Le serveur n'est pas lancé sur le PC"
+                                                 : "Erreur du serveur (code \(code))")
+        }
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw ServerError.server("Réponse illisible du serveur")
+        }
+    }
+
     /// Une erreur réseau, dite pour quelqu'un qui sait où est son PC.
     static func message(for error: URLError) -> String {
         switch error.code {
