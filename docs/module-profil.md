@@ -1,6 +1,6 @@
 # Module du profil d'apprenant
 
-**Proposé le 2026-11-14.** Le pourquoi est dans `docs/cadrage-v2.md` (« Plus tard :
+**Validé le 2026-11-14.** Le pourquoi est dans `docs/cadrage-v2.md` (« Plus tard :
 le profil d'apprenant »). La conception d'ensemble est dans le document Claude
 « Profil d'apprenant — conception » (12 novembre). Ce plan en reprend ce qui se
 construit maintenant, adapté au code réel. Il signale aussi ce qui, dans la
@@ -114,12 +114,15 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
   - sans historique, ou sans son classé, la règle actuelle seule.
 - `PronunciationEntry` lit les records à l'ouverture de la séance, une fois, comme
   il lit déjà les textes des leçons.
+- **L'écran le dit** (décision 3) : une ligne discrète sous le titre, au début de la
+  séance, « Aujourd'hui : surtout le th anglais ». Rien quand la séance n'est pas
+  ciblée.
 - **Tests** : le taux d'un son (fautes, sons justes, indices, deuxième prise
   ignorée, prises de plus de 30 jours ignorées) ; la table des symboles (`ɾ` et `r`
   font le même son, `β` va vers `v`) ; le tirage avec un générateur fixé, qui donne
   trois phrases du son le plus raté ; sans historique, le même tirage qu'aujourd'hui.
 - **Test sur l'iPhone** : quelques séances en ratant exprès un son (le θ dit [s]),
-  puis la séance suivante doit en proposer davantage.
+  puis la séance suivante doit en proposer davantage, et le dire.
 
 ### 2 · Les fautes de conversation qui reviennent (app)
 
@@ -148,6 +151,18 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
 - **Test sur le PC puis sur l'iPhone** : `essais/appel.py` avec un profil, pour juger
   si l'IA reprend les mots sans forcer ; puis une vraie conversation.
 
+### 4 · Essai : le récapitulatif avec réflexion (PC)
+
+Indépendant des autres étapes (décision 6). Pendant l'échange, Qwen3 répond sans
+réfléchir, pour aller vite. Au récapitulatif, le délai compte moins : avec la
+réflexion, il repérerait peut-être mieux les fautes, et nommerait mieux leur point.
+
+- `essais/appel.py` garde l'historique de chaque conversation dans `essais/sortie/`.
+- Un essai repasse ces conversations au récapitulatif, sans puis avec réflexion,
+  et montre les deux côte à côte : les fautes relevées, leur `tag`, et le temps.
+- **On garde la réflexion si les corrections sont plus justes**, et si le délai
+  reste supportable (quelques secondes, une fois par conversation).
+
 ## Plus tard (hors de ce plan)
 
 - **Le niveau par compétence** (`SkillEstimate`) et le **test de placement**. Il
@@ -163,18 +178,17 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
 - **Des tables de projection** (`PhonemeState`, `ErrorPattern`), si le calcul à la
   demande devient lent.
 
-## Questions
+## Décisions (2026-11-14)
 
-1. **La fenêtre de la prononciation** : 30 jours, la première prise seulement, au
-   moins 6 fois le son. Ça te va ?
-2. **La part ciblée** : 3 phrases sur 5 pour les sons ratés, 2 tirées comme
-   aujourd'hui. Plus, ou moins ?
-3. **Le dire à l'écran ?** Une ligne au début de la séance (« Aujourd'hui : le th
-   anglais ») rendrait le choix visible. Ou on le laisse discret ?
-4. **« Déjà relevé » dans le récapitulatif** (étape 2) : utile, ou du bruit ?
-5. **L'ordre des étapes 2 et 3** : la 3 (le partenaire adapté) est la plus visible,
-   mais elle a besoin de la 2 pour la faute à surveiller. On peut la faire d'abord,
-   avec seulement les mots à reprendre.
-6. **Le récapitulatif avec réflexion** : on essaie Qwen3 avec réflexion sur quelques
-   conversations gardées, pour voir si les `tag` sont plus nets ? Le délai ne compte
-   pas à ce moment-là.
+1. **Le taux de fautes d'un son** se calcule sur la première prise de chaque phrase,
+   sur les 30 derniers jours, et seulement à partir de 6 fois le son.
+2. **3 phrases sur 5 visent les sons les plus ratés**, 2 sont tirées comme
+   aujourd'hui. La séance reste à 5 phrases, et pourra s'allonger si c'est court à
+   l'usage.
+3. **La séance dit quel son elle travaille**, en une ligne discrète.
+4. **Le récapitulatif dit qu'une faute revient** (« déjà relevé dans 2
+   conversations »). Retiré si c'est du bruit à l'usage.
+5. **L'ordre des étapes reste 1, 2, 3.** La 3 a besoin de la 2 pour la faute à
+   surveiller.
+6. **On essaie le récapitulatif avec réflexion** (étape 4), sur des conversations
+   gardées, avant de rien changer au serveur.
