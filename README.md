@@ -711,11 +711,13 @@ ajoutait le tempo, le moteur de reconnaissance, l'écart médian en demi-tons et
 la machine avait compris : des chiffres justes, mais qui n'aidaient pas à se corriger.
 Seule la courbe servait ; elle est passée dans le panneau. La logique de l'essai vit
 dans `VoiceTrial`. Une analyse qui dise quel son corriger a été essayée sur le
-téléphone et écartée (#44, voir « L'accent au phonème »).
+téléphone et écartée (#44, voir « L'accent au phonème ») : elle se fait désormais
+sur le PC de la maison, dans le module de prononciation (« La prononciation », plus
+bas). Le micro du lecteur, lui, reste sans serveur.
 
 **Ce que ça mesure, et ce que ça ne mesure pas.** La reconnaissance dit si les mots
 *passent*, pas si l'accent est bon : aucune API d'Apple n'évalue une prononciation.
-L'écran affiche donc deux choses vérifiables — les mots de la phrase, ceux qui ne
+Juger les sons demande le serveur du PC ; ici, sans lui, l'écran affiche donc deux choses vérifiables — les mots de la phrase, ceux qui ne
 sont pas passés en orange, et la courbe d'intonation. Pour l'accent, c'est la
 réécoute côte à côte qui tranche, pas une note.
 
@@ -797,7 +799,7 @@ Ce qu'aucun corpus ne donne : une phrase dite par Ethan tombe *entre* les deux
 groupes, et savoir où demanderait ses propres enregistrements. Les seuils sont donc
 posés sur ce qui est mesuré, pas sur ce qu'on voudrait qu'ils disent.
 
-### L'accent au phonème, essayé et écarté (#44)
+### L'accent au phonème : écarté sur l'iPhone, fait sur le PC (#44)
 
 Dire *quel son* corriger, en local, a été essayé sur Mac avant toute intégration :
 un modèle de reconnaissance de phonèmes (`facebook/wav2vec2-xlsr-53-espeak-cv-ft`),
@@ -822,12 +824,22 @@ jota dite en r français « x », et entend le θ d'Ethan comme un s dans les de
 prises. Les deux fautes les plus courantes d'un francophone lui sont invisibles.
 
 Pas de Core ML ni d'intégration, donc : ce modèle est écarté, et aucun modèle assez
-bon ne tiendrait sur l'iPhone 11. L'écran garde ce qui est vérifiable — les mots
-qui passent, la courbe d'intonation, la réécoute côte à côte. Le prototype reste sur
-les branches `recherche/prononciation-locale` et `recherche/prononciation-essai-voix`,
-hors de `dev`. La piste suivante est un modèle plus gros, servi par un PC de la maison
-(carte graphique) plutôt que calculé sur le téléphone : à mesurer sur les mêmes
-enregistrements avant toute intégration.
+bon ne tiendrait sur l'iPhone 11. Le prototype reste sur les branches
+`recherche/prononciation-locale` et `recherche/prononciation-essai-voix`, hors de `dev`.
+
+**Sur le PC, la méthode a changé, et les chiffres aussi** (#67) : un alignement forcé
+avec des seuils tirés de 1 899 phrases natives d'Assimil, les r jugés dans le signal,
+et ZIPA pour le r français, la jota dite en r et le v dit [v]. Sur les mêmes 16 prises :
+
+| | θ | jota | r | v | Total | Prise soignée |
+|---|---|---|---|---|---|---|
+| Prototype de l'iPhone | 4/7 | 0/4 | 1/18 | 3/5 | **8/34** | 24/218 |
+| Méthode du PC | 6/7 | 3/4 | 17/18 | 3/5 | **29/34** | 12/218 |
+
+Sur 400 phrases de 270 natifs d'Espagne (Common Voice), 1,3 % des sons sont signalés.
+Le r roulé dit battu n'y est qu'un indice : les natifs le font souvent. L'analyse tourne
+sur le PC seulement (`server/app/prononciation/`), et l'app l'affiche dans le module de
+prononciation. Reste ouvert : la mesurer sur d'autres voix de francophones.
 
 ## Le serveur de la maison
 
@@ -875,6 +887,41 @@ des faux dans les tests.
   légère.
 - `ASSIMIL_FAKE_SERVER=1` (Debug) simule un serveur en ligne et un micro
   silencieux. Le test d'interface fait ainsi un tour complet, jusqu'au récapitulatif.
+
+### La prononciation
+
+Quand `/health` annonce `pronunciation`, l'accueil montre une ligne Prononciation
+(`PronunciationView`, plan dans `docs/module-prononciation.md`). Une séance compte
+**cinq phrases**. Pour chacune, on écoute le natif, on touche le micro, on lit, et on
+touche à nouveau. Le serveur juge chaque son en 0,2 s (`POST /pronunciation`).
+
+- **Les phrases** (`PronunciationDrill`) viennent du dialogue des leçons du
+  vocabulaire (validées avant aujourd'hui), avec la voix du natif, de 4 à 12 mots. Elles
+  contiennent un son qu'un francophone rate : θ (`z`, `ce`, `ci`), jota (`j`, `ge`,
+  `gi`), r, ou `v`. L'app les repère à l'orthographe, et le tirage couvre d'abord
+  les sons les plus rares. Il y en a 46 sur les leçons 1 à 10, 715 sur les 100.
+- **Une faute à la fois.** Le son fautif est marqué dans le mot, lettres en rouge
+  (« ja**rr**a », `SpanishSpelling`). La première faute est détaillée dessous, en
+  clair et sans alphabet phonétique (« Tu as dit un s. Il faut le th anglais. »,
+  `SpanishSounds`), avec le conseil du serveur. Deux écoutes : son mot, découpé
+  dans la prise, et le natif. Toucher un autre mot montre sa faute. Un indice (le r
+  roulé dit battu) n'est souligné qu'en pointillé.
+- **Les mots du serveur ne s'écrivent pas comme la phrase** : minuscules, sans
+  ponctuation, les nombres en lettres. `PronunciationMatch` rattache chaque mot jugé
+  à son mot affiché en repliant les deux comme `SpanishMatch`. S'il ne correspond pas
+  (« 3 » contre « tres »), rien n'est souligné, plutôt que le mauvais mot.
+- **On passe à la suite** sans faute, ou après une nouvelle tentative, même ratée :
+  bloquer sur un son qu'on n'arrive pas encore à faire décourage. Si le serveur
+  échoue, on renvoie la prise, ou on passe la phrase.
+- **Le bilan** compte les sons fautifs de la séance, du plus fréquent au plus rare.
+- **Chaque prise jugée est gardée sur l'iPhone** (`PronunciationRecord`) : la phrase,
+  le numéro de tentative, les sons fautifs et le jugement complet en JSON. Rien ne la
+  réaffiche : elle attend le profil d'apprenant. C'est une nouvelle entité, ajoutée par
+  migration légère. La prise audio, elle, ne vit que le temps de la séance.
+- **Le temps compte** dans `StudyEvent`, activité `pronunciation`, sans cours.
+- La règle vit dans `PronunciationSession`. `PronunciationClient` parle au serveur, et
+  `PronunciationAudio` passe par `VoiceRecorder`. Les deux se remplacent par des faux
+  dans les tests, et `ASSIMIL_FAKE_SERVER=1` juge fautif le premier mot qui a un r.
 
 ## Interface
 

@@ -27,7 +27,8 @@ struct AssimilESApp: App {
     }
 
     /// Chaque entité ajoutée (`DailySession`, `CourseAnchor`, puis `Card`,
-    /// `ReviewLog`, `StudyEvent`, `DataMigration`, puis `ConversationRecord`) est une
+    /// `ReviewLog`, `StudyEvent`, `DataMigration`, puis `ConversationRecord`, puis
+    /// `PronunciationRecord`) est une
     /// migration légère : les entités existantes ne changent pas, SwiftData ajoute
     /// les tables.
     private let container = AssimilESApp.makeContainer()
@@ -62,6 +63,7 @@ struct AssimilESApp: App {
     nonisolated static let models: [any PersistentModel.Type] = [
         LessonProgress.self, DifficultSentence.self, StudyDay.self, DailySession.self, CourseAnchor.self,
         Card.self, ReviewLog.self, StudyEvent.self, DataMigration.self, ConversationRecord.self,
+        PronunciationRecord.self,
     ]
 
     private static func makeContainer() -> ModelContainer {

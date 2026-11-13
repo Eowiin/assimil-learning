@@ -58,11 +58,16 @@ final class PronunciationSession {
     private let service: any PronunciationService
     private let sound: any PronunciationSound
     private let nativeURL: (DrillSentence) -> URL?
+    /// Appelé à chaque prise jugée : l'écran la garde (`PronunciationRecord`).
+    private let onJudged: (DrillSentence, Int, PronunciationResult) -> Void
     /// La prise qui a échoué, à renvoyer telle quelle.
     private var pendingTake: Data?
 
     init(sentences: [DrillSentence], service: any PronunciationService, sound: any PronunciationSound,
-         nativeURL: @escaping (DrillSentence) -> URL?, startedAt: Date = .now) {
+         nativeURL: @escaping (DrillSentence) -> URL?,
+         onJudged: @escaping (DrillSentence, Int, PronunciationResult) -> Void = { _, _, _ in },
+         startedAt: Date = .now) {
+        self.onJudged = onJudged
         self.sentences = sentences
         self.service = service
         self.sound = sound
@@ -223,6 +228,7 @@ final class PronunciationSession {
             result = judged
             words = PronunciationMatch.attach(judged.words, to: current.text)
             attempts += 1
+            onJudged(current, attempts, judged)
             selectedWord = nil
             pendingTake = nil
             phase = .judged

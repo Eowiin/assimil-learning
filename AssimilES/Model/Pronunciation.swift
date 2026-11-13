@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Ce que rend le serveur
 
 /// Un son attendu, jugé par le serveur (`server/app/main.py`, `Phone`).
-struct JudgedPhone: Decodable, Equatable, Sendable {
+struct JudgedPhone: Codable, Equatable, Sendable {
     /// Le son attendu, en symbole phonétique (`θ`, `x`, `ɾ`…).
     let expected: String
     /// Ce qui a été entendu à la place, pour une faute ou un indice. `∅` : rien.
@@ -26,7 +26,7 @@ struct JudgedPhone: Decodable, Equatable, Sendable {
 
 /// Un mot jugé. Le serveur l'écrit en minuscules, sans ponctuation, et les nombres
 /// en lettres : il ne s'écrit pas forcément comme dans la phrase affichée.
-struct JudgedWord: Decodable, Equatable, Sendable {
+struct JudgedWord: Codable, Equatable, Sendable {
     let text: String
     let fault: Bool
     let phonemes: [JudgedPhone]
@@ -44,7 +44,7 @@ struct JudgedWord: Decodable, Equatable, Sendable {
 }
 
 /// Le jugement d'une phrase (`POST /pronunciation`).
-struct PronunciationResult: Decodable, Equatable, Sendable {
+struct PronunciationResult: Codable, Equatable, Sendable {
     let words: [JudgedWord]
     /// Les sons reconnus, sans la phrase attendue.
     let heard: String

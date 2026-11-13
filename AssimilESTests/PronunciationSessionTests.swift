@@ -248,6 +248,26 @@ struct PronunciationSessionTests {
         #expect(s.playing == .word)
     }
 
+    @Test("Chaque prise jugée est remise à l'écran pour être gardée, avec son numéro de tentative")
+    func judgedTakesAreHandedOver() async {
+        let judge = ScriptedJudge()
+        judge.results = [faulty, clean]
+        var kept: [(String, Int, Bool)] = []
+        let s = PronunciationSession(sentences: sentences, service: judge, sound: FakeSound(),
+                                     nativeURL: { _ in nil },
+                                     onJudged: { sentence, attempt, result in
+                                         kept.append((sentence.id, attempt, result.hasFault))
+                                     })
+        await read(s)
+        await read(s)
+        // Une prise qui échoue n'est pas gardée.
+        judge.failNext = .network("Pas de réseau")
+        await read(s)
+        #expect(kept.map(\.0) == ["1-2", "1-2"])
+        #expect(kept.map(\.1) == [1, 2])
+        #expect(kept.map(\.2) == [true, false])
+    }
+
     @Test("Aucune phrase : la séance est finie d'emblée")
     func empty() {
         let s = PronunciationSession(sentences: [], service: ScriptedJudge(), sound: FakeSound(), nativeURL: { _ in nil })

@@ -92,7 +92,7 @@ Un symbole absent de la table s'affiche tel quel, entre crochets.
 
 ## Étapes
 
-### 1 · Le client (app)
+### 1 · Le client (app) — fait (PR #70)
 
 - `ServerHealth.pronunciation`, et un accès `ServerStatus.pronunciation` comme
   `conversation`.
@@ -105,14 +105,14 @@ Un symbole absent de la table s'affiche tel quel, entre crochets.
 - **Tests** : le décodage d'une vraie réponse du serveur, le rattachement (casse,
   ponctuation, « 3 » contre « tres »), le repli sans serveur ni module.
 
-### 2 · Le choix des phrases (app)
+### 2 · Le choix des phrases (app) — fait (PR #71)
 
 - `PronunciationDrill` : les phrases des leçons vues, filtrées par les sons et la
   longueur, puis tirées au hasard. Cinq par séance.
 - **Tests** : le repérage des sons à l'orthographe (`cena`, `gente`, `perro`,
   `vaso`), les bornes de longueur, une leçon sans texte importé ignorée.
 
-### 3 · L'écran et l'accueil (app)
+### 3 · L'écran et l'accueil (app) — fait (PR #72)
 
 - `PronunciationView` : la phrase, l'écoute du natif, le micro, le résultat, la
   faute détaillée, les deux écoutes, « Réessayer », puis le bilan.
@@ -122,7 +122,7 @@ Un symbole absent de la table s'affiche tel quel, entre crochets.
 - Le temps passé est compté dans `StudyEvent`, activité `pronunciation`.
 - **Test sur l'iPhone**, serveur du PC lancé.
 
-### 4 · Garder les fautes, et le README (app)
+### 4 · Garder les fautes, et le README (app) — fait (branche feat/prononciation-suivi)
 
 - Chaque phrase jugée (décision 2) est gardée sur l'iPhone
   (un nouveau modèle SwiftData), avec ses fautes. C'est ce que lira le profil
