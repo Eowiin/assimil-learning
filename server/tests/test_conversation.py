@@ -5,7 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.conversation import CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections, Profil, consigne
+from app.conversation import (CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections, Profil, consigne,
+                              note_du_tour)
 from app.moteurs import OllamaIndisponible, Reglages
 
 
@@ -90,6 +91,17 @@ def test_le_profil_entre_dans_la_consigne():
     assert "sin corregirle" in texte
 
 
+def test_la_note_du_tour_demande_un_mot_a_la_fois_et_le_point():
+    profil = Profil(**PROFIL)
+    assert "«aprovechar»" in note_du_tour(profil, 0)
+    assert "«quedar con»" in note_du_tour(profil, 1)
+    assert "«aprovechar»" in note_du_tour(profil, 2)
+    assert "«ser/estar»" in note_du_tour(profil, 0)
+    assert "«aprovechar»" not in note_du_tour(Profil(watch="ser/estar"), 0)
+    assert note_du_tour(None, 0) is None
+    assert note_du_tour(Profil(), 3) is None
+
+
 def test_cinq_mots_au_plus():
     texte = consigne(Profil(words=[f"palabra{i}" for i in range(8)]))
     assert "palabra4" in texte and "palabra5" not in texte
@@ -98,11 +110,24 @@ def test_cinq_mots_au_plus():
 def test_start_avec_un_profil(client, faux):
     client.post("/conversation/start", json={"profile": PROFIL})
     assert faux.messages[0]["content"] == consigne(Profil(**PROFIL))
+    assert faux.messages[1]["content"].endswith(note_du_tour(Profil(**PROFIL), 0))
 
 
 def test_turn_avec_un_profil(client, faux):
-    client.post("/conversation/turn", data={"text": "Hola", "profile": json.dumps(PROFIL)})
+    historique = [{"role": "assistant", "content": "¡Hola! ¿Qué tal?"}]
+    corps = client.post("/conversation/turn", data={"text": "Hola", "history": json.dumps(historique),
+                                                    "profile": json.dumps(PROFIL)}).json()
     assert faux.messages[0]["content"] == consigne(Profil(**PROFIL))
+    # La note suit la phrase de l'apprenant ; une réplique de l'IA déjà faite : le 2e mot.
+    assert faux.messages[-1]["content"] == "Hola\n\n" + note_du_tour(Profil(**PROFIL), 1)
+    assert "«quedar con»" in faux.messages[-1]["content"]
+    # Ce que l'app affiche et garde reste la phrase dite.
+    assert corps["heard"] == "Hola"
+
+
+def test_turn_sans_profil_la_phrase_seule(client, faux):
+    client.post("/conversation/turn", data={"text": "Hola"})
+    assert faux.messages[-1] == {"role": "user", "content": "Hola"}
 
 
 def test_turn_profil_illisible(client):

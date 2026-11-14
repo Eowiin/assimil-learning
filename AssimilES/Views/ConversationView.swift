@@ -95,6 +95,14 @@ struct ConversationView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
+                    if let summary = session.profile?.summary {
+                        // Ce que le partenaire a reçu : on voit ce qu'il cherche à faire
+                        // pratiquer, et qu'il a bien reçu quelque chose.
+                        Text(summary)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("conversation-profile")
+                    }
                     ForEach(session.lines) { line in
                         bubble(line).id(line.id)
                     }

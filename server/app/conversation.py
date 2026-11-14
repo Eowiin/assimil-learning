@@ -70,16 +70,39 @@ def consigne(profil: Profil | None = None) -> str:
     if profil is None:
         return CONSIGNE
     lignes = []
-    mots = [m.strip() for m in profil.words if m.strip()][:MOTS_AU_PLUS]
-    if mots:
-        lignes.append("- Si viene a cuento, usa con naturalidad alguna de estas palabras que el "
-                      "estudiante está aprendiendo, para que las oiga y se anime a usarlas: "
-                      + ", ".join(mots) + ". No las fuerces todas.")
-    if profil.watch and profil.watch.strip():
-        lignes.append("- El estudiante suele equivocarse en este punto: «" + profil.watch.strip()
-                      + "». Crea ocasiones naturales para que lo practique, sin corregirle ni "
-                      "explicárselo.")
+    if mots := _mots(profil):
+        lignes.append("- El estudiante está aprendiendo estas palabras: " + ", ".join(mots)
+                      + ". Úsalas en tus respuestas, una por respuesta, para que las oiga y se "
+                      "anime a usarlas.")
+    if surveiller := _surveiller(profil):
+        lignes.append("- El estudiante suele equivocarse en este punto: «" + surveiller
+                      + "». Haz preguntas que le obliguen a usarlo, sin corregirle ni explicárselo.")
     return CONSIGNE + ("\n" + "\n".join(lignes) if lignes else "")
+
+
+def _mots(profil: Profil | None) -> list[str]:
+    return [m.strip() for m in profil.words if m.strip()][:MOTS_AU_PLUS] if profil else []
+
+
+def _surveiller(profil: Profil | None) -> str | None:
+    return profil.watch.strip() if profil and profil.watch and profil.watch.strip() else None
+
+
+def note_du_tour(profil: Profil | None, rang: int) -> str | None:
+    """La consigne précise d'une réplique, collée au message auquel l'IA répond. Un
+    modèle de 8B suit mal une règle donnée en tête de conversation ; il suit bien
+    une demande récente et précise : un seul mot, et une question qui oblige à
+    employer le point. `rang` : le nombre de répliques déjà faites par l'IA, qui
+    fait tourner les mots. La note n'entre pas dans l'historique que l'app garde."""
+    demandes = []
+    if mots := _mots(profil):
+        demandes.append(f"usa de forma natural la palabra «{mots[rang % len(mots)]}»")
+    if surveiller := _surveiller(profil):
+        demandes.append(f"termina con una pregunta cuya respuesta obligue al estudiante a usar "
+                        f"este punto: «{surveiller}»")
+    if not demandes:
+        return None
+    return "(Nota para ti, no la menciones: en tu respuesta, " + ", y ".join(demandes) + ".)"
 
 
 class Message(BaseModel):
@@ -127,13 +150,17 @@ class Moteurs(Protocol):
 
 def messages_ouverture(sujet: str | None, profil: Profil | None = None) -> list[dict]:
     ouverture = OUVERTURE_SUJET.format(sujet=sujet.strip()) if sujet and sujet.strip() else OUVERTURE
+    if note := note_du_tour(profil, 0):
+        ouverture += "\n" + note
     return [{"role": "system", "content": consigne(profil)}, {"role": "user", "content": ouverture}]
 
 
 def messages_tour(historique: list[Message], phrase: str, profil: Profil | None = None) -> list[dict]:
+    rang = sum(m.role == "assistant" for m in historique)
+    note = note_du_tour(profil, rang)
     return ([{"role": "system", "content": consigne(profil)}]
             + [m.model_dump() for m in historique]
-            + [{"role": "user", "content": phrase}])
+            + [{"role": "user", "content": phrase + ("\n\n" + note if note else "")}])
 
 
 def derniere_replique(historique: list[Message]) -> str | None:

@@ -151,6 +151,14 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
 - **Test sur le PC puis sur l'iPhone** : `essais/appel.py` avec un profil, pour juger
   si l'IA reprend les mots sans forcer ; puis une vraie conversation.
 
+- **Premier essai (2026-11-14) : sans effet.** Une règle en tête de consigne (« si ça
+  vient naturellement, emploie un de ces mots ») était ignorée par Qwen3 8B. D'où :
+  - une **note précise à chaque réplique**, collée au message auquel l'IA répond :
+    un seul mot, qui tourne d'un tour à l'autre, et une question qui oblige à
+    employer le point. Elle n'entre pas dans l'historique que l'app garde ;
+  - l'**écran de conversation affiche le profil** en une ligne (« Aujourd'hui :
+    ser/estar · aprovechar, quedar con »), et le serveur l'écrit dans son terminal.
+
 ### 4 · Essai : le récapitulatif avec réflexion (PC)
 
 Indépendant des autres étapes (décision 6). Pendant l'échange, Qwen3 répond sans

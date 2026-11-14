@@ -112,6 +112,15 @@ struct ConversationProfileTests {
         #expect(profile?.watch == nil)
     }
 
+    @Test("La ligne de l'écran")
+    func summary() {
+        #expect(ConversationProfile(watch: "ser/estar", words: ["aprovechar", "quedar con"]).summary
+                == "Aujourd'hui : ser/estar · aprovechar, quedar con")
+        #expect(ConversationProfile(watch: nil, words: ["aprovechar"]).summary == "Aujourd'hui : aprovechar")
+        #expect(ConversationProfile(watch: "ser/estar", words: []).summary == "Aujourd'hui : ser/estar")
+        #expect(ConversationProfile(watch: nil, words: []).summary == nil)
+    }
+
     @Test("La faute à surveiller revient dans deux conversations au moins")
     func watch() {
         let once = ErrorPatterns(conversations: [conversation(day: 1, [fault("a", tag: "por/para")])])

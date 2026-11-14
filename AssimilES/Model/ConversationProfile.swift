@@ -14,6 +14,12 @@ struct ConversationProfile: Codable, Equatable, Sendable {
 
     var isEmpty: Bool { watch == nil && words.isEmpty }
 
+    /// La ligne de l'écran : « Aujourd'hui : ser/estar · aprovechar, quedar con ».
+    var summary: String? {
+        let parts = [watch, words.isEmpty ? nil : words.joined(separator: ", ")].compactMap { $0 }
+        return parts.isEmpty ? nil : "Aujourd'hui : " + parts.joined(separator: " · ")
+    }
+
     /// Nil quand il n'y a rien à dire : le partenaire garde sa consigne d'avant.
     ///
     /// - La faute : le point le plus fréquent, s'il revient dans deux conversations

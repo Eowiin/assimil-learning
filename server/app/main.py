@@ -214,6 +214,8 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
     def start(request: Request, body: StartRequest | None = None) -> Reply:
         """La première réplique : l'IA salue et propose un sujet."""
         m = prets(request)
+        if body and body.profile:
+            journal.info("Profil reçu : %s", body.profile.model_dump_json())
         with verrou:
             reponse, audio, ia, voix = repliquer(m, messages_ouverture(body.topic if body else None,
                                                                        body.profile if body else None))
