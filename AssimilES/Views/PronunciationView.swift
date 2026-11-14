@@ -12,6 +12,8 @@ struct PronunciationView: View {
     @EnvironmentObject private var player: SessionPlayer
 
     @State private var session: PronunciationSession
+    /// Les sons que la séance vise, d'après les prises passées. Vide sans profil.
+    private let focus: [SpanishTarget]
     /// Secondes d'étude pas encore inscrites (`StudyTime`).
     @State private var unrecorded: Double = 0
     @State private var lastTick = DayClock.systemNow()
@@ -22,7 +24,8 @@ struct PronunciationView: View {
 
     /// `context` : chaque prise jugée y est gardée (`PronunciationRecord`).
     init(sentences: [DrillSentence], service: any PronunciationService, manifest: Manifest,
-         context: ModelContext) {
+         context: ModelContext, focus: [SpanishTarget] = []) {
+        self.focus = focus
         _session = State(initialValue: PronunciationSession(
             sentences: sentences, service: service, sound: Self.sound(),
             nativeURL: { sentence in
@@ -50,7 +53,10 @@ struct PronunciationView: View {
                 VStack(spacing: 0) {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
-                            progress
+                            VStack(alignment: .leading, spacing: 4) {
+                                progress
+                                focusLine
+                            }
                             sentenceCard
                             feedback
                         }
@@ -98,6 +104,25 @@ struct PronunciationView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
             .accessibilityIdentifier("pronunciation-progress")
+    }
+
+    /// Pourquoi ces phrases-là : le son le plus raté ces derniers temps (décision 3
+    /// de `docs/module-profil.md`). Rien quand la séance n'est pas ciblée.
+    @ViewBuilder
+    private var focusLine: some View {
+        if let text = Self.focusText(focus) {
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("pronunciation-focus")
+        }
+    }
+
+    static func focusText(_ focus: [SpanishTarget]) -> String? {
+        let names = focus.map(\.spokenName)
+        guard let first = names.first else { return nil }
+        let list = names.count == 1 ? first : names.dropLast().joined(separator: ", ") + " et " + names.last!
+        return "Aujourd'hui : surtout \(list)"
     }
 
     private var sentenceCard: some View {
@@ -448,20 +473,35 @@ struct PronunciationEntry: View {
     let service: any PronunciationService
     let lessons: Set<Int>
 
+    /// Les sons les plus ratés du dernier mois (`PhonemeStats`). Seules les prises
+    /// de la fenêtre sont lues.
+    static func weakestSounds(in context: ModelContext, now: Date = DayClock.systemNow()) -> [SpanishTarget] {
+        let since = now.addingTimeInterval(-PhonemeStats.window)
+        let records = (try? context.fetch(FetchDescriptor<PronunciationRecord>(
+            predicate: #Predicate { $0.judgedAt >= since && $0.attempt == 1 }))) ?? []
+        return PhonemeStats(records: records, now: now).weakest()
+    }
+
     @Environment(\.manifest) private var manifest
     @Environment(\.modelContext) private var context
     @State private var sentences: [DrillSentence]?
+    @State private var focus: [SpanishTarget] = []
 
     var body: some View {
         if let sentences {
-            PronunciationView(sentences: sentences, service: service, manifest: manifest, context: context)
+            PronunciationView(sentences: sentences, service: service, manifest: manifest, context: context,
+                              focus: focus)
         } else {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(StudyStyle.paper)
                 .task {
-                    sentences = PronunciationDrill.pick(
-                        from: PronunciationDrill.candidates(lessons: lessons, manifest: manifest))
+                    let weakest = Self.weakestSounds(in: context)
+                    let picked = PronunciationDrill.pick(
+                        from: PronunciationDrill.candidates(lessons: lessons, manifest: manifest),
+                        focus: weakest)
+                    focus = PronunciationDrill.announced(weakest, in: picked)
+                    sentences = picked
                 }
         }
     }
