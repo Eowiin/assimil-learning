@@ -110,9 +110,9 @@ ne montre la conversation que si le serveur l'annonce.
   mot sans sens peut venir de Whisper. L'app écarte aussi une correction dont la
   phrase corrigée dit les mêmes mots que la phrase dite, à la casse, la ponctuation
   et aux accents écrits près (comme `WordDiff`).
-- **XTTS** : l'empreinte de la voix clonée est calculée une fois, au démarrage, et
-  non plus à chaque phrase de chaque réplique. Gardé seulement si la mesure sur le
-  PC montre un gain (`essais/conversation.py --comparer-voix`).
+- **XTTS** : calculer l'empreinte de la voix clonée une fois, au démarrage, plutôt
+  qu'à chaque phrase. Essayé puis retiré sans mesure : le délai de la voix ne gêne
+  pas à l'usage. À reprendre si un jour il gêne.
 - **Whisper avec la dernière réplique de l'IA comme amorce**, derrière
   `ASSIMIL_WHISPER_CONTEXTE=1`. Désactivé tant que `essais/whisper_contexte.py`
   n'a pas montré, sur tes enregistrements, qu'il comprend mieux.

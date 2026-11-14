@@ -81,27 +81,6 @@ garder.
 - **La mémoire affiche `?`** : `nvidia-smi` ne répond pas dans WSL2, et les modèles
   tournent sans la carte graphique. Vérifie le pilote NVIDIA de Windows.
 
-### La voix clonée : l'empreinte calculée une fois (13 novembre)
-
-Avec une voix de référence, `tts_to_file(speaker_wav=...)` relit l'extrait et en
-recalcule l'empreinte **à chaque phrase de chaque réplique**. Le serveur la calcule
-maintenant une fois, au démarrage, et la range parmi les voix de XTTS
-(`app/moteurs.py`, `inscrire_voix`). Les réglages sont ceux de XTTS : la voix ne doit
-pas changer.
-
-```bash
-uv run python essais/conversation.py --voix ~/voix/ma-voix.wav --comparer-voix
-```
-
-Seul XTTS est chargé. Les deux façons s'alternent sur trois répliques de une à trois
-phrases, trois fois chacune, carte déjà chaude. XTTS tire au sort : deux rendus de la
-même phrase n'ont pas la même durée. **Le chiffre à lire est donc le temps par
-seconde de parole**, plus que le temps par réplique. Les rendus sont gardés
-(`voix-avant-*.wav`, `voix-apres-*.wav`) pour vérifier à l'oreille que c'est la même
-voix, et le détail dans `voix.json`.
-
-On ne garde le changement que si le gain est réel.
-
 ## `whisper_contexte.py` : la dernière réplique de l'IA, comme amorce de Whisper
 
 Whisper peut recevoir un texte qu'il prend pour ce qui précède (`initial_prompt`),
