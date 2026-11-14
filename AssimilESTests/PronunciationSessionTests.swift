@@ -177,7 +177,7 @@ struct PronunciationSessionTests {
         #expect(s.phase == .finished)
     }
 
-    @Test("Le bilan compte les fautes de la dernière prise de chaque phrase")
+    @Test("Le bilan compte les fautes de la première prise de chaque phrase")
     func summary() async {
         let judge = ScriptedJudge()
         judge.results = [faulty, faulty, clean]
@@ -186,6 +186,19 @@ struct PronunciationSessionTests {
         await read(s); s.next()
         #expect(s.summary.map(\.symbol) == ["b", "r"])
         #expect(s.summary.map(\.count) == [1, 1])
+    }
+
+    @Test("Une faute corrigée en réessayant reste dans le bilan")
+    func summaryAfterRetry() async {
+        let judge = ScriptedJudge()
+        judge.results = [faulty, clean, clean]
+        let s = session(judge)
+        await read(s); await read(s)
+        #expect(s.canAdvance)
+        s.next()
+        await read(s); s.next()
+        #expect(s.phase == .finished)
+        #expect(s.summary.map(\.symbol) == ["b", "r"])
     }
 
     @Test("Un échec garde la prise : on la renvoie, ou on passe la phrase")
