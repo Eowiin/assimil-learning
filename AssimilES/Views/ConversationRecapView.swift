@@ -4,6 +4,8 @@ import SwiftUI
 /// changé en couleur, et la règle en une phrase. Rien n'a coupé l'échange avant.
 struct ConversationRecapView: View {
     let review: ConversationSession.Review
+    /// Les fautes des conversations d'avant : une faute qui revient le dit.
+    var earlier = ErrorPatterns(conversations: [])
     let retry: () async -> Void
 
     var body: some View {
@@ -71,9 +73,23 @@ struct ConversationRecapView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let text = Self.recurrence(of: correction, in: earlier) {
+                Label(text, systemImage: "arrow.counterclockwise")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(StudyStyle.accent)
+                    .accessibilityIdentifier("recap-recurring")
+            }
         }
         .studySection()
         .accessibilityElement(children: .combine)
+    }
+
+    /// « ser/estar — déjà relevé dans 2 conversations ». Rien pour une première
+    /// faute (décision 4 de `docs/module-profil.md`).
+    static func recurrence(of correction: ConversationCorrection, in earlier: ErrorPatterns) -> String? {
+        guard let tag = correction.tag, let pattern = earlier.pattern(for: correction) else { return nil }
+        let count = pattern.conversations == 1 ? "une conversation" : "\(pattern.conversations) conversations"
+        return "\(tag) — déjà relevé dans \(count)"
     }
 
     private enum Mark { case removed, added }
