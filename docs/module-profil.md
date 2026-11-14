@@ -124,7 +124,7 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
 - **Test sur l'iPhone** : quelques séances en ratant exprès un son (le θ dit [s]),
   puis la séance suivante doit en proposer davantage, et le dire.
 
-### 2 · Les fautes de conversation qui reviennent (app) — en test (branche feat/profil-fautes-conversation)
+### 2 · Les fautes de conversation qui reviennent (app) — fait (PR #78)
 
 - **`ErrorPatterns`**, sans stockage, calculé depuis les `ConversationRecord` :
   - les corrections regroupées par `tag` replié (casse, accents, espaces), avec leur
