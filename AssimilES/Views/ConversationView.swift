@@ -23,6 +23,8 @@ struct ConversationView: View {
     @State private var finished = false
     /// La conversation gardée, complétée par les corrections quand elles arrivent.
     @State private var record: ConversationRecord?
+    /// Les fautes des conversations d'avant celle-ci, lues en terminant.
+    @State private var earlier = ErrorPatterns(conversations: [])
 
     /// Un silence de plus de deux minutes ne compte que pour deux : le téléphone
     /// posé ne fait pas du temps d'étude.
@@ -42,7 +44,7 @@ struct ConversationView: View {
     var body: some View {
         Group {
             if finished {
-                ConversationRecapView(review: session.review) { await review() }
+                ConversationRecapView(review: session.review, earlier: earlier) { await review() }
             } else {
                 VStack(spacing: 0) {
                     transcript
@@ -267,6 +269,8 @@ struct ConversationView: View {
     private func finish() {
         guard session.learnerSpoke else { return dismiss() }
         session.close()
+        // Avant de garder celle-ci : elle ne compte pas parmi les précédentes.
+        earlier = ErrorPatterns(records: (try? context.fetch(FetchDescriptor<ConversationRecord>())) ?? [])
         save()
         recordTime()
         withAnimation { finished = true }
