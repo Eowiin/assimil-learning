@@ -49,6 +49,10 @@ final class PronunciationSession {
     private(set) var result: PronunciationResult?
     /// Les prises jugées sur la phrase en cours.
     private(set) var attempts = 0
+    /// Le jugement de la première prise de la phrase : c'est lui que compte le bilan.
+    /// Réussir au troisième essai, juste après le conseil, ne dit pas que le son est
+    /// acquis (comme le profil, `docs/module-profil.md`).
+    private var firstResult: PronunciationResult?
     /// Le mot touché, dont on montre le détail. Nil : la première faute.
     var selectedWord: Int?
     private(set) var playing: Playing = .none
@@ -108,7 +112,8 @@ final class PronunciationSession {
 
     var isLast: Bool { index >= sentences.count - 1 }
 
-    /// Les sons fautifs de la séance, du plus fréquent au plus rare.
+    /// Les sons fautifs de la séance, du plus fréquent au plus rare, à la première
+    /// prise de chaque phrase.
     var summary: [(symbol: String, count: Int)] {
         let faults = judgedSentences.flatMap { $0.result.words.flatMap(\.phonemes) }.filter(\.fault)
         let counts = Dictionary(grouping: faults, by: \.expected).mapValues(\.count)
@@ -160,7 +165,7 @@ final class PronunciationSession {
         let failed: Bool = if case .failed = phase { true } else { false }
         guard canAdvance || failed, let current else { return }
         stopPlayback()
-        if let result { judgedSentences.append((current, result)) }
+        if let judged = firstResult ?? result { judgedSentences.append((current, judged)) }
         index += 1
         if index >= sentences.count {
             phase = .finished
@@ -213,6 +218,7 @@ final class PronunciationSession {
     private func showSentence() {
         words = current.map { PronunciationMatch.attach([], to: $0.text) } ?? []
         result = nil
+        firstResult = nil
         attempts = 0
         selectedWord = nil
         pendingTake = nil
@@ -228,6 +234,7 @@ final class PronunciationSession {
             result = judged
             words = PronunciationMatch.attach(judged.words, to: current.text)
             attempts += 1
+            if attempts == 1 { firstResult = judged }
             onJudged(current, attempts, judged)
             selectedWord = nil
             pendingTake = nil
