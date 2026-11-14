@@ -48,15 +48,26 @@ def main() -> int:
     args = p.parse_args()
     args.sortie.mkdir(parents=True, exist_ok=True)
 
-    client = httpx.Client(base_url=args.serveur, timeout=180)
+    # Le récapitulatif relit toute la conversation : on lui laisse le temps. Se
+    # connecter, en revanche, est immédiat quand le serveur tourne.
+    client = httpx.Client(base_url=args.serveur, timeout=httpx.Timeout(300, connect=10))
     historique: list[dict] = []
 
     def appeler(route: str, **kwargs) -> dict | None:
         debut = time.perf_counter()
-        reponse = client.post(route, **kwargs)
+        try:
+            reponse = client.post(route, **kwargs)
+        except httpx.HTTPError as erreur:
+            print(f"!! {route} : {type(erreur).__name__} après {time.perf_counter() - debut:.0f} s "
+                  f"({erreur or 'pas de détail'})")
+            return None
         duree = time.perf_counter() - debut
         if reponse.status_code != 200:
-            print(f"!! {reponse.status_code} : {reponse.json().get('detail', reponse.text)}")
+            try:
+                detail = reponse.json().get("detail", reponse.text)
+            except ValueError:
+                detail = reponse.text
+            print(f"!! {route} : {reponse.status_code} après {duree:.0f} s : {detail}")
             return None
         corps = reponse.json()
         corps["_aller_retour"] = duree
