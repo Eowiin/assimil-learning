@@ -91,8 +91,15 @@ def test_le_profil_entre_dans_la_consigne():
     assert "no le corrijas" in texte
 
 
+def test_la_consigne_demande_de_reagir_et_d_expliquer_un_mot_inconnu():
+    assert "Reacciona primero a lo que acaba de decir" in CONSIGNE
+    assert "no conoce o no entiende una palabra" in CONSIGNE
+
+
 def test_la_note_du_tour_demande_un_mot_a_la_fois_et_le_point():
     profil = Profil(**PROFIL)
+    # Répondre d'abord à ce qui vient d'être dit, avant ce que demande le profil.
+    assert note_du_tour(profil, 0).index("primero responde") < note_du_tour(profil, 0).index("aprovechar")
     assert "«aprovechar»" in note_du_tour(profil, 0)
     assert "«quedar con»" in note_du_tour(profil, 1)
     assert "«aprovechar»" in note_du_tour(profil, 2)
@@ -119,7 +126,9 @@ def test_cinq_mots_au_plus():
 def test_start_avec_un_profil(client, faux):
     client.post("/conversation/start", json={"profile": PROFIL})
     assert faux.messages[0]["content"] == consigne(Profil(**PROFIL))
-    assert faux.messages[1]["content"].endswith(note_du_tour(Profil(**PROFIL), 0))
+    assert faux.messages[1]["content"].endswith(note_du_tour(Profil(**PROFIL), 0, ouverture=True))
+    # À l'ouverture, l'apprenant n'a encore rien dit.
+    assert "acaba de decir" not in faux.messages[1]["content"]
 
 
 def test_turn_avec_un_profil(client, faux):

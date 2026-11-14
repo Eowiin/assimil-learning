@@ -159,6 +159,10 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
   - **Deuxième essai : le point trop appuyé.** L'IA recopiait le choix (« ¿eres o
     estás…? ») à chaque tour. Le point n'est plus demandé qu'à l'ouverture, puis une
     réplique sur trois, par une question ordinaire, sans options ni nom du point ;
+  - **Troisième essai : l'IA ne réagissait plus à ce qui était dit.** La note
+    demande d'abord de répondre vraiment à la phrase, puis le mot « si ça s'y
+    prête ». La consigne générale demande de réagir d'abord, et d'expliquer un mot
+    que l'apprenant dit ne pas connaître ;
   - l'**écran de conversation affiche le profil** en une ligne (« Aujourd'hui :
     ser/estar · aprovechar, quedar con »), et le serveur l'écrit dans son terminal.
 
