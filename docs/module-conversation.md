@@ -122,7 +122,8 @@ ne montre la conversation que si le serveur l'annonce.
 
 - Les thèmes tirés des leçons. On donnerait alors à Whisper les mots attendus, pour
   qu'il reconnaisse mieux les noms propres comme « Jaén ».
-- Adapter l'IA au niveau et aux mots connus (le profil d'apprenant).
+- Adapter l'IA au niveau de l'apprenant. La faute à surveiller et les mots à faire
+  reprendre sont faits (`docs/module-profil.md`, étape 3).
 - LiveKit, si l'attente du talkie-walkie gêne.
 - Faire tourner le serveur comme un service, lancé avec Windows.
 

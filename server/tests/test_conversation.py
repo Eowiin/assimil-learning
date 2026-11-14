@@ -5,7 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.conversation import CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections
+from app.conversation import (CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections, Profil, consigne,
+                              note_du_tour)
 from app.moteurs import OllamaIndisponible, Reglages
 
 
@@ -68,6 +69,90 @@ def test_start_l_ia_ouvre_la_conversation(client, faux):
 def test_start_avec_un_sujet(client, faux):
     client.post("/conversation/start", json={"topic": "el fútbol"})
     assert "el fútbol" in faux.messages[1]["content"]
+
+
+# --- profil ------------------------------------------------------------------------
+
+PROFIL = {"watch": "ser/estar", "words": ["aprovechar", "quedar con"]}
+
+
+def test_sans_profil_la_consigne_ne_change_pas():
+    assert consigne(None) == CONSIGNE
+    assert consigne(Profil()) == CONSIGNE
+    assert consigne(Profil(watch="  ", words=[" "])) == CONSIGNE
+
+
+def test_le_profil_entre_dans_la_consigne():
+    texte = consigne(Profil(**PROFIL))
+    assert texte.startswith(CONSIGNE)
+    assert "aprovechar, quedar con" in texte
+    assert "«ser/estar»" in texte
+    # Toujours sans corriger pendant l'échange.
+    assert "no le corrijas" in texte
+
+
+def test_la_consigne_demande_de_reagir_et_d_expliquer_un_mot_inconnu():
+    assert "Reacciona primero a lo que acaba de decir" in CONSIGNE
+    assert "no conoce o no entiende una palabra" in CONSIGNE
+
+
+def test_la_note_du_tour_demande_un_mot_a_la_fois_et_le_point():
+    profil = Profil(**PROFIL)
+    # Répondre d'abord à ce qui vient d'être dit, avant ce que demande le profil.
+    assert note_du_tour(profil, 0).index("primero responde") < note_du_tour(profil, 0).index("aprovechar")
+    assert "«aprovechar»" in note_du_tour(profil, 0)
+    assert "«quedar con»" in note_du_tour(profil, 1)
+    assert "«aprovechar»" in note_du_tour(profil, 2)
+    assert "«aprovechar»" not in note_du_tour(Profil(watch="ser/estar"), 0)
+
+
+def test_le_point_a_l_ouverture_puis_une_replique_sur_trois_sans_options():
+    profil = Profil(**PROFIL)
+    avec_point = [rang for rang in range(7) if "«ser/estar»" in note_du_tour(profil, rang)]
+    assert avec_point == [0, 3, 6]
+    assert "sin ofrecer opciones" in note_du_tour(profil, 0)
+    assert "nunca ofrezcas opciones" in consigne(profil)
+    # Sans mots, une réplique sans le point n'a pas de note du tout.
+    assert note_du_tour(Profil(watch="ser/estar"), 1) is None
+    assert note_du_tour(None, 0) is None
+    assert note_du_tour(Profil(), 3) is None
+
+
+def test_cinq_mots_au_plus():
+    texte = consigne(Profil(words=[f"palabra{i}" for i in range(8)]))
+    assert "palabra4" in texte and "palabra5" not in texte
+
+
+def test_start_avec_un_profil(client, faux):
+    client.post("/conversation/start", json={"profile": PROFIL})
+    assert faux.messages[0]["content"] == consigne(Profil(**PROFIL))
+    assert faux.messages[1]["content"].endswith(note_du_tour(Profil(**PROFIL), 0, ouverture=True))
+    # À l'ouverture, l'apprenant n'a encore rien dit.
+    assert "acaba de decir" not in faux.messages[1]["content"]
+
+
+def test_turn_avec_un_profil(client, faux):
+    historique = [{"role": "assistant", "content": "¡Hola! ¿Qué tal?"}]
+    corps = client.post("/conversation/turn", data={"text": "Hola", "history": json.dumps(historique),
+                                                    "profile": json.dumps(PROFIL)}).json()
+    assert faux.messages[0]["content"] == consigne(Profil(**PROFIL))
+    # La note suit la phrase de l'apprenant ; une réplique de l'IA déjà faite : le 2e mot.
+    assert faux.messages[-1]["content"] == "Hola\n\n" + note_du_tour(Profil(**PROFIL), 1)
+    assert "«quedar con»" in faux.messages[-1]["content"]
+    assert "«ser/estar»" not in faux.messages[-1]["content"]
+    # Ce que l'app affiche et garde reste la phrase dite.
+    assert corps["heard"] == "Hola"
+
+
+def test_turn_sans_profil_la_phrase_seule(client, faux):
+    client.post("/conversation/turn", data={"text": "Hola"})
+    assert faux.messages[-1] == {"role": "user", "content": "Hola"}
+
+
+def test_turn_profil_illisible(client):
+    reponse = client.post("/conversation/turn", data={"text": "Hola", "profile": '{"words": "pas une liste"}'})
+    assert reponse.status_code == 422
+    assert reponse.json()["detail"].startswith("Profil illisible")
 
 
 # --- turn --------------------------------------------------------------------------

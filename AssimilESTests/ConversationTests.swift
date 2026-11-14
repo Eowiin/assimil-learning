@@ -67,6 +67,26 @@ struct ConversationClientTests {
         }
     }
 
+    @Test("Le profil part avec l'ouverture et avec chaque tour ; sans profil, rien")
+    func profile() async throws {
+        let profile = ConversationProfile(watch: "ser/estar", words: ["aprovechar"])
+        var bodies: [String] = []
+        let withProfile = client { request in
+            bodies.append(String(decoding: request.httpBody ?? Data(), as: UTF8.self))
+            return (200, reply("¡Hola!", heard: "Hola."))
+        }
+        _ = try await withProfile.start(topic: nil, profile: profile)
+        _ = try await withProfile.turn(audio: nil, text: "Hola", history: [], profile: profile)
+        _ = try await withProfile.start(topic: nil)
+        _ = try await withProfile.turn(audio: nil, text: "Hola", history: [])
+        #expect(bodies[0].contains(#""profile":{"#))
+        #expect(bodies[0].contains("aprovechar"))
+        #expect(bodies[1].contains(#"name="profile""#))
+        #expect(bodies[1].contains(#"{"watch":"ser\/estar","words":["aprovechar"]}"#))
+        #expect(!bodies[2].contains("profile"))
+        #expect(!bodies[3].contains("profile"))
+    }
+
     @Test("Le récapitulatif : les corrections")
     func review() async throws {
         let corrections = try await client { _ in
@@ -138,14 +158,19 @@ private final class ScriptedService: ConversationService, @unchecked Sendable {
     var failNext: ServerError?
     var histories: [[ConversationMessage]] = []
 
-    func start(topic: String?) async throws -> PartnerReply {
+    var profiles: [ConversationProfile?] = []
+
+    func start(topic: String?, profile: ConversationProfile?) async throws -> PartnerReply {
+        profiles.append(profile)
         if let error = failNext { failNext = nil; throw error }
         return PartnerReply(text: "¡Hola! ¿Qué has hecho hoy?", audio: Data("voix-0".utf8),
                             timings: ConversationTimings(listen: nil, think: 0, speak: 0))
     }
 
-    func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply {
+    func turn(audio: Data?, text: String?, history: [ConversationMessage],
+              profile: ConversationProfile?) async throws -> TurnReply {
         histories.append(history)
+        profiles.append(profile)
         if let error = failNext { failNext = nil; throw error }
         return TurnReply(heard: "He ido al mercado.",
                          reply: PartnerReply(text: "¿Qué has comprado?", audio: Data("voix-1".utf8),
@@ -270,6 +295,18 @@ struct ConversationReviewTests {
 
     private let correction = ConversationCorrection(said: "Yo soy cansado.", corrected: "Estoy cansado.",
                                                     explanation: "Un état passager se dit avec estar.")
+
+    @Test("La séance envoie son profil à l'ouverture et à chaque tour")
+    func sessionProfile() async {
+        let service = ScriptedService()
+        let profile = ConversationProfile(watch: "ser/estar", words: ["aprovechar"])
+        let session = ConversationSession(service: service, sound: FakeSound())
+        session.profile = profile
+        await session.open()
+        await session.toggleMic()
+        await session.toggleMic()
+        #expect(service.profiles == [profile, profile])
+    }
 
     @Test("Le récapitulatif porte sur toute la conversation")
     func review() async {

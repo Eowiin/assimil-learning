@@ -3,6 +3,7 @@
     uv run python essais/appel.py                          # au clavier
     uv run python essais/appel.py tour1.m4a tour2.m4a      # des enregistrements, puis au clavier
     uv run python essais/appel.py --serveur https://nom-du-pc.reseau.ts.net
+    uv run python essais/appel.py --surveiller "ser/estar" --mots aprovechar "quedar con"
 
 Les répliques parlées de l'IA vont dans essais/sortie/appel-NN.m4a. Le serveur ne
 garde rien : c'est ce script qui tient l'historique, comme l'app.
@@ -41,25 +42,41 @@ def main() -> int:
     p.add_argument("audio", nargs="*", type=Path, help="des tours enregistrés (wav, m4a, mp3)")
     p.add_argument("--serveur", default="http://localhost:8000")
     p.add_argument("--sujet", help="le sujet proposé à l'IA pour ouvrir")
+    p.add_argument("--surveiller", help="le profil : la faute qui revient (« ser/estar »)")
+    p.add_argument("--mots", nargs="*", default=[], help="le profil : des mots à faire reprendre")
     p.add_argument("--sortie", type=Path, default=Path("essais/sortie"))
     args = p.parse_args()
     args.sortie.mkdir(parents=True, exist_ok=True)
 
-    client = httpx.Client(base_url=args.serveur, timeout=180)
+    # Le récapitulatif relit toute la conversation : on lui laisse le temps. Se
+    # connecter, en revanche, est immédiat quand le serveur tourne.
+    client = httpx.Client(base_url=args.serveur, timeout=httpx.Timeout(300, connect=10))
     historique: list[dict] = []
 
     def appeler(route: str, **kwargs) -> dict | None:
         debut = time.perf_counter()
-        reponse = client.post(route, **kwargs)
+        try:
+            reponse = client.post(route, **kwargs)
+        except httpx.HTTPError as erreur:
+            print(f"!! {route} : {type(erreur).__name__} après {time.perf_counter() - debut:.0f} s "
+                  f"({erreur or 'pas de détail'})")
+            return None
         duree = time.perf_counter() - debut
         if reponse.status_code != 200:
-            print(f"!! {reponse.status_code} : {reponse.json().get('detail', reponse.text)}")
+            try:
+                detail = reponse.json().get("detail", reponse.text)
+            except ValueError:
+                detail = reponse.text
+            print(f"!! {route} : {reponse.status_code} après {duree:.0f} s : {detail}")
             return None
         corps = reponse.json()
         corps["_aller_retour"] = duree
         return corps
 
-    ouverture = appeler("/conversation/start", json={"topic": args.sujet})
+    # Le profil, comme l'app l'envoie : à l'ouverture et à chaque tour.
+    profil = ({"watch": args.surveiller, "words": args.mots}
+              if args.surveiller or args.mots else None)
+    ouverture = appeler("/conversation/start", json={"topic": args.sujet, "profile": profil})
     if ouverture is None:
         return 1
     historique.append({"role": "assistant", "content": ouverture["reply"]})
@@ -85,6 +102,8 @@ def main() -> int:
     for numero, tour in enumerate(tours(), start=1):
         contexte = historique[-1]["content"]
         donnees = {"history": json.dumps(historique, ensure_ascii=False)}
+        if profil:
+            donnees["profile"] = json.dumps(profil, ensure_ascii=False)
         if isinstance(tour, Path):
             corps = appeler("/conversation/turn", data=donnees,
                             files={"audio": (tour.name, tour.read_bytes())})

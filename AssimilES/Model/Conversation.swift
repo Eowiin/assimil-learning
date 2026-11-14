@@ -80,10 +80,22 @@ struct ConversationCorrection: Codable, Equatable, Sendable {
 /// Ce que l'écran attend du serveur. `ConversationClient` le joint par Tailscale ;
 /// les tests passent un faux.
 protocol ConversationService: Sendable {
-    func start(topic: String?) async throws -> PartnerReply
+    /// `profile` : ce que le partenaire sait de l'apprenant, nil sans profil.
+    func start(topic: String?, profile: ConversationProfile?) async throws -> PartnerReply
     /// `audio` : l'enregistrement du tour. `text` le remplace, pour les tests.
-    func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply
+    func turn(audio: Data?, text: String?, history: [ConversationMessage],
+              profile: ConversationProfile?) async throws -> TurnReply
     func review(history: [ConversationMessage]) async throws -> [ConversationCorrection]
+}
+
+extension ConversationService {
+    func start(topic: String?) async throws -> PartnerReply {
+        try await start(topic: topic, profile: nil)
+    }
+
+    func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply {
+        try await turn(audio: audio, text: text, history: history, profile: nil)
+    }
 }
 
 // MARK: - Le client
@@ -112,14 +124,20 @@ struct ConversationClient: ConversationService {
 
     private struct ReviewBody: Decodable { let corrections: [ConversationCorrection] }
 
-    func start(topic: String?) async throws -> PartnerReply {
-        let body = try JSONEncoder().encode(["topic": topic])
+    private struct StartBody: Encodable {
+        let topic: String?
+        let profile: ConversationProfile?
+    }
+
+    func start(topic: String?, profile: ConversationProfile?) async throws -> PartnerReply {
+        let body = try JSONEncoder().encode(StartBody(topic: topic, profile: profile))
         return try await post("conversation/start", body: body, contentType: "application/json",
                               as: ReplyBody.self).partner()
     }
 
-    func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply {
-        let form = Self.form(audio: audio, text: text, history: history)
+    func turn(audio: Data?, text: String?, history: [ConversationMessage],
+              profile: ConversationProfile?) async throws -> TurnReply {
+        let form = Self.form(audio: audio, text: text, history: history, profile: profile)
         let body = try await post("conversation/turn", body: form.body, contentType: form.contentType,
                                   as: ReplyBody.self)
         return TurnReply(heard: body.heard ?? "", reply: try body.partner())
@@ -132,7 +150,7 @@ struct ConversationClient: ConversationService {
     }
 
     /// Le formulaire d'un tour : l'historique en JSON, puis l'audio ou le texte.
-    static func form(audio: Data?, text: String?, history: [ConversationMessage],
+    static func form(audio: Data?, text: String?, history: [ConversationMessage], profile: ConversationProfile? = nil,
                      boundary: String = "assimil-\(UUID().uuidString)") -> (body: Data, contentType: String) {
         var form = MultipartForm(boundary: boundary)
         // Clés triées : le même historique donne toujours le même texte.
@@ -140,6 +158,9 @@ struct ConversationClient: ConversationService {
         encoder.outputFormatting = .sortedKeys
         let historyJSON = (try? encoder.encode(history)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         form.field("history", historyJSON)
+        if let profile, let json = (try? encoder.encode(profile)).flatMap({ String(data: $0, encoding: .utf8) }) {
+            form.field("profile", json)
+        }
         if let text { form.field("text", text) }
         if let audio { form.audio("audio", filename: "tour.m4a", audio) }
         return form.finished()
@@ -209,6 +230,9 @@ final class ConversationSession {
     let startedAt: Date
     /// La bulle de l'IA en train d'être lue.
     private(set) var playingLine: ConversationLine.ID?
+    /// Ce que le partenaire sait de l'apprenant, fixé avant l'ouverture et envoyé à
+    /// chaque requête. Nil : la consigne d'avant le profil.
+    var profile: ConversationProfile?
 
     private let service: any ConversationService
     private let sound: any ConversationSound
@@ -306,10 +330,10 @@ final class ConversationSession {
             let partner: ConversationLine
             switch what {
             case .opening:
-                let reply = try await service.start(topic: nil)
+                let reply = try await service.start(topic: nil, profile: profile)
                 partner = ConversationLine(speaker: .partner, text: reply.text, audio: reply.audio)
             case .turn(let audio):
-                let turn = try await service.turn(audio: audio, text: nil, history: history)
+                let turn = try await service.turn(audio: audio, text: nil, history: history, profile: profile)
                 lines.append(ConversationLine(speaker: .learner, text: turn.heard))
                 partner = ConversationLine(speaker: .partner, text: turn.reply.text, audio: turn.reply.audio)
             }
@@ -334,12 +358,13 @@ final class ConversationSession {
 #if DEBUG
 /// Le serveur imaginaire des tests d'interface (`ASSIMIL_FAKE_SERVER`).
 struct FakeConversationService: ConversationService {
-    func start(topic: String?) async throws -> PartnerReply {
+    func start(topic: String?, profile: ConversationProfile?) async throws -> PartnerReply {
         PartnerReply(text: "¡Hola! ¿Qué has hecho hoy?", audio: Data(),
                      timings: ConversationTimings(listen: nil, think: 0, speak: 0))
     }
 
-    func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply {
+    func turn(audio: Data?, text: String?, history: [ConversationMessage],
+              profile: ConversationProfile?) async throws -> TurnReply {
         TurnReply(heard: text ?? "Hoy yo soy cansado.",
                   reply: PartnerReply(text: "¡Vaya! ¿Has dormido mal?", audio: Data(),
                                       timings: ConversationTimings(listen: 0, think: 0, speak: 0)))

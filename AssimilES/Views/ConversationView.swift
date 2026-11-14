@@ -72,6 +72,7 @@ struct ConversationView: View {
         .task {
             player.pause()
             lastTick = DayClock.systemNow()
+            if session.profile == nil { session.profile = Self.profile(in: context) }
             await session.open()
         }
         .onDisappear {
@@ -94,6 +95,14 @@ struct ConversationView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
+                    if let summary = session.profile?.summary {
+                        // Ce que le partenaire a reçu : on voit ce qu'il cherche à faire
+                        // pratiquer, et qu'il a bien reçu quelque chose.
+                        Text(summary)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("conversation-profile")
+                    }
                     ForEach(session.lines) { line in
                         bubble(line).id(line.id)
                     }
@@ -260,6 +269,15 @@ struct ConversationView: View {
         Text(text)
             .font(.subheadline)
             .foregroundStyle(.secondary)
+    }
+
+    /// Le profil envoyé au partenaire : la faute qui revient, les mots à reprendre.
+    private static func profile(in context: ModelContext) -> ConversationProfile? {
+        let records = (try? context.fetch(FetchDescriptor<ConversationRecord>())) ?? []
+        let recognize = Card.Angle.recognize, recall = Card.Angle.recall
+        let cards = (try? context.fetch(FetchDescriptor<Card>(
+            predicate: #Predicate { $0.angle == recognize || $0.angle == recall }))) ?? []
+        return ConversationProfile.make(patterns: ErrorPatterns(records: records), cards: cards)
     }
 
     // MARK: - Fin

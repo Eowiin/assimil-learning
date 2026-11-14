@@ -15,6 +15,8 @@ CONSIGNE = """Eres un compañero de conversación para un estudiante francés de
 
 Reglas:
 - Responde siempre en español de España, en 1 a 3 frases cortas.
+- Reacciona primero a lo que acaba de decir el estudiante, como haría un amigo que escucha.
+- Si dice que no conoce o no entiende una palabra, explícasela con palabras sencillas antes de seguir.
 - Usa un vocabulario sencillo y frases claras.
 - Termina siempre con una pregunta para que la conversación siga.
 - No corrijas los errores del estudiante durante la conversación: responde a lo que quiso decir.
@@ -50,6 +52,69 @@ ne dirait pas) ;
 (par exemple "ser/estar", "accord du verbe", "por/para", "gustar").
 
 Si l'élève n'a fait aucune faute, renvoie une liste vide."""
+
+
+class Profil(BaseModel):
+    """Ce que l'iPhone sait de l'apprenant, joint à la conversation
+    (`docs/module-profil.md`, étape 3). Le serveur ne le garde pas."""
+    # La faute qui revient le plus, telle que l'IA l'a nommée au récapitulatif.
+    watch: str | None = None
+    # Des mots compris en révision, pas encore sus dans l'autre sens.
+    words: list[str] = Field(default_factory=list)
+
+
+# Une consigne courte garde Qwen3 8B rapide et concentré.
+MOTS_AU_PLUS = 5
+# Le point qui revient : à l'ouverture, puis une réplique sur trois. À chaque tour,
+# la conversation ne parle plus que de lui.
+POINT_TOUS_LES = 3
+
+
+def consigne(profil: Profil | None = None) -> str:
+    """La consigne de conversation, avec le profil quand l'app en envoie un."""
+    if profil is None:
+        return CONSIGNE
+    lignes = []
+    if mots := _mots(profil):
+        lignes.append("- El estudiante está aprendiendo estas palabras: " + ", ".join(mots)
+                      + ". Úsalas en tus respuestas, una por respuesta, para que las oiga y se "
+                      "anime a usarlas.")
+    if surveiller := _surveiller(profil):
+        lignes.append("- El estudiante suele equivocarse en este punto: «" + surveiller
+                      + "». De vez en cuando, haz preguntas normales cuya respuesta lo necesite. "
+                      "Nunca nombres el punto, nunca ofrezcas opciones como «eres o estás», y no "
+                      "le corrijas.")
+    return CONSIGNE + ("\n" + "\n".join(lignes) if lignes else "")
+
+
+def _mots(profil: Profil | None) -> list[str]:
+    return [m.strip() for m in profil.words if m.strip()][:MOTS_AU_PLUS] if profil else []
+
+
+def _surveiller(profil: Profil | None) -> str | None:
+    return profil.watch.strip() if profil and profil.watch and profil.watch.strip() else None
+
+
+def note_du_tour(profil: Profil | None, rang: int, ouverture: bool = False) -> str | None:
+    """La consigne précise d'une réplique, collée au message auquel l'IA répond. Un
+    modèle de 8B suit mal une règle donnée en tête de conversation ; il suit bien
+    une demande récente et précise : un seul mot, et une question qui oblige à
+    employer le point. `rang` : le nombre de répliques déjà faites par l'IA, qui
+    fait tourner les mots. La note n'entre pas dans l'historique que l'app garde."""
+    demandes = []
+    if mots := _mots(profil):
+        demandes.append(f"usa la palabra «{mots[rang % len(mots)]}» si encaja sin forzar")
+    if (surveiller := _surveiller(profil)) and rang % POINT_TOUS_LES == 0:
+        demandes.append(f"termina con una pregunta normal y natural, sin ofrecer opciones ni "
+                        f"nombrar el punto, cuya respuesta lleve al estudiante a usar «{surveiller}»")
+    if not demandes:
+        return None
+    # D'abord répondre à ce qu'il vient de dire : sans ça, le modèle ne fait plus
+    # que ce que la note demande.
+    if ouverture:
+        return "(En esta primera réplica, " + ", y ".join(demandes) + ".)"
+    return ("(Nota para ti, no la menciones: primero responde de verdad a lo que acaba de decir. "
+            "Después, en la misma respuesta, " + ", y ".join(demandes) + ".)")
 
 
 class Message(BaseModel):
@@ -95,15 +160,19 @@ class Moteurs(Protocol):
         ...
 
 
-def messages_ouverture(sujet: str | None) -> list[dict]:
-    consigne = OUVERTURE_SUJET.format(sujet=sujet.strip()) if sujet and sujet.strip() else OUVERTURE
-    return [{"role": "system", "content": CONSIGNE}, {"role": "user", "content": consigne}]
+def messages_ouverture(sujet: str | None, profil: Profil | None = None) -> list[dict]:
+    ouverture = OUVERTURE_SUJET.format(sujet=sujet.strip()) if sujet and sujet.strip() else OUVERTURE
+    if note := note_du_tour(profil, 0, ouverture=True):
+        ouverture += "\n" + note
+    return [{"role": "system", "content": consigne(profil)}, {"role": "user", "content": ouverture}]
 
 
-def messages_tour(historique: list[Message], phrase: str) -> list[dict]:
-    return ([{"role": "system", "content": CONSIGNE}]
+def messages_tour(historique: list[Message], phrase: str, profil: Profil | None = None) -> list[dict]:
+    rang = sum(m.role == "assistant" for m in historique)
+    note = note_du_tour(profil, rang)
+    return ([{"role": "system", "content": consigne(profil)}]
             + [m.model_dump() for m in historique]
-            + [{"role": "user", "content": phrase}])
+            + [{"role": "user", "content": phrase + ("\n\n" + note if note else "")}])
 
 
 def derniere_replique(historique: list[Message]) -> str | None:

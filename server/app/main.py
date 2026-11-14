@@ -19,7 +19,7 @@ from functools import lru_cache
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from .conversation import (Correction, Message, Moteurs, derniere_replique, messages_correction,
+from .conversation import (Correction, Message, Moteurs, Profil, derniere_replique, messages_correction,
                            messages_ouverture, messages_tour)
 from .moteurs import OllamaIndisponible
 from .prononciation.jugement import par_mots
@@ -62,6 +62,7 @@ class Turn(Reply):
 
 class StartRequest(BaseModel):
     topic: str | None = None
+    profile: Profil | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -213,21 +214,29 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
     def start(request: Request, body: StartRequest | None = None) -> Reply:
         """La première réplique : l'IA salue et propose un sujet."""
         m = prets(request)
+        if body and body.profile:
+            journal.info("Profil reçu : %s", body.profile.model_dump_json())
         with verrou:
-            reponse, audio, ia, voix = repliquer(m, messages_ouverture(body.topic if body else None))
+            reponse, audio, ia, voix = repliquer(m, messages_ouverture(body.topic if body else None,
+                                                                       body.profile if body else None))
         return Reply(reply=reponse, audio=audio, timings=Timings(think=ia, speak=voix))
 
     @app.post("/conversation/turn")
     def turn(request: Request,
              history: str = Form("[]", description="les répliques précédentes, en JSON"),
              audio: UploadFile | None = File(None),
-             text: str | None = Form(None)) -> Turn:
+             text: str | None = Form(None),
+             profile: str | None = Form(None, description="le profil de l'apprenant, en JSON")) -> Turn:
         """Un tour : ce que l'apprenant a dit (audio, ou texte), et la réponse."""
         m = prets(request)
         try:
             historique = TypeAdapter(list[Message]).validate_json(history)
         except ValidationError as erreur:
             raise HTTPException(422, f"Historique illisible : {erreur.errors()[0]['msg']}") from erreur
+        try:
+            profil = Profil.model_validate_json(profile) if profile else None
+        except ValidationError as erreur:
+            raise HTTPException(422, f"Profil illisible : {erreur.errors()[0]['msg']}") from erreur
         if audio is None and not (text and text.strip()):
             raise HTTPException(422, "Il faut un audio ou un texte.")
         with verrou:
@@ -237,7 +246,7 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
                 compris, ecoute = text.strip(), None
             if not compris:
                 raise HTTPException(422, "Je n'ai rien entendu.")
-            reponse, son, ia, voix = repliquer(m, messages_tour(historique, compris))
+            reponse, son, ia, voix = repliquer(m, messages_tour(historique, compris, profil))
         return Turn(heard=compris, reply=reponse, audio=son,
                     timings=Timings(listen=ecoute, think=ia, speak=voix))
 
