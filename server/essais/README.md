@@ -81,6 +81,31 @@ garder.
 - **La mémoire affiche `?`** : `nvidia-smi` ne répond pas dans WSL2, et les modèles
   tournent sans la carte graphique. Vérifie le pilote NVIDIA de Windows.
 
+## `whisper_contexte.py` : la dernière réplique de l'IA, comme amorce de Whisper
+
+Whisper peut recevoir un texte qu'il prend pour ce qui précède (`initial_prompt`),
+et dont il reprend plus volontiers les mots. Si l'IA vient de parler de « Jaén »,
+il reconnaîtra peut-être mieux « Jaén » dans ta réponse. Le risque : qu'il
+« entende » des mots de l'IA que tu n'as pas dits. Le serveur sait le faire
+(`ASSIMIL_WHISPER_CONTEXTE=1`), mais c'est **désactivé** tant que ce n'est pas mesuré.
+
+1. Converse par `appel.py` avec des enregistrements. Chaque tour enregistré est noté
+   dans `essais/sortie/corpus-whisper.json`, avec la réplique de l'IA qui le
+   précédait et ce que Whisper a compris.
+2. Dans ce fichier, écris pour chaque tour ce que tu as **vraiment** dit (`attendu`).
+   Une entrée laissée vide est ignorée.
+3. Compare :
+
+```bash
+uv run python essais/whisper_contexte.py essais/sortie/corpus-whisper.json
+```
+
+Le script transcrit chaque enregistrement sans amorce, puis avec, et compte les
+mots justes. Les mots se comparent sans casse, ponctuation ni accents écrits, comme
+dans le récapitulatif de l'app. Il affiche les tours où les deux transcriptions
+diffèrent, puis le bilan : le taux de mots justes, les mots entendus à tort, et le
+nombre de tours où l'amorce fait mieux ou moins bien.
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris

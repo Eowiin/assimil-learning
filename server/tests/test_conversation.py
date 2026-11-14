@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.conversation import CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections
-from app.moteurs import OllamaIndisponible
+from app.moteurs import OllamaIndisponible, Reglages
 
 
 class Faux:
@@ -15,10 +15,12 @@ class Faux:
     def __init__(self, entendu="Me gusta el jamón de Jaén."):
         self.entendu = entendu
         self.messages = None
+        self.contexte = "pas appelé"
         self.ollama_eteint = False
 
-    def ecouter(self, audio: bytes) -> str:
+    def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
         assert audio == b"audio-du-tour"
+        self.contexte = contexte
         return self.entendu
 
     def repondre(self, messages):
@@ -31,7 +33,8 @@ class Faux:
         self.messages = messages
         return Corrections(corrections=[Correction(
             said="Yo soy cansado", corrected="Estoy cansado",
-            explanation="Un état passager se dit avec estar.")])
+            explanation="Un état passager se dit avec estar.",
+            category="grammaire", tag="ser/estar")])
 
     def dire(self, texte: str) -> bytes:
         return f"m4a:{texte}".encode()
@@ -84,6 +87,26 @@ def test_turn_audio_ecoute_puis_repond(client, faux):
                              {"role": "user", "content": "Me gusta el jamón de Jaén."}]
 
 
+def test_turn_donne_a_l_ecoute_la_derniere_replique_de_l_ia(client, faux):
+    historique = [*HISTORIQUE, {"role": "user", "content": "Paella."},
+                  {"role": "assistant", "content": "¿Con marisco o con pollo?"}]
+    client.post("/conversation/turn", data={"history": json.dumps(historique)},
+                files={"audio": ("tour.m4a", b"audio-du-tour", "audio/mp4")})
+    assert faux.contexte == "¿Con marisco o con pollo?"
+
+
+def test_turn_sans_historique_pas_de_contexte(client, faux):
+    client.post("/conversation/turn", files={"audio": ("tour.m4a", b"audio-du-tour", "audio/mp4")})
+    assert faux.contexte is None
+
+
+def test_l_amorce_de_whisper_est_desactivee_par_defaut(monkeypatch):
+    monkeypatch.delenv("ASSIMIL_WHISPER_CONTEXTE", raising=False)
+    assert Reglages.depuis_environnement().whisper_contexte is False
+    monkeypatch.setenv("ASSIMIL_WHISPER_CONTEXTE", "1")
+    assert Reglages.depuis_environnement().whisper_contexte is True
+
+
 def test_turn_texte_a_la_place_de_l_audio(client, faux):
     corps = client.post("/conversation/turn", data={"text": " Hoy he comido paella. "}).json()
     assert corps["heard"] == "Hoy he comido paella."
@@ -125,11 +148,25 @@ def test_review_rend_les_corrections(client, faux):
     historique = [*HISTORIQUE, {"role": "user", "content": "Yo soy cansado"}]
     corps = client.post("/conversation/review", json={"history": historique}).json()
     assert corps["corrections"] == [{"said": "Yo soy cansado", "corrected": "Estoy cansado",
-                                     "explanation": "Un état passager se dit avec estar."}]
+                                     "explanation": "Un état passager se dit avec estar.",
+                                     "category": "grammaire", "tag": "ser/estar"}]
     assert faux.messages[0] == {"role": "system", "content": CONSIGNE_CORRECTION}
     # La conversation passe en un seul texte, l'élève et son partenaire nommés.
     assert faux.messages[1]["content"] == ("Partenaire : Hola, ¿qué has comido hoy?\n"
                                            "Élève : Yo soy cansado")
+
+
+def test_le_format_impose_a_l_ia_porte_la_categorie_et_le_point():
+    schema = Corrections.model_json_schema()["$defs"]["Correction"]
+    assert schema["properties"]["category"]["enum"] == ["grammaire", "vocabulaire", "tournure"]
+    assert {"category", "tag"} <= set(schema["required"])
+    for mot in ('"category"', '"tag"', "ser/estar"):
+        assert mot in CONSIGNE_CORRECTION
+
+
+def test_la_consigne_previent_des_erreurs_de_transcription():
+    assert "Whisper" in CONSIGNE_CORRECTION
+    assert "Ne le corrige pas" in CONSIGNE_CORRECTION
 
 
 def test_review_sans_phrase_de_l_eleve(client, faux):

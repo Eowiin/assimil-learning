@@ -33,9 +33,48 @@ struct TurnReply: Equatable, Sendable {
 
 /// Une phrase fautive du récapitulatif.
 struct ConversationCorrection: Codable, Equatable, Sendable {
+    /// Le genre de faute, pour le profil d'apprenant.
+    enum Category: String, Codable, Sendable {
+        case grammar = "grammaire"
+        case vocabulary = "vocabulaire"
+        case phrasing = "tournure"
+    }
+
     let said: String
     let corrected: String
     let explanation: String
+    /// Absents des corrections gardées avant qu'on les demande au serveur : elles
+    /// doivent toujours se lire.
+    var category: Category? = nil
+    /// Le point précis (« ser/estar »), en texte libre pour l'instant.
+    var tag: String? = nil
+
+    private enum CodingKeys: String, CodingKey { case said, corrected, explanation, category, tag }
+
+    init(said: String, corrected: String, explanation: String, category: Category? = nil, tag: String? = nil) {
+        self.said = said
+        self.corrected = corrected
+        self.explanation = explanation
+        self.category = category
+        self.tag = tag
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        said = try values.decode(String.self, forKey: .said)
+        corrected = try values.decode(String.self, forKey: .corrected)
+        explanation = try values.decode(String.self, forKey: .explanation)
+        // Une catégorie inconnue ne doit pas faire perdre la correction entière.
+        category = try? values.decodeIfPresent(Category.self, forKey: .category)
+        tag = try? values.decodeIfPresent(String.self, forKey: .tag)
+    }
+
+    /// La phrase corrigée dit les mêmes mots que la phrase dite, une fois la casse,
+    /// la ponctuation et les accents écrits mis de côté (comme `WordDiff`) : l'IA
+    /// n'a « corrigé » que ce qu'a écrit la transcription, pas ce qu'a dit l'apprenant.
+    var changesNothing: Bool {
+        WordDiff.sameWords(said, corrected)
+    }
 }
 
 /// Ce que l'écran attend du serveur. `ConversationClient` le joint par Tailscale ;
@@ -212,7 +251,9 @@ final class ConversationSession {
         }
         review = .loading
         do {
-            review = .done(try await service.review(history: history))
+            // Une « correction » qui ne change aucun mot n'en est pas une : elle ne
+            // s'affiche pas, et n'est pas gardée pour le profil.
+            review = .done(try await service.review(history: history).filter { !$0.changesNothing })
         } catch {
             review = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
@@ -306,7 +347,8 @@ struct FakeConversationService: ConversationService {
 
     func review(history: [ConversationMessage]) async throws -> [ConversationCorrection] {
         [ConversationCorrection(said: "Hoy yo soy cansado.", corrected: "Hoy estoy cansado.",
-                                explanation: "Un état passager se dit avec « estar », pas avec « ser ».")]
+                                explanation: "Un état passager se dit avec « estar », pas avec « ser ».",
+                                category: .grammar, tag: "ser/estar")]
     }
 }
 

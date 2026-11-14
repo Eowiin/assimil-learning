@@ -6,6 +6,10 @@
 
 Les répliques parlées de l'IA vont dans essais/sortie/appel-NN.m4a. Le serveur ne
 garde rien : c'est ce script qui tient l'historique, comme l'app.
+
+Les tours enregistrés sont notés dans essais/sortie/corpus-whisper.json, avec la
+réplique de l'IA qui les précédait : il suffit d'y écrire ce que tu as vraiment
+dit (« attendu ») pour le donner à essais/whisper_contexte.py.
 """
 
 from __future__ import annotations
@@ -75,7 +79,11 @@ def main() -> int:
             chemin = Path(ligne.strip("'\""))
             yield chemin if chemin.suffix and chemin.exists() else ligne
 
+    corpus_fichier = args.sortie / "corpus-whisper.json"
+    corpus = json.loads(corpus_fichier.read_text()) if corpus_fichier.exists() else []
+
     for numero, tour in enumerate(tours(), start=1):
+        contexte = historique[-1]["content"]
         donnees = {"history": json.dumps(historique, ensure_ascii=False)}
         if isinstance(tour, Path):
             corps = appeler("/conversation/turn", data=donnees,
@@ -86,6 +94,10 @@ def main() -> int:
             continue
         historique += [{"role": "user", "content": corps["heard"]},
                        {"role": "assistant", "content": corps["reply"]}]
+        if isinstance(tour, Path):
+            corpus.append({"audio": str(tour.resolve()), "contexte": contexte,
+                           "entendu": corps["heard"], "attendu": ""})
+            corpus_fichier.write_text(json.dumps(corpus, ensure_ascii=False, indent=2))
         print(f"Toi      : {corps['heard']}")
         print(f"IA       : {corps['reply']}")
         print(f"Temps    : {temps(corps['timings'], corps['_aller_retour'])}")

@@ -21,6 +21,16 @@ enum WordDiff {
         return (mark(a, kept: common.left), mark(b, kept: common.right))
     }
 
+    /// Les deux phrases disent les mêmes mots, à la casse, la ponctuation et aux
+    /// accents écrits près.
+    static func sameWords(_ a: String, _ b: String) -> Bool {
+        keys(a) == keys(b)
+    }
+
+    private static func keys(_ sentence: String) -> [String] {
+        words(sentence).map(key).filter { !$0.isEmpty }
+    }
+
     private static func words(_ sentence: String) -> [String] {
         sentence.split(whereSeparator: \.isWhitespace).map(String.init)
     }

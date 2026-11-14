@@ -75,6 +75,60 @@ struct ConversationClientTests {
         #expect(corrections == [ConversationCorrection(said: "Yo soy cansado", corrected: "Estoy cansado",
                                                        explanation: "Un état : estar.")])
     }
+
+    @Test("Le récapitulatif : la catégorie et le point de chaque faute")
+    func reviewTagged() async throws {
+        let corrections = try await client { _ in
+            (200, Data(#"{"corrections":[{"said":"Yo soy cansado","corrected":"Estoy cansado","explanation":"Un état : estar.","category":"grammaire","tag":"ser/estar"}]}"#.utf8))
+        }.review(history: [ConversationMessage(role: .user, content: "Yo soy cansado")])
+        #expect(corrections.first?.category == .grammar)
+        #expect(corrections.first?.tag == "ser/estar")
+    }
+}
+
+@Suite("Conversation : les corrections")
+struct ConversationCorrectionTests {
+
+    @Test("Une correction gardée avant les étiquettes se lit toujours")
+    func oldRecordStillReads() throws {
+        let old = Data(#"[{"said":"Yo soy cansado.","corrected":"Estoy cansado.","explanation":"Un état : estar."}]"#.utf8)
+        let record = ConversationRecord(startedAt: .now, endedAt: .now, messages: [])
+        record.corrections = old
+        let read = try #require(record.reviewedCorrections)
+        #expect(read == [ConversationCorrection(said: "Yo soy cansado.", corrected: "Estoy cansado.",
+                                                explanation: "Un état : estar.")])
+        #expect(read.first?.category == nil)
+        #expect(read.first?.tag == nil)
+    }
+
+    @Test("Les étiquettes se gardent avec la conversation")
+    func tagsRoundTrip() throws {
+        let record = ConversationRecord(startedAt: .now, endedAt: .now, messages: [])
+        let tagged = ConversationCorrection(said: "Por mi es fácil.", corrected: "Para mí es fácil.",
+                                            explanation: "Un point de vue se dit avec para.",
+                                            category: .grammar, tag: "por/para")
+        record.reviewedCorrections = [tagged]
+        #expect(record.reviewedCorrections == [tagged])
+    }
+
+    @Test("Une catégorie inconnue ne fait pas perdre la correction")
+    func unknownCategory() throws {
+        let data = Data(#"{"said":"a","corrected":"b","explanation":"c","category":"style","tag":"x"}"#.utf8)
+        let correction = try JSONDecoder().decode(ConversationCorrection.self, from: data)
+        #expect(correction.category == nil)
+        #expect(correction.tag == "x")
+        #expect(correction.corrected == "b")
+    }
+
+    @Test("Une correction qui ne change aucun mot vient de la transcription")
+    func changesNothing() {
+        #expect(ConversationCorrection(said: "que tal, estas bien", corrected: "¿Qué tal? ¿Estás bien?",
+                                       explanation: "").changesNothing)
+        #expect(!ConversationCorrection(said: "Yo soy cansado.", corrected: "Yo estoy cansado.",
+                                        explanation: "").changesNothing)
+        #expect(!ConversationCorrection(said: "Voy a el cine", corrected: "Voy al cine",
+                                        explanation: "").changesNothing)
+    }
 }
 
 // MARK: - La conversation en cours
@@ -231,6 +285,20 @@ struct ConversationReviewTests {
         #expect(service.reviewed.first?.count == 3)
     }
 
+    @Test("Une correction qui ne change aucun mot est écartée")
+    func noiseDropped() async {
+        let service = ScriptedService()
+        let noise = ConversationCorrection(said: "he ido al mercado", corrected: "He ido al mercado.",
+                                           explanation: "Il manque la majuscule.")
+        service.corrections = [noise, correction]
+        let session = ConversationSession(service: service, sound: FakeSound())
+        await session.open()
+        await session.toggleMic()
+        await session.toggleMic()
+        await session.requestReview()
+        #expect(session.review == .done([correction]))
+    }
+
     @Test("Sans phrase de l'apprenant, rien à demander")
     func nothingSaid() async {
         let service = ScriptedService()
@@ -286,5 +354,8 @@ struct WordDiffTests {
         let diff = WordDiff.compare(said: "que tal, estas bien", corrected: "¿Qué tal? ¿Estás bien?")
         #expect(changed(diff.said).isEmpty)
         #expect(changed(diff.corrected).isEmpty)
+        #expect(WordDiff.sameWords("que tal, estas bien", "¿Qué tal? ¿Estás bien?"))
+        #expect(WordDiff.sameWords("Hola , Laura", "¡Hola, Laura!"))
+        #expect(!WordDiff.sameWords("Me gusta los perros", "Me gustan los perros"))
     }
 }

@@ -101,6 +101,7 @@ PC n'entre dans le dépôt public :
 | `ASSIMIL_WHISPER` | `large-v3-turbo` | le modèle Whisper |
 | `ASSIMIL_GARDER_IA` | `30m` | combien de temps Ollama garde l'IA en mémoire après un tour |
 | `ASSIMIL_APPAREIL` | `cuda` | `cpu` pour essayer sans carte graphique |
+| `ASSIMIL_WHISPER_CONTEXTE` | désactivé | `1` : Whisper reçoit la dernière réplique de l'IA comme amorce. À l'essai (`essais/whisper_contexte.py`) |
 | `ASSIMIL_PRONONCIATION_MODELE` | `xlsr53` | le wav2vec2 de la prononciation : `xlsr53`, `lv60` ou `cnam` |
 
 Si une bibliothèque CUDA est introuvable au chargement de Whisper, voir

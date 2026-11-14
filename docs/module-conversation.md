@@ -100,6 +100,24 @@ ne montre la conversation que si le serveur l'annonce.
   sur l'iPhone.
 - **Test sur l'iPhone.**
 
+### 4 · Petites améliorations (serveur et app) — en test (branche feat/conversation-ameliorations)
+
+- **Corrections étiquetées**, pour préparer le profil d'apprenant : chaque correction
+  porte une catégorie (`grammaire`, `vocabulaire`, `tournure`) et le point précis
+  (`tag`, « ser/estar », en texte libre pour l'instant). Côté app, les deux champs
+  sont optionnels : les conversations gardées avant se lisent toujours.
+- **Les fausses corrections dues à la transcription** : la consigne prévient qu'un
+  mot sans sens peut venir de Whisper. L'app écarte aussi une correction dont la
+  phrase corrigée dit les mêmes mots que la phrase dite, à la casse, la ponctuation
+  et aux accents écrits près (comme `WordDiff`).
+- **XTTS** : calculer l'empreinte de la voix clonée une fois, au démarrage, plutôt
+  qu'à chaque phrase. Essayé puis retiré sans mesure : le délai de la voix ne gêne
+  pas à l'usage. À reprendre si un jour il gêne.
+- **Whisper avec la dernière réplique de l'IA comme amorce**, derrière
+  `ASSIMIL_WHISPER_CONTEXTE=1`. Désactivé tant que `essais/whisper_contexte.py`
+  n'a pas montré, sur tes enregistrements, qu'il comprend mieux.
+- **Test sur le PC et sur l'iPhone.**
+
 ## Plus tard (hors de ce plan)
 
 - Les thèmes tirés des leçons. On donnerait alors à Whisper les mots attendus, pour
