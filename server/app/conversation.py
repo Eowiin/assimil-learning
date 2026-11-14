@@ -63,6 +63,9 @@ class Profil(BaseModel):
 
 # Une consigne courte garde Qwen3 8B rapide et concentré.
 MOTS_AU_PLUS = 5
+# Le point qui revient : à l'ouverture, puis une réplique sur trois. À chaque tour,
+# la conversation ne parle plus que de lui.
+POINT_TOUS_LES = 3
 
 
 def consigne(profil: Profil | None = None) -> str:
@@ -76,7 +79,9 @@ def consigne(profil: Profil | None = None) -> str:
                       "anime a usarlas.")
     if surveiller := _surveiller(profil):
         lignes.append("- El estudiante suele equivocarse en este punto: «" + surveiller
-                      + "». Haz preguntas que le obliguen a usarlo, sin corregirle ni explicárselo.")
+                      + "». De vez en cuando, haz preguntas normales cuya respuesta lo necesite. "
+                      "Nunca nombres el punto, nunca ofrezcas opciones como «eres o estás», y no "
+                      "le corrijas.")
     return CONSIGNE + ("\n" + "\n".join(lignes) if lignes else "")
 
 
@@ -97,9 +102,9 @@ def note_du_tour(profil: Profil | None, rang: int) -> str | None:
     demandes = []
     if mots := _mots(profil):
         demandes.append(f"usa de forma natural la palabra «{mots[rang % len(mots)]}»")
-    if surveiller := _surveiller(profil):
-        demandes.append(f"termina con una pregunta cuya respuesta obligue al estudiante a usar "
-                        f"este punto: «{surveiller}»")
+    if (surveiller := _surveiller(profil)) and rang % POINT_TOUS_LES == 0:
+        demandes.append(f"termina con una pregunta normal y natural, sin ofrecer opciones ni "
+                        f"nombrar el punto, cuya respuesta lleve al estudiante a usar «{surveiller}»")
     if not demandes:
         return None
     return "(Nota para ti, no la menciones: en tu respuesta, " + ", y ".join(demandes) + ".)"

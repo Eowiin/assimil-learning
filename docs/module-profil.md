@@ -156,6 +156,9 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
   - une **note précise à chaque réplique**, collée au message auquel l'IA répond :
     un seul mot, qui tourne d'un tour à l'autre, et une question qui oblige à
     employer le point. Elle n'entre pas dans l'historique que l'app garde ;
+  - **Deuxième essai : le point trop appuyé.** L'IA recopiait le choix (« ¿eres o
+    estás…? ») à chaque tour. Le point n'est plus demandé qu'à l'ouverture, puis une
+    réplique sur trois, par une question ordinaire, sans options ni nom du point ;
   - l'**écran de conversation affiche le profil** en une ligne (« Aujourd'hui :
     ser/estar · aprovechar, quedar con »), et le serveur l'écrit dans son terminal.
 

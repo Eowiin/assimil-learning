@@ -88,7 +88,7 @@ def test_le_profil_entre_dans_la_consigne():
     assert "aprovechar, quedar con" in texte
     assert "«ser/estar»" in texte
     # Toujours sans corriger pendant l'échange.
-    assert "sin corregirle" in texte
+    assert "no le corrijas" in texte
 
 
 def test_la_note_du_tour_demande_un_mot_a_la_fois_et_le_point():
@@ -96,8 +96,17 @@ def test_la_note_du_tour_demande_un_mot_a_la_fois_et_le_point():
     assert "«aprovechar»" in note_du_tour(profil, 0)
     assert "«quedar con»" in note_du_tour(profil, 1)
     assert "«aprovechar»" in note_du_tour(profil, 2)
-    assert "«ser/estar»" in note_du_tour(profil, 0)
     assert "«aprovechar»" not in note_du_tour(Profil(watch="ser/estar"), 0)
+
+
+def test_le_point_a_l_ouverture_puis_une_replique_sur_trois_sans_options():
+    profil = Profil(**PROFIL)
+    avec_point = [rang for rang in range(7) if "«ser/estar»" in note_du_tour(profil, rang)]
+    assert avec_point == [0, 3, 6]
+    assert "sin ofrecer opciones" in note_du_tour(profil, 0)
+    assert "nunca ofrezcas opciones" in consigne(profil)
+    # Sans mots, une réplique sans le point n'a pas de note du tout.
+    assert note_du_tour(Profil(watch="ser/estar"), 1) is None
     assert note_du_tour(None, 0) is None
     assert note_du_tour(Profil(), 3) is None
 
@@ -121,6 +130,7 @@ def test_turn_avec_un_profil(client, faux):
     # La note suit la phrase de l'apprenant ; une réplique de l'IA déjà faite : le 2e mot.
     assert faux.messages[-1]["content"] == "Hola\n\n" + note_du_tour(Profil(**PROFIL), 1)
     assert "«quedar con»" in faux.messages[-1]["content"]
+    assert "«ser/estar»" not in faux.messages[-1]["content"]
     # Ce que l'app affiche et garde reste la phrase dite.
     assert corps["heard"] == "Hola"
 
