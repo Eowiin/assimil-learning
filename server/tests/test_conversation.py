@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.conversation import CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections
+from app.conversation import CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections, Profil, consigne
 from app.moteurs import OllamaIndisponible, Reglages
 
 
@@ -68,6 +68,47 @@ def test_start_l_ia_ouvre_la_conversation(client, faux):
 def test_start_avec_un_sujet(client, faux):
     client.post("/conversation/start", json={"topic": "el fútbol"})
     assert "el fútbol" in faux.messages[1]["content"]
+
+
+# --- profil ------------------------------------------------------------------------
+
+PROFIL = {"watch": "ser/estar", "words": ["aprovechar", "quedar con"]}
+
+
+def test_sans_profil_la_consigne_ne_change_pas():
+    assert consigne(None) == CONSIGNE
+    assert consigne(Profil()) == CONSIGNE
+    assert consigne(Profil(watch="  ", words=[" "])) == CONSIGNE
+
+
+def test_le_profil_entre_dans_la_consigne():
+    texte = consigne(Profil(**PROFIL))
+    assert texte.startswith(CONSIGNE)
+    assert "aprovechar, quedar con" in texte
+    assert "«ser/estar»" in texte
+    # Toujours sans corriger pendant l'échange.
+    assert "sin corregirle" in texte
+
+
+def test_cinq_mots_au_plus():
+    texte = consigne(Profil(words=[f"palabra{i}" for i in range(8)]))
+    assert "palabra4" in texte and "palabra5" not in texte
+
+
+def test_start_avec_un_profil(client, faux):
+    client.post("/conversation/start", json={"profile": PROFIL})
+    assert faux.messages[0]["content"] == consigne(Profil(**PROFIL))
+
+
+def test_turn_avec_un_profil(client, faux):
+    client.post("/conversation/turn", data={"text": "Hola", "profile": json.dumps(PROFIL)})
+    assert faux.messages[0]["content"] == consigne(Profil(**PROFIL))
+
+
+def test_turn_profil_illisible(client):
+    reponse = client.post("/conversation/turn", data={"text": "Hola", "profile": '{"words": "pas une liste"}'})
+    assert reponse.status_code == 422
+    assert reponse.json()["detail"].startswith("Profil illisible")
 
 
 # --- turn --------------------------------------------------------------------------

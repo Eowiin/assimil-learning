@@ -76,3 +76,51 @@ struct ErrorPatternsTests {
         #expect(ConversationRecapView.recurrence(of: fault("Por mí", tag: nil), in: earlier) == nil)
     }
 }
+
+@Suite("Profil : ce que reçoit le partenaire de conversation")
+struct ConversationProfileTests {
+
+    private let calendar = Calendar(identifier: .gregorian)
+    private func day(_ n: Double) -> Date { Date(timeIntervalSince1970: 1_800_000_000 + n * 86_400) }
+
+    /// Une carte de mot ; `known` : en révision, réussie un autre jour que sa création.
+    private func card(_ lemma: String, _ angle: String, known: Bool, reviewed: Double = 5,
+                      active: Bool = true) -> Card {
+        let card = Card(item: VocabItem(lemma: lemma)!.itemID(), angle: angle, language: "es",
+                        scheduler: Card.Scheduler.fsrs, at: day(0))
+        card.isActive = active
+        card.fsrsState = known ? FSRS.State.review.rawValue : FSRS.State.learning.rawValue
+        card.lastReviewedAt = day(reviewed)
+        return card
+    }
+
+    private let none = ErrorPatterns(conversations: [])
+
+    @Test("Les mots compris mais pas encore dits, les plus frais d'abord, cinq au plus")
+    func words() {
+        let cards = [
+            card("aprovechar", Card.Angle.recognize, known: true, reviewed: 9),
+            card("quedar con", Card.Angle.recognize, known: true, reviewed: 8),
+            card("quedar con", Card.Angle.recall, known: false),
+            card("trabajo", Card.Angle.recognize, known: true),           // déjà dit : exclu
+            card("trabajo", Card.Angle.recall, known: true),
+            card("agobiado", Card.Angle.recognize, known: false),         // pas encore compris
+            card("de momento", Card.Angle.recognize, known: true, active: false),
+        ] + (1...5).map { card("palabra\($0)", Card.Angle.recognize, known: true, reviewed: Double($0)) }
+        let profile = ConversationProfile.make(patterns: none, cards: cards, calendar: calendar)
+        #expect(profile?.words == ["aprovechar", "quedar con", "palabra5", "palabra4", "palabra3"])
+        #expect(profile?.watch == nil)
+    }
+
+    @Test("La faute à surveiller revient dans deux conversations au moins")
+    func watch() {
+        let once = ErrorPatterns(conversations: [conversation(day: 1, [fault("a", tag: "por/para")])])
+        #expect(ConversationProfile.make(patterns: once, cards: [], calendar: calendar) == nil)
+        let twice = ErrorPatterns(conversations: [
+            conversation(day: 1, [fault("a", tag: "por/para"), fault("b", tag: "ser/estar")]),
+            conversation(day: 2, [fault("c", tag: "ser/estar")]),
+        ])
+        #expect(ConversationProfile.make(patterns: twice, cards: [], calendar: calendar)
+                == ConversationProfile(watch: "ser/estar", words: []))
+    }
+}

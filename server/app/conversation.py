@@ -52,6 +52,36 @@ ne dirait pas) ;
 Si l'élève n'a fait aucune faute, renvoie une liste vide."""
 
 
+class Profil(BaseModel):
+    """Ce que l'iPhone sait de l'apprenant, joint à la conversation
+    (`docs/module-profil.md`, étape 3). Le serveur ne le garde pas."""
+    # La faute qui revient le plus, telle que l'IA l'a nommée au récapitulatif.
+    watch: str | None = None
+    # Des mots compris en révision, pas encore sus dans l'autre sens.
+    words: list[str] = Field(default_factory=list)
+
+
+# Une consigne courte garde Qwen3 8B rapide et concentré.
+MOTS_AU_PLUS = 5
+
+
+def consigne(profil: Profil | None = None) -> str:
+    """La consigne de conversation, avec le profil quand l'app en envoie un."""
+    if profil is None:
+        return CONSIGNE
+    lignes = []
+    mots = [m.strip() for m in profil.words if m.strip()][:MOTS_AU_PLUS]
+    if mots:
+        lignes.append("- Si viene a cuento, usa con naturalidad alguna de estas palabras que el "
+                      "estudiante está aprendiendo, para que las oiga y se anime a usarlas: "
+                      + ", ".join(mots) + ". No las fuerces todas.")
+    if profil.watch and profil.watch.strip():
+        lignes.append("- El estudiante suele equivocarse en este punto: «" + profil.watch.strip()
+                      + "». Crea ocasiones naturales para que lo practique, sin corregirle ni "
+                      "explicárselo.")
+    return CONSIGNE + ("\n" + "\n".join(lignes) if lignes else "")
+
+
 class Message(BaseModel):
     """Une réplique de la conversation, telle que l'app la garde."""
     role: Literal["user", "assistant"]
@@ -95,13 +125,13 @@ class Moteurs(Protocol):
         ...
 
 
-def messages_ouverture(sujet: str | None) -> list[dict]:
-    consigne = OUVERTURE_SUJET.format(sujet=sujet.strip()) if sujet and sujet.strip() else OUVERTURE
-    return [{"role": "system", "content": CONSIGNE}, {"role": "user", "content": consigne}]
+def messages_ouverture(sujet: str | None, profil: Profil | None = None) -> list[dict]:
+    ouverture = OUVERTURE_SUJET.format(sujet=sujet.strip()) if sujet and sujet.strip() else OUVERTURE
+    return [{"role": "system", "content": consigne(profil)}, {"role": "user", "content": ouverture}]
 
 
-def messages_tour(historique: list[Message], phrase: str) -> list[dict]:
-    return ([{"role": "system", "content": CONSIGNE}]
+def messages_tour(historique: list[Message], phrase: str, profil: Profil | None = None) -> list[dict]:
+    return ([{"role": "system", "content": consigne(profil)}]
             + [m.model_dump() for m in historique]
             + [{"role": "user", "content": phrase}])
 

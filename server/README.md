@@ -8,8 +8,8 @@ l'apprenant : tout l'état reste sur l'iPhone.
 | Route | Rôle |
 |---|---|
 | `GET /health` | le voyant des Réglages : version, carte graphique, modules prêts |
-| `POST /conversation/start` | l'IA ouvre la conversation et propose un sujet |
-| `POST /conversation/turn` | un tour : l'audio (ou un texte) et l'historique, puis ce qui a été compris et la réponse, en texte et en audio |
+| `POST /conversation/start` | l'IA ouvre la conversation et propose un sujet ; `profile` (optionnel) : la faute à surveiller et des mots à faire reprendre |
+| `POST /conversation/turn` | un tour : l'audio (ou un texte), l'historique et le profil, puis ce qui a été compris et la réponse, en texte et en audio |
 | `POST /conversation/review` | le récapitulatif : les phrases fautives, corrigées et expliquées |
 | `POST /pronunciation` | une phrase lue (l'audio et le texte attendu) : chaque son jugé, mot par mot, avec un conseil pour chaque faute |
 

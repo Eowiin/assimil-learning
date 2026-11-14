@@ -138,7 +138,7 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
   conversation et non par phrase, les anciennes corrections sans `tag`.
 - **Test sur l'iPhone** : deux conversations avec la même faute.
 
-### 3 · Le partenaire reçoit le profil (serveur et app)
+### 3 · Le partenaire reçoit le profil (serveur et app) — en test (branche feat/profil-partenaire)
 
 - **Serveur** : le champ `profile`, et une ligne de consigne quand il est là (« Usa
   de forma natural algunas de estas palabras… », « Si el estudiante falla en… »). La
