@@ -57,8 +57,37 @@ struct CurriculumPack: Equatable {
         let type: Kind
         let instruction: String
         let prompt: String
+        /// Les réponses qui montrent l'objectif.
         let expected: [String]
+        /// Des réponses justes qui contournent l'objectif (« debe de estar » au lieu du
+        /// futur de probabilité) : verdict intermédiaire, on repose un défi sans
+        /// compter de lacune.
+        let alsoCorrect: [String]
         let check: String
+
+        /// Les trois verdicts du correcteur (`/placement/evaluate`).
+        enum Verdict: String, Codable {
+            case shown
+            case correctNotShown = "correct_not_shown"
+            case wrong
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, objective, level, type, instruction, prompt, expected, alsoCorrect = "also_correct", check
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            objective = try c.decode(String.self, forKey: .objective)
+            level = try c.decode(String.self, forKey: .level)
+            type = try c.decode(Kind.self, forKey: .type)
+            instruction = try c.decode(String.self, forKey: .instruction)
+            prompt = try c.decode(String.self, forKey: .prompt)
+            expected = try c.decode([String].self, forKey: .expected)
+            alsoCorrect = try c.decodeIfPresent([String].self, forKey: .alsoCorrect) ?? []
+            check = try c.decode(String.self, forKey: .check)
+        }
     }
 
     struct Lexeme: Decodable, Equatable {

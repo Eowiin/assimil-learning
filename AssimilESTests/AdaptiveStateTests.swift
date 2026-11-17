@@ -30,6 +30,13 @@ struct AdaptiveStateTests {
             #expect(challenge.prompt.components(separatedBy: "___").count == 2, "\(challenge.id) : un seul trou")
         }
         #expect(pack.challenges.allSatisfy { !$0.expected.isEmpty })
+        // Une réponse juste qui contourne l'objectif n'est jamais aussi une réponse attendue.
+        for challenge in pack.challenges {
+            #expect(Set(challenge.expected).isDisjoint(with: challenge.alsoCorrect), "\(challenge.id)")
+        }
+        let probability = try #require(pack.challenges.first { $0.id == "pc_064" })
+        #expect(probability.expected == ["estará"])
+        #expect(probability.alsoCorrect == ["debe de estar"])
         #expect(pack.lexicon.count == 5000)
         #expect(pack.phonemes.count == 28)
         #expect(pack.pseudowords.count >= 40)

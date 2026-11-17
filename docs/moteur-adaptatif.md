@@ -23,7 +23,11 @@ tant que la nouvelle n'a pas fait ses preuves.
    allongerait chaque réponse.
 6. **Le test de vocabulaire du placement se fait sur l'iPhone**, avec des non-mots
    (façon LexTALE) pour corriger la surestimation.
-7. **Le LLM et la voix passent derrière des protocoles** (`LLM` : Ollama ou Mistral,
+7. **Trois verdicts pour un défi** (2026-11-17) : objectif montré, correct mais
+   objectif non montré (« debe de estar » au lieu du futur de probabilité ; on repose
+   un défi, sans compter de lacune), faux. Le type du défi (`complete`, `translate`,
+   `rewrite`) ne change rien au correcteur, à tous les niveaux.
+8. **Le LLM et la voix passent derrière des protocoles** (`LLM` : Ollama ou Mistral,
    choisi par `ASSIMIL_LLM` ; `TTS` : XTTS v2 isolé, prêt pour une voix en ligne).
 
 ## Le paquet `curriculum/es/`
@@ -31,8 +35,8 @@ tant que la nouvelle n'a pas fait ses preuves.
 | Fichier | Contenu | D'où il vient |
 |---|---|---|
 | `objectives.json` | 125 micro-objectifs : niveau, titre, règle, consigne pour l'IA, critère de validation | Fourni par Ethan, 5 tableaux fusionnés en un |
-| `microlessons.json` | Par objectif : 2 à 5 lignes en français, 3 exemples | Écrit par Claude, **à relire** |
-| `placement_challenges.json` | Un défi par objectif : `complete`, `translate` ou `rewrite`, réponses acceptées, critère | Écrit par Claude, **à relire** |
+| `microlessons.json` | Par objectif : 2 à 5 lignes en français, 3 exemples | Écrit par Claude, relu par Ethan |
+| `placement_challenges.json` | Un défi par objectif : `complete`, `translate` ou `rewrite`, réponses qui montrent l'objectif (`expected`), réponses justes qui le contournent (`also_correct`), critère | Écrit par Claude, relu par Ethan |
 | `lexicon.json` | 5 000 lemmes : rang, catégorie, API castillane, niveau estimé d'après le rang | `build_lexicon.py` |
 | `pseudowords.json` | 80 non-mots plausibles | `build_lexicon.py` |
 | `phonemes.json` | 28 sons et règles de prosodie, priorité pour un francophone | Fourni par Ethan |
@@ -60,7 +64,7 @@ conversation ou à l'écrit deux jours différents.
 
 | Route | Entrée | Sortie |
 |---|---|---|
-| `POST /placement/evaluate` | `level`, `items[{objective_id, prompt, expected, check, answer}]` | `[{objective_id, correct, analyse_courte}]` |
+| `POST /placement/evaluate` | `level`, `items[{objective_id, prompt, expected, also_correct, check, answer}]` | `[{objective_id, verdict, analyse_courte}]`, `verdict` : `shown`, `correct_not_shown`, `wrong` |
 | `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]`, `attempts` |
 | `POST /tts` | `sentences[]` | un m4a par phrase |
 | `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]` | inchangé |
@@ -73,8 +77,8 @@ sous 92 %. Les noms propres et les nombres ne comptent pas.
 ## Étapes
 
 1. **Le paquet et les modèles** — fait (cette PR) : le référentiel, le script du
-   lexique, les six entités, la reprise du vocabulaire Assimil. **Reste : la relecture
-   des micro-leçons et des défis par Ethan.**
+   lexique, les six entités, la reprise du vocabulaire Assimil, la relecture d'Ethan
+   (110 objectifs OK d'emblée, 15 corrigés).
 2. **Le serveur** : les protocoles `LLM` et `TTS`, spaCy, les routes ci-dessus.
 3. **Le placement** : vocabulaire sur l'iPhone, défis jugés par le serveur, conversation
    de calibrage et sons.
