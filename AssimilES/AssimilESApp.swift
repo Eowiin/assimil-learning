@@ -24,11 +24,15 @@ struct AssimilESApp: App {
         // La révision des phrases marquées est retirée : leurs cartes sont
         // désactivées (pas supprimées), une fois. Après la copie, qui en crée.
         CardReview.retireListenCards(in: container.mainContext)
+        // Les mots déjà travaillés en révision Assimil entrent dans le lexique adaptatif,
+        // une fois. Après la copie et le retrait, qui touchent aux cartes.
+        LexiconMigration.finishIfNeeded(ranks: { CurriculumPack.bundled()?.ranks ?? [:] },
+                                        in: container.mainContext)
     }
 
     /// Chaque entité ajoutée (`DailySession`, `CourseAnchor`, puis `Card`,
     /// `ReviewLog`, `StudyEvent`, `DataMigration`, puis `ConversationRecord`, puis
-    /// `PronunciationRecord`) est une
+    /// `PronunciationRecord`, puis les six du moteur adaptatif) est une
     /// migration légère : les entités existantes ne changent pas, SwiftData ajoute
     /// les tables.
     private let container = AssimilESApp.makeContainer()
@@ -64,6 +68,9 @@ struct AssimilESApp: App {
         LessonProgress.self, DifficultSentence.self, StudyDay.self, DailySession.self, CourseAnchor.self,
         Card.self, ReviewLog.self, StudyEvent.self, DataMigration.self, ConversationRecord.self,
         PronunciationRecord.self,
+        // Le moteur adaptatif.
+        ObjectiveProgress.self, ObjectiveEvidence.self, LexemeState.self, PlacementResult.self,
+        StudySession.self, WritingRecord.self,
     ]
 
     private static func makeContainer() -> ModelContainer {
