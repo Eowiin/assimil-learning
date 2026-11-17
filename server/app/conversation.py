@@ -6,9 +6,11 @@ l'interface `Moteurs`, que les tests remplacent par un faux.
 
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
+
+M = TypeVar("M", bound=BaseModel)
 
 CONSIGNE = """Eres un compañero de conversación para un estudiante francés de español \
 (nivel A2-B1, español de España). Habláis de forma natural, como dos amigos.
@@ -151,8 +153,8 @@ class Moteurs(Protocol):
         """La réplique suivante de l'IA, consigne comprise dans `messages`."""
         ...
 
-    def corriger(self, messages: list[dict]) -> Corrections:
-        """Les corrections, demandées dans un format imposé."""
+    def structurer(self, messages: list[dict], modele: type[M]) -> M:
+        """Une réponse de l'IA dans un format imposé (les corrections, par exemple)."""
         ...
 
     def dire(self, texte: str) -> bytes:

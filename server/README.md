@@ -95,14 +95,22 @@ PC n'entre dans le dépôt public :
 
 | Variable | Défaut | Rôle |
 |---|---|---|
+| `ASSIMIL_LLM` | `ollama` | l'IA qui écrit : `ollama` (sur le PC) ou `mistral` (par l'API de Mistral) |
+| `ASSIMIL_IA` | `qwen3:8b` | le modèle Ollama |
+| `MISTRAL_API_KEY` | aucune | la clé de l'API Mistral, avec `ASSIMIL_LLM=mistral` |
+| `ASSIMIL_MISTRAL_MODELE` | `mistral-small-latest` | le modèle de Mistral |
+| `ASSIMIL_TTS` | `xtts` | la voix : `xtts` seulement pour l'instant (`pocket`, `phonon` et `voxtral` sont prévus) |
 | `ASSIMIL_VOIX` | aucune | l'extrait de la voix que XTTS imite (wav) |
 | `ASSIMIL_LOCUTEUR` | `Ana Florence` | la voix fournie avec XTTS, sans `ASSIMIL_VOIX` |
-| `ASSIMIL_IA` | `qwen3:8b` | le modèle Ollama |
 | `ASSIMIL_WHISPER` | `large-v3-turbo` | le modèle Whisper |
 | `ASSIMIL_GARDER_IA` | `30m` | combien de temps Ollama garde l'IA en mémoire après un tour |
 | `ASSIMIL_APPAREIL` | `cuda` | `cpu` pour essayer sans carte graphique |
 | `ASSIMIL_WHISPER_CONTEXTE` | désactivé | `1` : Whisper reçoit la dernière réplique de l'IA comme amorce. À l'essai (`essais/whisper_contexte.py`) |
 | `ASSIMIL_PRONONCIATION_MODELE` | `xlsr53` | le wav2vec2 de la prononciation : `xlsr53`, `lv60` ou `cnam` |
+
+Avec Mistral, Ollama n'a pas besoin de tourner, et les phrases de l'apprenant partent
+chez Mistral. Pour comparer les deux IA sans charger Whisper ni XTTS :
+`uv run python essais/llm.py` (voir le fichier).
 
 Si une bibliothèque CUDA est introuvable au chargement de Whisper, voir
 `essais/README.md`, « Si ça coince ».

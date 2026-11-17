@@ -19,9 +19,9 @@ from functools import lru_cache
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from .conversation import (Correction, Message, Moteurs, Profil, derniere_replique, messages_correction,
-                           messages_ouverture, messages_tour)
-from .moteurs import OllamaIndisponible
+from .conversation import (Correction, Corrections, Message, Moteurs, Profil, derniere_replique,
+                           messages_correction, messages_ouverture, messages_tour)
+from .llm import LLMIndisponible
 from .prononciation.jugement import par_mots
 
 VERSION = "0.2.0"
@@ -130,15 +130,15 @@ def charger_moteurs() -> Moteurs:
     from .moteurs import Reels, Reglages
 
     reglages = Reglages.depuis_environnement()
-    journal.info("Chargement des modèles (IA %s, Whisper %s, voix %s)…", reglages.ia,
-                 reglages.whisper, reglages.voix or reglages.locuteur)
-    moteurs = Reels(reglages)
+    journal.info("Chargement de Whisper %s et de la voix…", reglages.whisper)
+    moteurs = Reels.charger(reglages)
+    journal.info("IA : %s. Voix : %s.", moteurs.llm.nom, moteurs.tts.nom)
     debut = time.perf_counter()
     try:
         moteurs.prechauffer()
         journal.info("Tour à vide fait en %.1f s.", time.perf_counter() - debut)
-    except OllamaIndisponible as erreur:
-        journal.warning("Ollama ne répond pas (%s) : la conversation attendra qu'il soit lancé.", erreur)
+    except LLMIndisponible as erreur:
+        journal.warning("L'IA ne répond pas (%s) : la conversation attendra.", erreur)
     return moteurs
 
 
@@ -190,11 +190,11 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
         resultat = fonction(*args)
         return resultat, round(time.perf_counter() - debut, 2)
 
-    def penser(fonction, messages):
+    def penser(fonction, *args):
         try:
-            return chrono(fonction, messages)
-        except OllamaIndisponible as erreur:
-            raise HTTPException(503, "L'IA ne répond pas : Ollama est-il lancé sur le PC ?") from erreur
+            return chrono(fonction, *args)
+        except LLMIndisponible as erreur:
+            raise HTTPException(503, f"L'IA ne répond pas : {erreur}") from erreur
 
     def repliquer(m: Moteurs, messages: list[dict]) -> tuple[str, str, float, float]:
         reponse, ia = penser(m.repondre, messages)
@@ -257,7 +257,7 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
         if not any(msg.role == "user" for msg in body.history):
             return Review(corrections=[])
         with verrou:
-            corrections, _ = penser(m.corriger, messages_correction(body.history))
+            corrections, _ = penser(m.structurer, messages_correction(body.history), Corrections)
         return Review(corrections=corrections.corrections)
 
     @app.post("/pronunciation")
