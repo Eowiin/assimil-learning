@@ -96,6 +96,9 @@ class Reels:
     def structurer(self, messages: list[dict], modele: type[M]) -> M:
         return self.juge.structured(messages, modele, temperature=0)
 
+    def rediger(self, messages: list[dict], modele: type[M]) -> M:
+        return self.llm.structured(messages, modele, temperature=0.7)
+
     # --- Parler ---------------------------------------------------------------
 
     def dire(self, texte: str) -> bytes:

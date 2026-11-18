@@ -23,7 +23,8 @@ def test_health_sans_carte_graphique(monkeypatch):
 
 def test_health_annonce_la_conversation_si_chargee(monkeypatch):
     assert client(monkeypatch, None).get("/health").json()["modules"] == []
-    assert client(monkeypatch, None, moteurs=object()).get("/health").json()["modules"] == ["conversation"]
+    assert client(monkeypatch, None, moteurs=object()).get("/health").json()["modules"] == [
+        "conversation", "placement", "tts"]
 
 
 def test_health_annonce_la_langue_si_chargee(monkeypatch):
@@ -36,7 +37,10 @@ def test_health_annonce_la_langue_si_chargee(monkeypatch):
             return [Mot(f, f) for f in texte.split()]
 
     modules = client(monkeypatch, None, moteurs=object(), langue=Faux()).get("/health").json()["modules"]
-    assert modules == ["conversation", "language"]
+    assert modules == ["conversation", "placement", "session_input", "tts", "language"]
+    # La langue seule ne suffit pas au texte du bloc 2 : il faut aussi l'IA.
+    seule = client(monkeypatch, None, langue=Faux()).get("/health").json()["modules"]
+    assert seule == ["language"]
 
 
 def test_gpu_name_sans_nvidia_smi(monkeypatch):
