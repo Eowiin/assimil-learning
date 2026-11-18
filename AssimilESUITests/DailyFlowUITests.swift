@@ -316,7 +316,7 @@ final class DailyFlowUITests: XCTestCase {
 
     /// Le placement entier avec le faux serveur : le vocabulaire, des défis (le premier
     /// tapé, avec un accent, les autres « Je ne sais pas »), la conversation de
-    /// calibrage, le résultat, la validation.
+    /// calibrage, les sons, le résultat, la validation.
     /// Tout raté : on descend jusqu'en A0. Validé, le test quitte l'accueil et reste
     /// dans les Réglages.
     func testPlacementChallenges() throws {
@@ -357,9 +357,22 @@ final class DailyFlowUITests: XCTestCase {
         tap(app.buttons["conversation-end"])
         tap(app.buttons["calibration-continue"])
 
+        // Les sons : six phrases lues, le faux juge rate le premier r de chacune.
+        tap(app.buttons["sounds-start"])
+        XCTAssertTrue(app.staticTexts["sounds-sentence"].waitForExistence(timeout: 5))
+        snapshot(app, "placement-sons")
+        let mic = app.buttons["sounds-mic"]
+        var read = 0
+        while mic.exists, read < 6 {
+            mic.tap()
+            mic.tap()
+            read += 1
+        }
+
         let proposed = app.staticTexts["placement-proposed"]
         XCTAssertTrue(proposed.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["placement-calibration"].exists)
+        XCTAssertTrue(app.staticTexts["placement-sounds"].exists)
         XCTAssertEqual(proposed.label, "Niveau A0")
         snapshot(app, "placement-resultat")
 

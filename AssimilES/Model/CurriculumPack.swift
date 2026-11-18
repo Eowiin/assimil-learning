@@ -11,7 +11,8 @@ import Foundation
 /// - `lexicon.json` : les 5 000 lemmes les plus fréquents, avec l'API castillane
 ///   (`server/scripts/build_lexicon.py`) ;
 /// - `pseudowords.json` : des non-mots pour le test de vocabulaire ;
-/// - `phonemes.json` : les sons et règles de prosodie, avec leur priorité pour un francophone.
+/// - `phonemes.json` : les sons et règles de prosodie, avec leur priorité pour un francophone ;
+/// - `placement_sounds.json` : les phrases lues à froid au placement (facultatif).
 ///
 /// Les noms de champs suivent les fichiers, écrits en français pour une part : le serveur
 /// les lit aussi, tels quels.
@@ -23,6 +24,8 @@ struct CurriculumPack: Equatable {
     let lexicon: [Lexeme]
     let pseudowords: [String]
     let phonemes: [Phoneme]
+    /// Les phrases du diagnostic des sons, au placement. Vide sans le fichier.
+    var soundSentences: [String] = []
 
     struct Objective: Decodable, Equatable, Identifiable {
         let id: String
@@ -150,10 +153,15 @@ extension CurriculumPack {
         let pseudowords: [String] = try read("pseudowords.json", key: "pseudowords", in: directory, language: language)
         let phonemes: [Phoneme] = try read("phonemes.json", key: "phonemes", in: directory, language: language)
 
+        // Ajouté à l'étape 3d : un paquet plus ancien, sans ce fichier, se lit encore.
+        let sounds: [String] = FileManager.default.fileExists(atPath: directory.appendingPathComponent("placement_sounds.json").path)
+            ? try read("placement_sounds.json", key: "sentences", in: directory, language: language) : []
+
         let pack = CurriculumPack(
             language: language, objectives: objectives,
             microlessons: Dictionary(lessons.map { ($0.objective, $0) }, uniquingKeysWith: { first, _ in first }),
-            challenges: challenges, lexicon: lexicon, pseudowords: pseudowords, phonemes: phonemes)
+            challenges: challenges, lexicon: lexicon, pseudowords: pseudowords, phonemes: phonemes,
+            soundSentences: sounds)
         try pack.validate()
         return pack
     }

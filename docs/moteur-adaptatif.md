@@ -51,6 +51,7 @@ tant que la nouvelle n'a pas fait ses preuves.
 | `lexicon.json` | 5 000 lemmes : rang, catégorie, API castillane, niveau estimé d'après le rang | `build_lexicon.py` |
 | `pseudowords.json` | 80 non-mots plausibles | `build_lexicon.py` |
 | `phonemes.json` | 28 sons et règles de prosodie, priorité pour un francophone | Fourni par Ethan |
+| `placement_sounds.json` | 6 phrases lues à froid au placement, pour les sons d'un francophone | Écrit par Claude, relu par Ethan |
 
 ## L'état de l'apprenant (SwiftData)
 
@@ -129,7 +130,11 @@ verdict.
      comptent tout de suite (reconnus, actifs au deuxième jour de production) ; l'objectif
      jugé est gardé dans le passage, sans preuve (une seule tentative ne dit rien).
      Passable, et sautée sans le module conversation.
-   - **3d, les sons** : 6 phrases lues à froid (θ, jota, r, v), jugées par
-     `/pronunciation`, gardées comme les autres prises.
+   - **3d, les sons** (`SoundCheck`, `placement_sounds.json`) : 6 phrases lues à froid,
+     une fois chacune, sans natif ni correction (θ, jota, r, v, chacun dans 3 phrases au
+     moins), jugées par `/pronunciation`. Chaque prise est gardée en `PronunciationRecord`
+     (leçon 0) : elle nourrit `PhonemeStats` comme les autres. Le bilan (sons faibles,
+     même seuil que le profil : 6 occurrences) est montré au résultat ; il ne change pas
+     le niveau. Passable, et sauté sans le module prononciation.
 4. **La séance du jour** : les 4 blocs, branchés sur l'accueil à côté de la séance
    Assimil.
