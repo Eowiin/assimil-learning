@@ -58,6 +58,7 @@ struct TodayView: View {
     @Query private var cards: [Card]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
+    @Query(sort: \PlacementResult.takenAt, order: .reverse) private var placements: [PlacementResult]
     @State private var openedSession: DailySession?
 
     private var store: DailyCourseStore { DailyCourseStore(context: context, manifest: manifest) }
@@ -358,8 +359,39 @@ struct TodayView: View {
                 .accessibilityIdentifier("start-vocab")
             }
         }
+        placementRow
         conversationRow
         pronunciationRow
+    }
+
+    /// Le test de niveau du moteur adaptatif, tant qu'aucun passage n'est validé. Le
+    /// test de vocabulaire se fait sans le PC : la ligne ne dépend pas du serveur.
+    @ViewBuilder
+    private var placementRow: some View {
+        if let pack = CurriculumStore.spanish,
+           !placements.contains(where: { $0.language == pack.language && $0.isCompleted }) {
+            NavigationLink {
+                PlacementView(pack: pack)
+            } label: {
+                HStack(spacing: 14) {
+                    reviewsRow(title: "Test de niveau", detail: placementDetail(language: pack.language),
+                               symbol: "chart.bar.xaxis.ascending")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-placement")
+        }
+    }
+
+    private func placementDetail(language: String) -> String {
+        guard let vocabulary = placements.first(where: { $0.language == language && !$0.isCompleted })?
+            .placementDetails.vocabulary
+        else { return "Ton vocabulaire, pour situer ton niveau" }
+        return "Vocabulaire : environ \(VocabularyTest.rounded(vocabulary.estimate).formatted()) mots (\(vocabulary.level))"
     }
 
     /// La prononciation, quand le PC de la maison l'a chargée. Sinon rien, comme la

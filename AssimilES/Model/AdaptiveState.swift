@@ -228,6 +228,10 @@ final class PlacementResult {
     /// L'objectif de départ, sans préfixe de langue (« obj_026 »).
     var startObjectiveID: String?
     var details: Data = Data()
+    /// Nil tant que le passage n'est pas validé : les parties faites sont gardées, et
+    /// le test reprend où il s'était arrêté. Ajouté à l'étape 3, optionnel : migration
+    /// légère.
+    var completedAt: Date?
 
     init(takenAt: Date, language: String, lexiconEstimate: Int, level: String, startObjectiveID: String?) {
         self.takenAt = takenAt
@@ -235,6 +239,56 @@ final class PlacementResult {
         self.lexiconEstimate = lexiconEstimate
         self.level = level
         self.startObjectiveID = startObjectiveID
+    }
+
+    var isCompleted: Bool { completedAt != nil }
+
+    var placementDetails: PlacementDetails {
+        get { (try? JSONDecoder().decode(PlacementDetails.self, from: details)) ?? PlacementDetails() }
+        set { details = (try? JSONEncoder().encode(newValue)) ?? Data() }
+    }
+}
+
+/// Le détail d'un passage : chaque partie, telle qu'elle s'est passée. Une partie
+/// absente n'a pas encore été faite.
+struct PlacementDetails: Codable, Equatable {
+    var vocabulary: VocabularyTest.Outcome?
+}
+
+@MainActor
+enum PlacementStore {
+    /// Le passage en cours, s'il y en a un : le plus récent qui n'est pas validé.
+    static func draft(language: String = "es", in context: ModelContext) -> PlacementResult? {
+        drafts(language: language, in: context).first
+    }
+
+    /// Le dernier passage validé.
+    static func latestCompleted(language: String = "es", in context: ModelContext) -> PlacementResult? {
+        let all = (try? context.fetch(FetchDescriptor<PlacementResult>(
+            sortBy: [SortDescriptor(\.takenAt, order: .reverse)]))) ?? []
+        return all.first { $0.language == language && $0.isCompleted }
+    }
+
+    /// Le test de vocabulaire fini ouvre un nouveau passage, et remplace celui qui
+    /// traînait : on ne reprend pas les défis d'un autre test de vocabulaire. Les
+    /// passages validés restent.
+    @discardableResult
+    static func startWithVocabulary(_ outcome: VocabularyTest.Outcome, language: String = "es",
+                                    at date: Date, in context: ModelContext) -> PlacementResult {
+        for old in drafts(language: language, in: context) { context.delete(old) }
+        let result = PlacementResult(takenAt: date, language: language, lexiconEstimate: outcome.estimate,
+                                     level: outcome.level, startObjectiveID: nil)
+        result.placementDetails = PlacementDetails(vocabulary: outcome)
+        context.insert(result)
+        try? context.save()
+        return result
+    }
+
+    private static func drafts(language: String, in context: ModelContext) -> [PlacementResult] {
+        let all = (try? context.fetch(FetchDescriptor<PlacementResult>(
+            predicate: #Predicate { $0.completedAt == nil },
+            sortBy: [SortDescriptor(\.takenAt, order: .reverse)]))) ?? []
+        return all.filter { $0.language == language }
     }
 }
 

@@ -211,6 +211,20 @@ extension CurriculumPack {
     }
 }
 
+/// Le paquet espagnol du bundle, lu une fois : l'accueil le consulte à chaque
+/// affichage, et le lexique pèse 5 000 lignes.
+@MainActor
+enum CurriculumStore {
+    private static var cache: CurriculumPack??
+
+    static var spanish: CurriculumPack? {
+        if let cache { return cache }
+        let pack = CurriculumPack.bundled(language: "es")
+        cache = .some(pack)
+        return pack
+    }
+}
+
 private extension CodingUserInfoKey {
     static let envelopeKey = CodingUserInfoKey(rawValue: "envelopeKey")!
 }

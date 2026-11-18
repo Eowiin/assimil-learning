@@ -285,6 +285,35 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-pronunciation"].waitForExistence(timeout: 5))
     }
 
+    /// Le test de vocabulaire du placement, sans serveur : on connaît les mots
+    /// courants, puis plus rien, et le test s'arrête avant la fin. Le résultat reste
+    /// quand on revient.
+    func testPlacementVocabulary() throws {
+        let app = launch(store: newStore(), lesson: 1)
+        tap(app.buttons["start-placement"])
+        tap(app.buttons["placement-start"])
+        let word = app.staticTexts["vocab-test-word"]
+        XCTAssertTrue(word.waitForExistence(timeout: 5))
+        snapshot(app, "placement-vocabulaire")
+
+        let known = app.buttons["vocab-test-known"], unknown = app.buttons["vocab-test-unknown"]
+        var answered = 0
+        while known.exists, answered < 80 {
+            (answered < 16 ? known : unknown).tap()
+            answered += 1
+        }
+        XCTAssertTrue(app.staticTexts["vocab-test-estimate"].waitForExistence(timeout: 5))
+        XCTAssertLessThan(answered, 80, "le test aurait dû s'arrêter avant la fin")
+        snapshot(app, "placement-vocabulaire-resultat")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let row = app.buttons["start-placement"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Vocabulaire : environ"), row.label)
+        tap(row)
+        XCTAssertTrue(app.staticTexts["vocab-test-estimate"].waitForExistence(timeout: 5))
+    }
+
     func testWeeklyReviewWithoutExercises() throws {
         let app = launch(store: newStore(), lesson: 7)
         XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))

@@ -59,7 +59,7 @@ tant que la nouvelle n'a pas fait ses preuves.
 | `ObjectiveProgress` | Un objectif : `locked`, `active`, `acquired`, `to_reinject` ; réussites spontanées. Acquis à 3 ; déblocage souple après 2 jours actif |
 | `ObjectiveEvidence` | Journal jamais modifié : une production jugée (conversation, écrit, placement) |
 | `LexemeState` | Un lemme : `seen`, `recognized`, `active`. Le statut ne fait que monter |
-| `PlacementResult` | Un passage du placement : vocabulaire estimé, niveau, objectif de départ, détail en JSON |
+| `PlacementResult` | Un passage du placement : vocabulaire estimé, niveau, objectif de départ, détail en JSON ; `completedAt` nil tant qu'il n'est pas validé (on reprend où on s'était arrêté) |
 | `StudySession` | La séance d'un jour : objectif, thème, avancement des 4 blocs, texte du bloc 2 gardé |
 | `WritingRecord` | Un écrit du bloc 4 et sa correction |
 
@@ -105,6 +105,26 @@ verdict.
    (110 objectifs OK d'emblée, 15 corrigés).
 2. **Le serveur** : les protocoles `LLM` et `TTS`, spaCy, les routes ci-dessus.
 3. **Le placement** : vocabulaire sur l'iPhone, défis jugés par le serveur, conversation
-   de calibrage et sons.
+   de calibrage et sons. Plan validé le 2026-11-18, une PR par sous-étape :
+   - **3a, le vocabulaire** (`VocabularyTest`, `PlacementView`) : le lexique coupé en
+     10 tranches de 500 rangs ; 6 mots pleins (noms, verbes, adjectifs, adverbes) et
+     2 non-mots par tranche, environ 80 questions. Les mots outils comptent comme
+     connus. Part connue d'une tranche : (oui aux mots − oui aux non-mots) / (1 − oui
+     aux non-mots). Arrêt après deux tranches de suite sous 20 %. Le niveau est celui
+     du lemme dont le rang vaut l'estimation (A0 sous 150). Au-delà de 30 % de oui aux
+     non-mots, l'écran prévient. Le résultat ouvre un passage non validé.
+   - **3b, les défis** : 4 défis par niveau (3 en A0), envoyés ensemble ; niveau
+     réussi à 3 « montré » sur 4 ; un `correct_not_shown` fait poser le défi d'un
+     autre objectif du même niveau, 2 fois au plus. On monte tant que ça passe, on
+     descend si le premier niveau échoue. Écran du résultat, niveau modifiable. À la
+     validation : les niveaux réussis `acquired` (défis faux : `to_reinject`), le
+     premier objectif non montré du niveau de travail `active`, les mots testés « oui »
+     reconnus. Le vocabulaire connu reste une frontière de rang (`lexiconEstimate`),
+     pas des milliers de lignes `LexemeState` : un statut ne descend jamais, une
+     frontière se déplace au test suivant. API 2.
+   - **3c, la conversation de calibrage** : 5 répliques au niveau proposé ; plus de la
+     moitié des phrases corrigées propose un niveau plus bas, Ethan tranche.
+   - **3d, les sons** : 6 phrases lues à froid (θ, jota, r, v), jugées par
+     `/pronunciation`, gardées comme les autres prises.
 4. **La séance du jour** : les 4 blocs, branchés sur l'accueil à côté de la séance
    Assimil.
