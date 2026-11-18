@@ -11,6 +11,7 @@ struct SettingsView: View {
     @Query private var events: [StudyEvent]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
+    @Query(sort: \PlacementResult.takenAt, order: .reverse) private var placements: [PlacementResult]
     @State private var showPosition = false
     @State private var backupFolder: URL?
     @State private var showBackupMover = false
@@ -73,6 +74,18 @@ struct SettingsView: View {
                         Text("\(streak) \(streak > 1 ? "jours" : "jour")")
                     }
                     LabeledContent("Temps total") { Text(totalLabel) }
+                    if let pack = CurriculumStore.spanish {
+                        // Une fois le test validé, l'accueil ne le propose plus : on le refait d'ici.
+                        NavigationLink {
+                            PlacementView(pack: pack)
+                        } label: {
+                            LabeledContent("Test de niveau") {
+                                Text(placements.first { $0.language == pack.language && $0.isCompleted }
+                                    .map { "Niveau \($0.level)" } ?? "Pas encore passé")
+                            }
+                        }
+                        .accessibilityIdentifier("settings-placement")
+                    }
                 }
 
                 Section {

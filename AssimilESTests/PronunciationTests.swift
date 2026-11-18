@@ -204,7 +204,7 @@ struct PronunciationAvailabilityTests {
 
     private func status(modules: String) -> ServerStatus {
         ServerStatus(session: StubProtocol.session(host: "mod.ts.net") { _ in
-            (200, Data(#"{"status":"ok","version":"0.2.0","api":1,"gpu":null,"modules":\#(modules)}"#.utf8))
+            (200, Data(#"{"status":"ok","version":"0.2.0","api":2,"gpu":null,"modules":\#(modules)}"#.utf8))
         })
     }
 

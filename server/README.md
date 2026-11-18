@@ -128,7 +128,7 @@ Refais l'étape 3 en 4G ou en 5G, Wi-Fi coupé : c'est le cas « de n'importe o�
 La réponse ressemble à :
 
 ```json
-{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation", "placement", "session_input", "tts", "pronunciation", "language"]}
+{"status": "ok", "version": "0.2.0", "api": 2, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation", "placement", "session_input", "tts", "pronunciation", "language"]}
 ```
 
 Si la prononciation ou la langue ne se chargent pas, le serveur démarre quand même :

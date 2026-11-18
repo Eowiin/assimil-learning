@@ -12,6 +12,7 @@ struct ServerHealth: Decodable, Equatable {
 
     static let conversation = "conversation"
     static let pronunciation = "pronunciation"
+    static let placement = "placement"
 
     func has(_ module: String) -> Bool { modules?.contains(module) == true }
 }
@@ -21,8 +22,8 @@ struct ServerHealth: Decodable, Equatable {
 enum HomeServer {
 
     /// La forme des routes que cette version de l'app sait lire. Elle monte avec
-    /// `API_VERSION` côté serveur.
-    static let supportedAPI = 1
+    /// `API_VERSION` côté serveur. 2 : le moteur adaptatif (placement d'abord).
+    static let supportedAPI = 2
 
     /// La saisie des Réglages devient l'adresse de base du serveur.
     /// `nom-du-pc.reseau.ts.net` devient `https://nom-du-pc.reseau.ts.net` : Tailscale
@@ -98,6 +99,16 @@ final class ServerStatus {
         return PronunciationClient(baseURL: baseURL, session: session)
     }
 
+    /// Le juge des défis du placement, si le serveur est en ligne et l'a chargé. Nil
+    /// sinon : le test s'arrête après le vocabulaire, qui se fait sans le PC.
+    var placement: (any PlacementService)? {
+        #if DEBUG
+        if fake { return FakePlacementService() }
+        #endif
+        guard let baseURL = base(for: ServerHealth.placement) else { return nil }
+        return PlacementClient(baseURL: baseURL, session: session)
+    }
+
     /// L'adresse du serveur, s'il est en ligne et annonce ce module.
     private func base(for module: String) -> URL? {
         guard case .online(let health) = state, health.has(module) else { return nil }
@@ -111,7 +122,8 @@ final class ServerStatus {
         status.fake = true
         status.state = .online(ServerHealth(status: "ok", version: "test", api: HomeServer.supportedAPI,
                                             gpu: nil, modules: [ServerHealth.conversation,
-                                                                ServerHealth.pronunciation]))
+                                                                ServerHealth.pronunciation,
+                                                                ServerHealth.placement]))
         #endif
         return status
     }
