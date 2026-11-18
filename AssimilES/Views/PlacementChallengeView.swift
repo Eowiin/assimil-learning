@@ -159,6 +159,11 @@ struct PlacementResultView: View {
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("placement-calibration")
                     }
+                    if let sounds = result.placementDetails.sounds, !sounds.skipped {
+                        Label(Self.line(sounds), systemImage: "mouth")
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("placement-sounds")
+                    }
                     if let vocabulary = result.placementDetails.vocabulary {
                         Label("Vocabulaire : environ \(VocabularyTest.rounded(vocabulary.estimate).formatted()) mots "
                               + "(\(vocabulary.level))", systemImage: "character.book.closed")
@@ -232,6 +237,16 @@ struct PlacementResultView: View {
         let corrected = calibration.corrected
         return "Conversation : \(corrected) phrase\(corrected > 1 ? "s" : "") corrigée\(corrected > 1 ? "s" : "") "
             + "sur \(calibration.learnerSentences)"
+    }
+
+    /// « Sons à travailler : la jota (3 ratées sur 8), le r espagnol (2 sur 15) »
+    static func line(_ sounds: SoundsOutcome) -> String {
+        let weak = sounds.weakTargets
+        guard !weak.isEmpty else { return "Sons : rien de faible sur \(sounds.sentences) phrases" }
+        return "Sons à travailler : " + weak.map { target in
+            let count = sounds.counts[target.rawValue]
+            return count.map { "\(target.spokenName) (\($0.faults) ratés sur \($0.expected))" } ?? target.spokenName
+        }.joined(separator: ", ")
     }
 
     static func symbol(_ verdict: ChallengeVerdict) -> String {

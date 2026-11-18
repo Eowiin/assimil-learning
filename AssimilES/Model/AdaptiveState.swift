@@ -266,12 +266,15 @@ struct PlacementDetails: Codable, Equatable {
     var challenges: [ChallengeRecord] = []
     /// La conversation de calibrage, faite ou passée.
     var calibration: CalibrationOutcome?
+    /// Le diagnostic des sons, fait ou passé.
+    var sounds: SoundsOutcome?
 
     init(vocabulary: VocabularyTest.Outcome? = nil, challenges: [ChallengeRecord] = [],
-         calibration: CalibrationOutcome? = nil) {
+         calibration: CalibrationOutcome? = nil, sounds: SoundsOutcome? = nil) {
         self.vocabulary = vocabulary
         self.challenges = challenges
         self.calibration = calibration
+        self.sounds = sounds
     }
 
     /// Un passage commencé avant les défis (étape 3a) n'a pas de clé `challenges`.
@@ -280,6 +283,7 @@ struct PlacementDetails: Codable, Equatable {
         vocabulary = try c.decodeIfPresent(VocabularyTest.Outcome.self, forKey: .vocabulary)
         challenges = try c.decodeIfPresent([ChallengeRecord].self, forKey: .challenges) ?? []
         calibration = try c.decodeIfPresent(CalibrationOutcome.self, forKey: .calibration)
+        sounds = try c.decodeIfPresent(SoundsOutcome.self, forKey: .sounds)
     }
 }
 

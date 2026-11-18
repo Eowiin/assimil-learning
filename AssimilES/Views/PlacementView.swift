@@ -3,7 +3,8 @@ import SwiftData
 
 /// Le test de niveau du moteur adaptatif (`docs/moteur-adaptatif.md`, étape 3) : le
 /// vocabulaire, sur l'iPhone, puis les défis, jugés par le serveur, une courte
-/// conversation de calibrage, et le résultat à valider. Chaque partie est gardée dans le passage non validé (`PlacementResult`) :
+/// conversation de calibrage, quelques phrases lues pour les sons, et le résultat à
+/// valider. Chaque partie est gardée dans le passage non validé (`PlacementResult`) :
 /// le test reprend où il s'était arrêté.
 struct PlacementView: View {
     let pack: CurriculumPack
@@ -21,6 +22,9 @@ struct PlacementView: View {
         /// Les défis ont trouvé ce niveau ; la conversation peut le vérifier à l'oral.
         case calibrationIntro(PlacementResult, workingLevel: String)
         case calibration(PlacementResult, workingLevel: String, any ConversationService)
+        /// Le niveau est trouvé ; restent les sons, qui ne le changent pas.
+        case soundsIntro(PlacementResult, workingLevel: String)
+        case sounds(PlacementResult, workingLevel: String, SoundCheck)
         case result(PlacementResult, workingLevel: String)
         case completed(level: String, start: CurriculumPack.Objective?)
     }
@@ -41,6 +45,10 @@ struct PlacementView: View {
                 calibrationIntro(result, working: working)
             case .calibration(let result, let working, let service):
                 ConversationView(service: service, calibration: calibration(result, working: working))
+            case .soundsIntro(let result, let working):
+                soundsIntro(result, working: working)
+            case .sounds(let result, let working, let check):
+                SoundCheckView(check: check) { save(check.outcome(), in: result, working: working) }
             case .result(let result, let working):
                 PlacementResultView(result: result, pack: pack, proposed: working) { validate(result, level: $0) }
             case .completed(let level, let start):
@@ -79,14 +87,70 @@ struct PlacementView: View {
     /// Les défis finis : la conversation de calibrage si elle reste à faire et que le PC
     /// la porte, sinon le résultat, au niveau qu'elle a proposé.
     private func afterChallenges(_ result: PlacementResult, working: String) {
-        let next: Stage = if let calibration = result.placementDetails.calibration {
-            .result(result, workingLevel: calibration.proposedLevel)
+        if let calibration = result.placementDetails.calibration {
+            afterCalibration(result, working: calibration.proposedLevel)
         } else if server.conversation != nil {
-            .calibrationIntro(result, workingLevel: working)
+            withAnimation { stage = .calibrationIntro(result, workingLevel: working) }
         } else {
-            .result(result, workingLevel: working)
+            afterCalibration(result, working: working)
         }
+    }
+
+    /// Le niveau trouvé : les sons s'ils restent à faire et que le PC les juge, sinon
+    /// le résultat.
+    private func afterCalibration(_ result: PlacementResult, working: String) {
+        let next: Stage = result.placementDetails.sounds == nil && server.pronunciation != nil
+            && !pack.soundSentences.isEmpty
+            ? .soundsIntro(result, workingLevel: working)
+            : .result(result, workingLevel: working)
         withAnimation { stage = next }
+    }
+
+    private func soundsIntro(_ result: PlacementResult, working: String) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Tes sons")
+                    .font(.title2.weight(.bold))
+                Text("Lis \(pack.soundSentences.count) phrases à voix haute, une fois chacune, sans t'appliquer "
+                     + "plus que d'habitude. Le PC repère les sons qu'un francophone rate : le th anglais, "
+                     + "la jota, le r espagnol, le v dit comme un b.")
+                Text("Ça ne change pas ton niveau : les séances travailleront tes sons faibles.")
+                    .foregroundStyle(.secondary)
+                Button("Commencer") {
+                    guard let service = server.pronunciation else {
+                        return save(.skippedOutcome, in: result, working: working)
+                    }
+                    let check = SoundCheck(sentences: pack.soundSentences, service: service, sound: Self.sound()) {
+                        number, text, judged in
+                        context.insert(PronunciationRecord(judgedAt: .now, lesson: PronunciationRecord.placementLesson,
+                                                           sentence: number, text: text, attempt: 1, result: judged))
+                        try? context.save()
+                    }
+                    withAnimation { stage = .sounds(result, workingLevel: working, check) }
+                }
+                .buttonStyle(StudyPrimaryButtonStyle())
+                .accessibilityIdentifier("sounds-start")
+                Button("Passer") { save(.skippedOutcome, in: result, working: working) }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("sounds-skip")
+            }
+            .padding(20)
+        }
+    }
+
+    private static func sound() -> any PronunciationSound {
+        #if DEBUG
+        if AppEnvironment.fakeServer { return SilentPronunciationSound() }
+        #endif
+        return PronunciationAudio()
+    }
+
+    private func save(_ sounds: SoundsOutcome, in result: PlacementResult, working: String) {
+        var details = result.placementDetails
+        details.sounds = sounds
+        result.placementDetails = details
+        try? context.save()
+        withAnimation { stage = .result(result, workingLevel: working) }
     }
 
     private func calibrationIntro(_ result: PlacementResult, working: String) -> some View {
@@ -147,7 +211,7 @@ struct PlacementView: View {
         details.calibration = outcome
         result.placementDetails = details
         try? context.save()
-        withAnimation { stage = .result(result, workingLevel: outcome.proposedLevel) }
+        afterCalibration(result, working: outcome.proposedLevel)
     }
 
     private var intro: some View {

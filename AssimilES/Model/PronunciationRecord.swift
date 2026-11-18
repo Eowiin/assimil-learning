@@ -21,15 +21,24 @@ final class PronunciationRecord {
     /// Le jugement complet, en JSON, dans la forme où il arrive du serveur.
     var judgement: Data = Data()
 
-    init(judgedAt: Date, sentence: DrillSentence, attempt: Int, result: PronunciationResult) {
+    convenience init(judgedAt: Date, sentence: DrillSentence, attempt: Int, result: PronunciationResult) {
+        self.init(judgedAt: judgedAt, lesson: sentence.lesson, sentence: sentence.n, text: sentence.text,
+                  attempt: attempt, result: result)
+    }
+
+    /// Une prise hors des leçons : le diagnostic des sons du placement est la leçon 0
+    /// (`placementLesson`), ses phrases numérotées à partir de 1.
+    init(judgedAt: Date, lesson: Int, sentence: Int, text: String, attempt: Int, result: PronunciationResult) {
         self.judgedAt = judgedAt
-        self.lesson = sentence.lesson
-        self.sentence = sentence.n
-        self.text = sentence.text
+        self.lesson = lesson
+        self.sentence = sentence
+        self.text = text
         self.attempt = attempt
         self.faultSymbols = result.words.flatMap(\.phonemes).filter(\.fault).map(\.expected)
         self.judgement = (try? JSONEncoder().encode(result)) ?? Data()
     }
+
+    static let placementLesson = 0
 
     var result: PronunciationResult? {
         try? JSONDecoder().decode(PronunciationResult.self, from: judgement)
