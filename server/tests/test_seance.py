@@ -246,7 +246,7 @@ def test_une_version_trop_courte_ou_trop_longue_est_ecartee():
 
 
 def test_si_l_ia_tombe_en_reecrivant_la_meilleure_version_sert():
-    r = Redacteur(redaction(DIFFICILE), LLMIndisponible("Ollama ?"))
+    r = Redacteur(redaction(DIFFICILE), LLMIndisponible("Mistral ?"))
     texte = generer(demande(), r, FausseLangue(), Reperer())
     assert texte.text == DIFFICILE and texte.attempts == 2
 
@@ -368,9 +368,9 @@ def test_route_texte_sans_langue_503(faux):
 
 
 def test_route_texte_ia_eteinte_503(faux):
-    faux.redactions = [LLMIndisponible("Ollama est-il lancé sur le PC ?")]
+    faux.redactions = [LLMIndisponible("Mistral ne répond pas : le PC a-t-il accès à internet ?")]
     reponse = client(faux).post("/session/generate-input", json=demande().model_dump())
-    assert reponse.status_code == 503 and "Ollama" in reponse.json()["detail"]
+    assert reponse.status_code == 503 and "Mistral" in reponse.json()["detail"]
 
 
 def test_route_tts_un_audio_par_phrase(faux):

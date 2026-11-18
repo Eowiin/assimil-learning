@@ -7,7 +7,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-multipart>=0.0.20",  # l'audio d'un tour arrive en formulaire
-    "httpx>=0.28",               # pour parler à Ollama
+    "httpx>=0.28",               # pour parler à Mistral
     # Les modèles : Whisper, XTTS v2 (et PyTorch, compilé pour CUDA 12.8 sous Linux).
     "faster-whisper>=1.1",
     "coqui-tts[codec]>=0.26",

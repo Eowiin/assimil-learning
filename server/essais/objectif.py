@@ -1,9 +1,9 @@
-"""L'objectif du jour, Qwen3 et Mistral côte à côte : le récapitulatif d'une
+"""L'objectif du jour, avec Mistral : le récapitulatif d'une
 conversation, la correction d'un écrit, et la mesure des répliques.
 
 Ni Whisper ni XTTS ne sont chargés : seulement l'IA (`app.llm.choisir_llm`, comme le
 serveur) et spaCy. L'objectif est obj_031 (imparfait et indefinido), lu dans le paquet
-de l'app. Pour chaque IA :
+de l'app :
 
 1. **Récapitulatif** d'une conversation aux fautes connues : les corrections, celles que
    le serveur écarte parce qu'identiques à la phrase de départ, et l'objectif jugé.
@@ -12,16 +12,14 @@ de l'app. Pour chaque IA :
    niveau A2, puis un tour, avec les 800 premiers lemmes du lexique comme connus.
    Chaque version écrite est affichée avec sa couverture ; sous 85 %, l'IA réécrit.
 
-    uv run python essais/objectif.py                  # ollama, puis mistral si MISTRAL_API_KEY est là
-    uv run python essais/objectif.py ollama
-    uv run python essais/objectif.py mistral -n 1500  # un apprenant qui connaît 1 500 lemmes
+    uv run python essais/objectif.py
+    uv run python essais/objectif.py -n 1500  # un apprenant qui connaît 1 500 lemmes
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -155,13 +153,11 @@ def repliques(llm, langue: Spacy, obj: Objectif, n: int) -> None:
                          PHRASE_DU_TOUR)
 
 
-def essayer(choix: str, langue: Spacy | None, n: int) -> None:
-    env = {**os.environ, "ASSIMIL_LLM": choix}
+def essayer(langue: Spacy | None, n: int) -> None:
     try:
-        llm = choisir_llm(env)
+        llm = choisir_llm()
     except ValueError as erreur:
-        print(f"\n== {choix} : {erreur}")
-        return
+        sys.exit(str(erreur))
     print(f"\n== {llm.nom}")
     obj = objectif("obj_031")
     try:
@@ -177,10 +173,8 @@ def essayer(choix: str, langue: Spacy | None, n: int) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("ia", nargs="*", help="ollama, mistral (par défaut : les deux si la clé est là)")
     p.add_argument("-n", type=int, default=800, help="combien de lemmes du lexique sont connus")
     args = p.parse_args()
-    choix = args.ia or (["ollama", "mistral"] if os.environ.get("MISTRAL_API_KEY") else ["ollama"])
 
     langue = None
     if installe():
@@ -188,8 +182,7 @@ def main() -> None:
         print(f"{MODELE} chargé en {duree:.1f} s.")
     else:
         print(f"{MODELE} n'est pas installé (`uv sync`) : pas de mesure des répliques.")
-    for c in choix:
-        essayer(c, langue, args.n)
+    essayer(langue, args.n)
 
 
 if __name__ == "__main__":

@@ -868,8 +868,8 @@ des faux dans les tests.
 - **L'iPhone tient l'historique** et l'envoie à chaque tour. Les prises et les
   répliques ne vivent que le temps de la conversation, dans le dossier temporaire.
 - **Un échec ne perd rien** : le tour reste prêt, et « Réessayer » le renvoie tel
-  quel. La raison affichée vient du serveur quand il en donne une (« Ollama est-il
-  lancé ? »).
+  quel. La raison affichée vient du serveur quand il en donne une (« Mistral ne
+  répond pas : le PC a-t-il accès à internet ? »).
 - **Le texte de l'IA peut se masquer** (Réglages, Conversation). On écoute d'abord,
   et un appui montre la réplique écrite.
 - **Le temps compte** dans `StudyEvent`, activité `conversation`, sans cours. Un

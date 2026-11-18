@@ -1,12 +1,10 @@
-"""L'IA qui écrit : Qwen3 par Ollama sur le PC, ou Mistral par son API.
+"""L'IA qui écrit et qui juge : Mistral, par son API.
 
 Le reste du serveur ne voit que le protocole `LLM` : une réponse libre (`chat`) ou
-une réponse qui suit un schéma (`structured`). Le choix se fait par `ASSIMIL_LLM`
-(`ollama` par défaut, ou `mistral`), voir `choisir_llm`.
-
-Les jugements (récapitulatif, écrit, placement) peuvent aller à une autre IA, par
-`ASSIMIL_LLM_JUGE` (`choisir_juge`) : à l'essai du 2026-11-18, Qwen3 8B corrigeait des
-phrases justes et jugeait l'objectif au hasard, Mistral presque sans faute.
+une réponse qui suit un schéma (`structured`). Mistral est la seule IA depuis le
+2026-11-18 : Qwen3 8B, servi par Ollama sur le PC, corrigeait des phrases justes,
+jugeait l'objectif au hasard et marquait mal le placement (28 défis sur 35, contre 32
+pour Mistral, deux fois plus vite). Le protocole reste, pour une autre IA un jour.
 """
 
 from __future__ import annotations
@@ -25,7 +23,7 @@ class LLMIndisponible(RuntimeError):
 
 
 class LLM(Protocol):
-    # Ce que le journal affiche au démarrage : « ollama qwen3:8b », « mistral … ».
+    # Ce que le journal affiche au démarrage : « mistral mistral-small-latest ».
     nom: str
 
     def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
@@ -48,48 +46,6 @@ def _valider(texte: str, modele: type[M], nom: str) -> M:
         raise LLMIndisponible(f"{nom} a rendu une réponse hors du format demandé.") from erreur
 
 
-class OllamaLLM:
-    """Un modèle d'Ollama, sur le PC. Sa sortie structurée suit le schéma qu'on lui
-    donne : pas besoin de la découper à la main."""
-
-    def __init__(self, modele: str = "qwen3:8b", url: str = "http://localhost:11434",
-                 garder: str = "30m", client: httpx.Client | None = None):
-        self.modele = modele
-        # Combien de temps Ollama garde l'IA en mémoire après le dernier tour.
-        self.garder = garder
-        self.client = client or httpx.Client(base_url=url, timeout=120)
-        self.nom = f"ollama {modele}"
-
-    def _appel(self, messages: list[dict], temperature: float, **extra) -> str:
-        corps = {"model": self.modele, "messages": messages, "stream": False,
-                 "keep_alive": self.garder, "options": {"temperature": temperature}, **extra}
-        # Qwen3 réfléchit avant de répondre : utile pour un problème, trop lent pour
-        # une conversation.
-        if self.modele.startswith("qwen3"):
-            corps["think"] = False
-        try:
-            reponse = self.client.post("/api/chat", json=corps)
-            reponse.raise_for_status()
-        except httpx.HTTPError as erreur:
-            raise LLMIndisponible("Ollama est-il lancé sur le PC ?") from erreur
-        # Sans réflexion, Ollama ajoute « /no_think » au dernier message, et Qwen3 le
-        # recopie parfois dans ce qu'il cite (« Gracias para preguntar /no_think »,
-        # essai du 2026-11-18).
-        return reponse.json()["message"]["content"].replace(" /no_think", "").replace(
-            "/no_think", "").strip()
-
-    def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
-        return self._appel(messages, temperature)
-
-    def structured(self, messages: list[dict], modele: type[M], temperature: float = 0) -> M:
-        texte = self._appel(messages, temperature, format=modele.model_json_schema())
-        return _valider(texte, modele, "Ollama")
-
-    def prechauffer(self) -> None:
-        # Charge le modèle sur la carte graphique.
-        self.chat([{"role": "user", "content": "Hola"}])
-
-
 class MistralLLM:
     """Un modèle de Mistral, par son API (`/v1/chat/completions`). La clé vient de
     `MISTRAL_API_KEY` ; elle ne s'affiche nulle part."""
@@ -97,7 +53,7 @@ class MistralLLM:
     def __init__(self, cle: str, modele: str = "mistral-small-latest",
                  url: str = "https://api.mistral.ai", client: httpx.Client | None = None):
         if not cle:
-            raise ValueError("ASSIMIL_LLM=mistral demande la clé dans MISTRAL_API_KEY.")
+            raise ValueError("L'IA (Mistral) demande la clé dans MISTRAL_API_KEY.")
         self.modele = modele
         self.client = client or httpx.Client(base_url=url, timeout=60)
         self.client.headers["Authorization"] = f"Bearer {cle}"
@@ -131,30 +87,8 @@ class MistralLLM:
         pass
 
 
-LLMS = ("ollama", "mistral")
-
-
 def choisir_llm(env=os.environ) -> LLM:
-    """L'IA choisie par `ASSIMIL_LLM`, réglée par les variables d'environnement."""
-    choix = env.get("ASSIMIL_LLM", "ollama").strip().lower()
-    if choix == "ollama":
-        return OllamaLLM(modele=env.get("ASSIMIL_IA", "qwen3:8b"),
-                         url=env.get("OLLAMA_HOST_URL", "http://localhost:11434"),
-                         garder=env.get("ASSIMIL_GARDER_IA", "30m"))
-    if choix == "mistral":
-        return MistralLLM(cle=env.get("MISTRAL_API_KEY", ""),
-                          modele=env.get("ASSIMIL_MISTRAL_MODELE", "mistral-small-latest"))
-    raise ValueError(f"ASSIMIL_LLM={choix} : choisir parmi {', '.join(LLMS)}.")
-
-
-def choisir_juge(env=os.environ, llm: LLM | None = None) -> LLM:
-    """L'IA des réponses structurées : celle d'`ASSIMIL_LLM_JUGE`, ou `llm` (celle de
-    la conversation) si la variable est vide ou désigne la même."""
-    choix = env.get("ASSIMIL_LLM_JUGE", "").strip().lower()
-    meme = env.get("ASSIMIL_LLM", "ollama").strip().lower()
-    if llm is not None and (not choix or choix == meme):
-        return llm
-    try:
-        return choisir_llm({**env, "ASSIMIL_LLM": choix or meme})
-    except ValueError as erreur:
-        raise ValueError(str(erreur).replace("ASSIMIL_LLM=", "ASSIMIL_LLM_JUGE=")) from erreur
+    """Mistral, réglé par les variables d'environnement : la clé (`MISTRAL_API_KEY`) et
+    le modèle (`ASSIMIL_MISTRAL_MODELE`)."""
+    return MistralLLM(cle=env.get("MISTRAL_API_KEY", ""),
+                      modele=env.get("ASSIMIL_MISTRAL_MODELE", "mistral-small-latest"))

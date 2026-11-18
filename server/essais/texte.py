@@ -1,17 +1,17 @@
-"""Le texte du bloc 2, Qwen3 et Mistral côte à côte, écrit et mesuré comme le fait le
+"""Le texte du bloc 2, écrit par Mistral et mesuré comme le fait le
 serveur (`app.seance.generer`).
 
 L'objectif est obj_031 (imparfait et indefinido), lu dans le paquet de l'app ; le thème,
 un voyage en train qui tourne mal ; 7 mots nouveaux du thème, pris au-delà des lemmes
 connus. Les lemmes connus : les `-n` premiers du lexique. spaCy est chargé, ni Whisper
-ni XTTS (sauf `--tts`). Pour chaque IA, chaque version écrite : sa couverture, ses mots
+ni XTTS (sauf `--tts`). Chaque version écrite : sa couverture, ses mots
 inconnus et les mots nouveaux employés ; puis le texte gardé, avec sa traduction et les
 phrases de l'objectif repérées par le juge (la même IA, à température 0).
 
-    uv run python essais/texte.py                     # ollama, puis mistral si MISTRAL_API_KEY est là
-    uv run python essais/texte.py mistral -n 1500     # un apprenant qui connaît 1 500 lemmes
-    uv run python essais/texte.py mistral --mots 250  # un texte plus long
-    uv run python essais/texte.py mistral --tts essais/sortie/texte   # et les m4a, phrase par phrase
+    uv run python essais/texte.py
+    uv run python essais/texte.py -n 1500     # un apprenant qui connaît 1 500 lemmes
+    uv run python essais/texte.py --mots 250  # un texte plus long
+    uv run python essais/texte.py --tts essais/sortie/texte   # et les m4a, phrase par phrase
 """
 
 from __future__ import annotations
@@ -53,13 +53,11 @@ def lexique() -> dict[str, int]:
         (PAQUET / "lexicon.json").read_text(encoding="utf-8"))["lemmas"]}
 
 
-def essayer(choix: str, langue: Spacy, demande: InputRequest, sortie: Path | None) -> None:
-    env = {**os.environ, "ASSIMIL_LLM": choix}
+def essayer(langue: Spacy, demande: InputRequest, sortie: Path | None) -> None:
     try:
-        llm = choisir_llm(env)
+        llm = choisir_llm()
     except ValueError as erreur:
-        print(f"\n== {choix} : {erreur}")
-        return
+        sys.exit(str(erreur))
     print(f"\n== {llm.nom}")
     connus = {*demande.known_lemmas, *demande.new_lemmas}
     versions: list[tuple[Redaction, float]] = []
@@ -112,12 +110,10 @@ def dire(phrases, dossier: Path) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("ia", nargs="*", help="ollama, mistral (par défaut : les deux si la clé est là)")
     p.add_argument("-n", type=int, default=800, help="combien de lemmes du lexique sont connus")
     p.add_argument("--mots", type=int, default=150, help="la longueur visée (target_words)")
     p.add_argument("--tts", type=Path, help="un dossier où écrire les m4a, phrase par phrase")
     args = p.parse_args()
-    choix = args.ia or (["ollama", "mistral"] if os.environ.get("MISTRAL_API_KEY") else ["ollama"])
     if not installe():
         sys.exit(f"{MODELE} n'est pas installé (`uv sync`) : il mesure le texte.")
 
@@ -131,8 +127,7 @@ def main() -> None:
     langue, duree = chrono(Spacy)
     print(f"{MODELE} chargé en {duree:.1f} s. {len(connus)} lemmes connus, {args.mots} mots visés, "
           f"seuil {SEUIL_TEXTE:.0%}, cible {CIBLE_TEXTE:.0%}.")
-    for c in choix:
-        essayer(c, langue, demande, args.tts)
+    essayer(langue, demande, args.tts)
 
 
 if __name__ == "__main__":

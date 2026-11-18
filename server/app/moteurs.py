@@ -15,7 +15,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from .llm import LLM, choisir_juge, choisir_llm
+from .llm import LLM, choisir_llm
 from .voix import TTS, choisir_tts, en_m4a
 
 M = TypeVar("M", bound=BaseModel)
@@ -62,15 +62,13 @@ def transcrire(whisper, audio, amorce: str | None = None) -> str:
 
 
 class Reels:
-    """Les moteurs du serveur, tels que `conversation.Moteurs` les attend. `llm` écrit
-    les répliques ; `juge` rend les réponses structurées (corrections, objectif), et
-    vaut `llm` sans `ASSIMIL_LLM_JUGE`."""
+    """Les moteurs du serveur, tels que `conversation.Moteurs` les attend. Une seule IA
+    écrit les répliques et le texte du bloc 2, et rend les jugements."""
 
-    def __init__(self, reglages: Reglages, whisper, llm: LLM, tts: TTS, juge: LLM | None = None):
+    def __init__(self, reglages: Reglages, whisper, llm: LLM, tts: TTS):
         self.reglages = reglages
         self.whisper = whisper
         self.llm = llm
-        self.juge = juge or llm
         self.tts = tts
 
     @classmethod
@@ -79,8 +77,7 @@ class Reels:
 
         calcul = "float16" if reglages.appareil == "cuda" else "int8"
         whisper = WhisperModel(reglages.whisper, device=reglages.appareil, compute_type=calcul)
-        llm = choisir_llm(env)
-        return cls(reglages, whisper, llm, choisir_tts(reglages.appareil, env), choisir_juge(env, llm))
+        return cls(reglages, whisper, choisir_llm(env), choisir_tts(reglages.appareil, env))
 
     # --- Écouter --------------------------------------------------------------
 
@@ -94,7 +91,7 @@ class Reels:
         return self.llm.chat(messages, temperature=0.7)
 
     def structurer(self, messages: list[dict], modele: type[M]) -> M:
-        return self.juge.structured(messages, modele, temperature=0)
+        return self.llm.structured(messages, modele, temperature=0)
 
     def rediger(self, messages: list[dict], modele: type[M]) -> M:
         return self.llm.structured(messages, modele, temperature=0.7)
@@ -112,5 +109,3 @@ class Reels:
         La voix et Whisper d'abord : si l'IA ne répond pas, ils sont déjà prêts."""
         self.ecouter(self.dire("Hola, ¿qué tal?"))
         self.llm.prechauffer()
-        if self.juge is not self.llm:
-            self.juge.prechauffer()
