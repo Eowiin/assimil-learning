@@ -20,6 +20,10 @@ dependencies = [
     "huggingface-hub>=0.23",
     "onnxruntime>=1.18",
     "numpy>=1.26",
+    # La langue : les lemmes d'un texte, pour mesurer les mots connus. Le même modèle
+    # que celui du lexique de l'app (scripts/build_lexicon.py).
+    "spacy>=3.8,<3.9",
+    "es_core_news_lg @ https://github.com/explosion/spacy-models/releases/download/es_core_news_lg-3.8.0/es_core_news_lg-3.8.0-py3-none-any.whl",
 ]
 
 [dependency-groups]

@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .conversation import (Correction, Corrections, Message, Moteurs, Profil, derniere_replique,
                            messages_correction, messages_ouverture, messages_tour)
+from .langue import Langue
 from .llm import LLMIndisponible
 from .prononciation.jugement import par_mots
 
@@ -159,9 +160,23 @@ def charger_prononciation():
         return None
 
 
+def charger_langue() -> Langue | None:
+    """spaCy, pour mesurer les mots connus d'un texte. S'il manque, le reste tourne."""
+    from .langue.analyse import MODELE, Spacy
+
+    journal.info("Chargement de la langue (%s)…", MODELE)
+    try:
+        langue = Spacy()
+        langue.lemmatiser("Hola, ¿qué tal?")
+        return langue
+    except Exception:
+        journal.exception("La langue n'a pas pu être chargée : elle restera indisponible.")
+        return None
+
+
 def create_app(moteurs: Moteurs | None = None, charger: bool = True,
-               prononciation=None) -> FastAPI:
-    """`moteurs` et `prononciation` : des modèles déjà prêts (les tests passent des
+               prononciation=None, langue: Langue | None = None) -> FastAPI:
+    """`moteurs`, `prononciation` et `langue` : des modèles déjà prêts (les tests passent des
     faux). Sans eux et avec `charger`, les vrais sont chargés au démarrage ; sans eux
     et sans `charger`, le serveur ne fait que répondre au voyant."""
 
@@ -171,11 +186,14 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
             app.state.moteurs = charger_moteurs()
         if app.state.prononciation is None and charger:
             app.state.prononciation = charger_prononciation()
+        if app.state.langue is None and charger:
+            app.state.langue = charger_langue()
         yield
 
     app = FastAPI(title="Assimil, serveur de la maison", version=VERSION, lifespan=demarrage)
     app.state.moteurs = moteurs
     app.state.prononciation = prononciation
+    app.state.langue = langue
     # Une carte graphique, un utilisateur : les tours passent l'un après l'autre.
     verrou = threading.Lock()
 
@@ -206,7 +224,9 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
         """Ce que le voyant de l'app interroge : le serveur répond, sur quelle carte,
         et quels modules sont prêts."""
         etat = request.app.state
-        modules = [nom for nom, pret in (("conversation", etat.moteurs), ("pronunciation", etat.prononciation))
+        modules = [nom for nom, pret in (("conversation", etat.moteurs),
+                                         ("pronunciation", etat.prononciation),
+                                         ("language", etat.langue))
                    if pret is not None]
         return Health(status="ok", version=VERSION, api=API_VERSION, gpu=gpu_name(), modules=modules)
 

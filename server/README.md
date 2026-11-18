@@ -128,14 +128,28 @@ Refais l'étape 3 en 4G ou en 5G, Wi-Fi coupé : c'est le cas « de n'importe o�
 La réponse ressemble à :
 
 ```json
-{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation", "pronunciation"]}
+{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation", "pronunciation", "language"]}
 ```
 
-Si la prononciation ne se charge pas, le serveur démarre quand même : `modules` ne la
-cite pas, et le terminal dit pourquoi.
+Si la prononciation ou la langue ne se chargent pas, le serveur démarre quand même :
+`modules` ne les cite pas, et le terminal dit pourquoi.
 
 `gpu` vaut `null` quand `nvidia-smi` ne répond pas dans WSL2. Dans ce cas, le pilote
 NVIDIA de Windows n'est pas vu, et les modèles tourneront sur le processeur.
+
+## La langue
+
+`app/langue/` mesure ce qu'écrit l'IA : les lemmes d'un texte (spaCy,
+`es_core_news_lg`, le modèle qui a fait le lexique de l'app) et la part de mots
+connus de l'apprenant. Les noms propres, les nombres et la ponctuation ne comptent
+pas ; un mot est connu si son lemme ou sa forme est dans la liste envoyée par l'app.
+spaCy rate souvent l'impératif à pronom collé (« dímelo », « siéntate ») : ces mots-là
+sont relus à part (`analyse.py`). Le modèle tourne sur le processeur, en 1 à 2 ms
+par phrase. Aucune route ne s'en sert encore ; il sera le vérificateur des
+répliques et du texte du bloc 2.
+
+Pour voir ses lemmes et sa couverture sur des phrases à soi :
+`uv run python essais/langue.py` (voir le fichier).
 
 ## Converser sans l'app
 

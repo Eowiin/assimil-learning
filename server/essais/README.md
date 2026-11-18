@@ -106,6 +106,19 @@ dans le récapitulatif de l'app. Il affiche les tours où les deux transcription
 diffèrent, puis le bilan : le taux de mots justes, les mots entendus à tort, et le
 nombre de tours où l'amorce fait mieux ou moins bien.
 
+## `langue.py` : les lemmes et la couverture d'un texte
+
+Charge spaCy seul, comme le serveur, et prend pour « connus » les N premiers lemmes du
+lexique de l'app (1500 par défaut). Chaque mot est affiché avec son lemme, les inconnus
+avec un astérisque, puis la couverture. À lancer sur des répliques réelles de l'IA,
+pour voir si les lemmes tombent sur les clés du lexique.
+
+```bash
+uv run python essais/langue.py
+uv run python essais/langue.py -n 800 "Siéntate y cuéntame qué pasó."
+uv run python essais/langue.py -f replique.txt
+```
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris
