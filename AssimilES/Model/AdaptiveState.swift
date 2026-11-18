@@ -201,6 +201,15 @@ final class LexemeState {
     /// Les jours de production distincts qu'il faut pour qu'un mot devienne actif.
     static let productionDaysToActivate = 2
 
+    /// Un mot dit ou écrit par l'apprenant : il le reconnaît, et le deuxième jour où il
+    /// le produit, il le possède.
+    func recordProduction(at date: Date, calendar: Calendar = .current) {
+        if lastProducedAt.map({ !calendar.isDate($0, inSameDayAs: date) }) ?? true { productionDays += 1 }
+        productions += 1
+        lastProducedAt = date
+        raise(to: productionDays >= Self.productionDaysToActivate ? Status.active : Status.recognized, at: date)
+    }
+
     /// Monte le statut, jamais ne le descend. Rend vrai s'il a changé.
     @discardableResult
     func raise(to newStatus: String, at date: Date) -> Bool {
@@ -255,10 +264,14 @@ struct PlacementDetails: Codable, Equatable {
     var vocabulary: VocabularyTest.Outcome?
     /// Les défis jugés, dans l'ordre où ils ont été posés.
     var challenges: [ChallengeRecord] = []
+    /// La conversation de calibrage, faite ou passée.
+    var calibration: CalibrationOutcome?
 
-    init(vocabulary: VocabularyTest.Outcome? = nil, challenges: [ChallengeRecord] = []) {
+    init(vocabulary: VocabularyTest.Outcome? = nil, challenges: [ChallengeRecord] = [],
+         calibration: CalibrationOutcome? = nil) {
         self.vocabulary = vocabulary
         self.challenges = challenges
+        self.calibration = calibration
     }
 
     /// Un passage commencé avant les défis (étape 3a) n'a pas de clé `challenges`.
@@ -266,6 +279,7 @@ struct PlacementDetails: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         vocabulary = try c.decodeIfPresent(VocabularyTest.Outcome.self, forKey: .vocabulary)
         challenges = try c.decodeIfPresent([ChallengeRecord].self, forKey: .challenges) ?? []
+        calibration = try c.decodeIfPresent(CalibrationOutcome.self, forKey: .calibration)
     }
 }
 
@@ -414,4 +428,35 @@ final class WritingRecord {
     }
 
     var wordCount: Int { text.split(whereSeparator: { $0.isWhitespace }).count }
+}
+
+// MARK: - Vocabulaire connu
+
+@MainActor
+enum KnownVocabulary {
+    /// Les lemmes que l'apprenant connaît : ceux sous la frontière du placement
+    /// (`lexiconEstimate`, en rang), plus ceux que l'état dit reconnus ou actifs. C'est
+    /// ce que mesure le serveur (`allowed_lemmas`, `known_lemmas`).
+    static func lemmas(pack: CurriculumPack, estimate: Int, states: [LexemeState]) -> [String] {
+        var seen = Set<String>()
+        let frontier = pack.lexicon.prefix(max(0, estimate)).map(\.lemma)
+        let known = states.filter { $0.language == pack.language && $0.status != LexemeState.Status.seen }.map(\.lemma)
+        return (frontier + known).filter { seen.insert($0).inserted }
+    }
+
+    /// Les lemmes produits en conversation ou à l'écrit, inscrits dans l'état.
+    static func recordProduction(_ lemmas: [String], language: String, ranks: [String: Int], source: String,
+                                 at date: Date, in context: ModelContext) throws {
+        let existing = Dictionary(
+            try context.fetch(FetchDescriptor<LexemeState>()).filter { $0.language == language }.map { ($0.lemma, $0) },
+            uniquingKeysWith: { first, _ in first })
+        for lemma in Set(lemmas) where !lemma.isEmpty {
+            let state = existing[lemma] ?? {
+                let created = LexemeState(language: language, lemma: lemma, rank: ranks[lemma], source: source, at: date)
+                context.insert(created)
+                return created
+            }()
+            state.recordProduction(at: date)
+        }
+    }
 }

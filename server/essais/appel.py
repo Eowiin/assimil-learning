@@ -4,6 +4,13 @@
     uv run python essais/appel.py tour1.m4a tour2.m4a      # des enregistrements, puis au clavier
     uv run python essais/appel.py --serveur https://nom-du-pc.reseau.ts.net
     uv run python essais/appel.py --surveiller "ser/estar" --mots aprovechar "quedar con"
+    uv run python essais/appel.py --calibrage B1 --vocabulaire 2300    # comme le placement de l'app
+    uv run python essais/appel.py --calibrage A2 --objectif obj_031    # un autre objectif que le premier
+
+`--calibrage` envoie le profil de la conversation de calibrage du placement : le
+niveau, l'objectif (par défaut le premier du niveau), les lemmes connus (les
+`--vocabulaire` premiers du lexique). Chaque réplique affiche sa couverture, et le
+récapitulatif l'objectif jugé, les lemmes produits et le niveau que l'app proposerait.
 
 Les répliques parlées de l'IA vont dans essais/sortie/appel-NN.m4a. Le serveur ne
 garde rien : c'est ce script qui tient l'historique, comme l'app.
@@ -44,6 +51,10 @@ def main() -> int:
     p.add_argument("--sujet", help="le sujet proposé à l'IA pour ouvrir")
     p.add_argument("--surveiller", help="le profil : la faute qui revient (« ser/estar »)")
     p.add_argument("--mots", nargs="*", default=[], help="le profil : des mots à faire reprendre")
+    p.add_argument("--calibrage", metavar="NIVEAU", help="la conversation de calibrage, à ce niveau")
+    p.add_argument("--objectif", help="avec --calibrage : l'objectif (obj_031) ; défaut : le premier du niveau")
+    p.add_argument("--vocabulaire", type=int, default=1500,
+                   help="avec --calibrage : les lemmes connus, en rang du lexique (défaut 1500)")
     p.add_argument("--sortie", type=Path, default=Path("essais/sortie"))
     args = p.parse_args()
     args.sortie.mkdir(parents=True, exist_ok=True)
@@ -76,6 +87,13 @@ def main() -> int:
     # Le profil, comme l'app l'envoie : à l'ouverture et à chaque tour.
     profil = ({"watch": args.surveiller, "words": args.mots}
               if args.surveiller or args.mots else None)
+    objectif = None
+    if args.calibrage:
+        objectif = objectif_du_paquet(args.calibrage, args.objectif)
+        profil = {"level": args.calibrage, "objective": objectif,
+                  "allowed_lemmas": lemmes_connus(args.vocabulaire)}
+        print(f"Calibrage : niveau {args.calibrage}, objectif {objectif['id']} ({objectif['titre']}), "
+              f"{len(profil['allowed_lemmas'])} lemmes connus")
     ouverture = appeler("/conversation/start", json={"topic": args.sujet, "profile": profil})
     if ouverture is None:
         return 1
@@ -119,19 +137,57 @@ def main() -> int:
             corpus_fichier.write_text(json.dumps(corpus, ensure_ascii=False, indent=2))
         print(f"Toi      : {corps['heard']}")
         print(f"IA       : {corps['reply']}")
+        if corps.get("coverage") is not None:
+            print(f"Mesure   : {corps['coverage']:.0%} de mots connus, {corps['attempts']} version(s)")
         print(f"Temps    : {temps(corps['timings'], corps['_aller_retour'])}")
         print(f"Écouter  : {enregistrer(corps, args.sortie, numero)}")
 
     print("\n— Récapitulatif " + "—" * 47)
-    bilan = appeler("/conversation/review", json={"history": historique})
+    demande = {"history": historique}
+    if args.calibrage:
+        demande |= {"objective": objectif, "level": args.calibrage}
+    bilan = appeler("/conversation/review", json=demande)
     if bilan is None:
         return 1
     if not bilan["corrections"]:
         print("Aucune faute relevée.")
     for c in bilan["corrections"]:
         print(f"\n  Tu as dit : {c['said']}\n  Correct   : {c['corrected']}\n  Pourquoi  : {c['explanation']}")
+    for u in bilan.get("objective_uses") or []:
+        print(f"\n  Objectif  : {'oui' if u['valide'] else 'non'} — {u['said']}\n  Analyse   : {u['analyse_courte']}")
+    if bilan.get("lemmas_produced") is not None:
+        print(f"\n  Lemmes produits : {', '.join(bilan['lemmas_produced']) or 'aucun'}")
+    if args.calibrage:
+        print("\n  " + proposition(args.calibrage, len(bilan["corrections"]),
+                                   sum(1 for m in historique if m["role"] == "user")))
     print(f"\n({bilan['_aller_retour']:.1f} s)")
     return 0
+
+
+PAQUET = Path(__file__).resolve().parents[2] / "Resources/curriculum/es"
+NIVEAUX = ["A0", "A1", "A2", "B1", "B2", "C1", "C2"]
+
+
+def objectif_du_paquet(niveau: str, identifiant: str | None) -> dict:
+    """L'objectif tel que l'app l'envoie (`ConversationObjective`)."""
+    objectifs = json.loads((PAQUET / "objectives.json").read_text(encoding="utf-8"))["objectives"]
+    choisi = next(o for o in objectifs if (o["id"] == identifiant if identifiant else o["niveau"] == niveau))
+    return {k: choisi[k] for k in ("id", "titre", "regle", "prompt_ia", "validation")}
+
+
+def lemmes_connus(rang: int) -> list[str]:
+    lexique = json.loads((PAQUET / "lexicon.json").read_text(encoding="utf-8"))["lemmas"]
+    return [e["lemma"] for e in lexique[:rang]]
+
+
+def proposition(niveau: str, corrigees: int, phrases: int) -> str:
+    """La règle de l'app (`CalibrationOutcome`) : plus de la moitié des phrases corrigées,
+    sur 3 au moins, propose un cran plus bas. Les corrections qui ne changent aucun mot,
+    que l'app écarte, sont comptées ici : le serveur les écarte déjà presque toutes."""
+    trop = phrases >= 3 and corrigees > phrases / 2
+    i = NIVEAUX.index(niveau)
+    propose = NIVEAUX[i - 1] if trop and i > 0 else niveau
+    return f"L'app proposerait : {propose} ({corrigees} phrase(s) corrigée(s) sur {phrases})"
 
 
 if __name__ == "__main__":

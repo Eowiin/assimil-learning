@@ -77,6 +77,51 @@ struct ConversationCorrection: Codable, Equatable, Sendable {
     }
 }
 
+/// Un micro-objectif, tel que le serveur le reçoit (`server/app/conversation.py`,
+/// `Objectif`) : l'app l'envoie en entier, le serveur n'a pas de copie du paquet.
+struct ConversationObjective: Codable, Equatable, Sendable {
+    let id: String
+    let titre: String
+    let regle: String
+    let promptIA: String
+    let validation: String
+
+    init(_ objective: CurriculumPack.Objective) {
+        id = objective.id
+        titre = objective.title
+        regle = objective.rule
+        promptIA = objective.aiPrompt
+        validation = objective.validation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, titre, regle, promptIA = "prompt_ia", validation
+    }
+}
+
+/// Une phrase où l'apprenant a tenté l'objectif, jugée au récapitulatif.
+struct ObjectiveUse: Codable, Equatable, Sendable {
+    let said: String
+    let valid: Bool
+    let analysis: String
+
+    private enum CodingKeys: String, CodingKey {
+        case said, valid = "valide", analysis = "analyse_courte"
+    }
+}
+
+/// Le récapitulatif : les corrections, et, en API 2, l'objectif jugé (null sans
+/// objectif demandé) et les lemmes que l'apprenant a produits (null sans spaCy).
+struct ConversationReview: Decodable, Equatable, Sendable {
+    var corrections: [ConversationCorrection]
+    var objectiveUses: [ObjectiveUse]? = nil
+    var lemmasProduced: [String]? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case corrections, objectiveUses = "objective_uses", lemmasProduced = "lemmas_produced"
+    }
+}
+
 /// Ce que l'écran attend du serveur. `ConversationClient` le joint par Tailscale ;
 /// les tests passent un faux.
 protocol ConversationService: Sendable {
@@ -85,10 +130,16 @@ protocol ConversationService: Sendable {
     /// `audio` : l'enregistrement du tour. `text` le remplace, pour les tests.
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
               profile: ConversationProfile?) async throws -> TurnReply
-    func review(history: [ConversationMessage]) async throws -> [ConversationCorrection]
+    /// `objective` : l'objectif à juger dans les phrases de l'apprenant. `level` : son niveau.
+    func review(history: [ConversationMessage], objective: ConversationObjective?,
+                level: String?) async throws -> ConversationReview
 }
 
 extension ConversationService {
+    func review(history: [ConversationMessage]) async throws -> ConversationReview {
+        try await review(history: history, objective: nil, level: nil)
+    }
+
     func start(topic: String?) async throws -> PartnerReply {
         try await start(topic: topic, profile: nil)
     }
@@ -104,8 +155,8 @@ struct ConversationClient: ConversationService {
     let baseURL: URL
     var session: URLSession = .shared
 
-    /// Le premier tour après une longue pause recharge l'IA dans Ollama : quelques
-    /// secondes de plus, pas une panne.
+    /// Mistral répond en quelques secondes ; une réplique trop difficile est réécrite,
+    /// deux fois au plus, et le récapitulatif juge toute la conversation d'un coup.
     static let timeout: TimeInterval = 90
 
     private struct ReplyBody: Decodable {
@@ -122,7 +173,11 @@ struct ConversationClient: ConversationService {
         }
     }
 
-    private struct ReviewBody: Decodable { let corrections: [ConversationCorrection] }
+    private struct ReviewRequest: Encodable {
+        let history: [ConversationMessage]
+        let objective: ConversationObjective?
+        let level: String?
+    }
 
     private struct StartBody: Encodable {
         let topic: String?
@@ -143,10 +198,11 @@ struct ConversationClient: ConversationService {
         return TurnReply(heard: body.heard ?? "", reply: try body.partner())
     }
 
-    func review(history: [ConversationMessage]) async throws -> [ConversationCorrection] {
-        let body = try JSONEncoder().encode(["history": history])
+    func review(history: [ConversationMessage], objective: ConversationObjective?,
+                level: String?) async throws -> ConversationReview {
+        let body = try JSONEncoder().encode(ReviewRequest(history: history, objective: objective, level: level))
         return try await post("conversation/review", body: body, contentType: "application/json",
-                              as: ReviewBody.self).corrections
+                              as: ConversationReview.self)
     }
 
     /// Le formulaire d'un tour : l'historique en JSON, puis l'audio ou le texte.
@@ -233,6 +289,11 @@ final class ConversationSession {
     /// Ce que le partenaire sait de l'apprenant, fixé avant l'ouverture et envoyé à
     /// chaque requête. Nil : la consigne d'avant le profil.
     var profile: ConversationProfile?
+    /// Le nombre de réponses de l'apprenant au-delà duquel le micro se tait (la
+    /// conversation de calibrage du placement). Nil : sans limite.
+    var turnLimit: Int?
+    /// Le récapitulatif tel que le serveur l'a rendu, objectif et lemmes compris.
+    private(set) var lastReview: ConversationReview?
 
     private let service: any ConversationService
     private let sound: any ConversationSound
@@ -252,6 +313,8 @@ final class ConversationSession {
     }
 
     var learnerSpoke: Bool { lines.contains { $0.speaker == .learner } }
+    var learnerTurns: Int { lines.filter { $0.speaker == .learner }.count }
+    var reachedLimit: Bool { turnLimit.map { learnerTurns >= $0 } ?? false }
 
     func open() async {
         sound.begin()
@@ -277,7 +340,10 @@ final class ConversationSession {
         do {
             // Une « correction » qui ne change aucun mot n'en est pas une : elle ne
             // s'affiche pas, et n'est pas gardée pour le profil.
-            review = .done(try await service.review(history: history).filter { !$0.changesNothing })
+            let reviewed = try await service.review(history: history, objective: profile?.objective,
+                                                    level: profile?.level)
+            lastReview = reviewed
+            review = .done(reviewed.corrections.filter { !$0.changesNothing })
         } catch {
             review = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
@@ -287,6 +353,7 @@ final class ConversationSession {
     func toggleMic() async {
         switch phase {
         case .ready, .micDenied:
+            guard !reachedLimit else { return }
             sound.stopPlayback()
             playingLine = nil
             phase = await sound.startRecording() ? .recording : .micDenied
@@ -370,10 +437,14 @@ struct FakeConversationService: ConversationService {
                                       timings: ConversationTimings(listen: 0, think: 0, speak: 0)))
     }
 
-    func review(history: [ConversationMessage]) async throws -> [ConversationCorrection] {
-        [ConversationCorrection(said: "Hoy yo soy cansado.", corrected: "Hoy estoy cansado.",
-                                explanation: "Un état passager se dit avec « estar », pas avec « ser ».",
-                                category: .grammar, tag: "ser/estar")]
+    func review(history: [ConversationMessage], objective: ConversationObjective?,
+                level: String?) async throws -> ConversationReview {
+        ConversationReview(
+            corrections: [ConversationCorrection(said: "Hoy yo soy cansado.", corrected: "Hoy estoy cansado.",
+                                                 explanation: "Un état passager se dit avec « estar », pas avec « ser ».",
+                                                 category: .grammar, tag: "ser/estar")],
+            objectiveUses: objective == nil ? nil : [],
+            lemmasProduced: ["hoy", "cansado"])
     }
 }
 

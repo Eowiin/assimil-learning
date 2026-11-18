@@ -314,8 +314,9 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["vocab-test-estimate"].waitForExistence(timeout: 5))
     }
 
-    /// Le placement entier avec le faux juge : le vocabulaire, des défis (le premier
-    /// tapé, avec un accent, les autres « Je ne sais pas »), le résultat, la validation.
+    /// Le placement entier avec le faux serveur : le vocabulaire, des défis (le premier
+    /// tapé, avec un accent, les autres « Je ne sais pas »), la conversation de
+    /// calibrage, le résultat, la validation.
     /// Tout raté : on descend jusqu'en A0. Validé, le test quitte l'accueil et reste
     /// dans les Réglages.
     func testPlacementChallenges() throws {
@@ -336,14 +337,29 @@ final class DailyFlowUITests: XCTestCase {
         snapshot(app, "placement-defi")
         app.buttons["challenge-submit"].tap()
 
-        let proposed = app.staticTexts["placement-proposed"]
+        let calibration = app.buttons["calibration-start"]
         var skipped = 0
-        while !proposed.exists, skipped < 40 {
+        while !calibration.exists, skipped < 40 {
             let skip = app.buttons["challenge-skip"]
             if skip.waitForExistence(timeout: 5) { skip.tap() }
             skipped += 1
         }
+        XCTAssertTrue(calibration.waitForExistence(timeout: 5))
+        snapshot(app, "placement-calibrage-intro")
+
+        // La conversation de calibrage : une réponse, puis Terminer et Continuer.
+        calibration.tap()
+        XCTAssertTrue(app.staticTexts["calibration-intro"].waitForExistence(timeout: 5))
+        tap(app.buttons["conversation-mic"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        snapshot(app, "placement-calibrage")
+        tap(app.buttons["conversation-end"])
+        tap(app.buttons["calibration-continue"])
+
+        let proposed = app.staticTexts["placement-proposed"]
         XCTAssertTrue(proposed.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["placement-calibration"].exists)
         XCTAssertEqual(proposed.label, "Niveau A0")
         snapshot(app, "placement-resultat")
 

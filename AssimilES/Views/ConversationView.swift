@@ -1,6 +1,16 @@
 import SwiftUI
 import SwiftData
 
+/// La conversation de calibrage du placement : un profil fixé (niveau, objectif,
+/// lemmes connus), un nombre de réponses, et une fin qui rend la main au test au lieu
+/// de fermer l'écran.
+struct ConversationCalibration {
+    let profile: ConversationProfile
+    let turns: Int
+    /// Le récapitulatif (nil s'il a échoué, ou sans phrase) et le nombre de réponses.
+    let onDone: (ConversationReview?, Int) -> Void
+}
+
 /// La conversation avec l'IA, en talkie-walkie : elle ouvre, on touche le micro
 /// pour parler, on touche à nouveau pour envoyer, elle répond à voix haute.
 /// « Terminer » garde la conversation sur l'iPhone et montre le récapitulatif. La
@@ -30,7 +40,11 @@ struct ConversationView: View {
     /// posé ne fait pas du temps d'étude.
     private static let maxGap: Double = 120
 
-    init(service: any ConversationService) {
+    /// La conversation de calibrage du placement ; nil pour la conversation libre.
+    private let calibration: ConversationCalibration?
+
+    init(service: any ConversationService, calibration: ConversationCalibration? = nil) {
+        self.calibration = calibration
         _session = State(initialValue: ConversationSession(service: service, sound: Self.sound()))
     }
 
@@ -60,7 +74,11 @@ struct ConversationView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                if finished {
+                if finished, let calibration {
+                    Button("Continuer") { calibration.onDone(session.lastReview, session.learnerTurns) }
+                        .disabled(session.review == .loading)
+                        .accessibilityIdentifier("calibration-continue")
+                } else if finished {
                     Button("Fermer") { dismiss() }
                         .accessibilityIdentifier("recap-close")
                 } else {
@@ -72,7 +90,12 @@ struct ConversationView: View {
         .task {
             player.pause()
             lastTick = DayClock.systemNow()
-            if session.profile == nil { session.profile = Self.profile(in: context) }
+            if let calibration {
+                session.profile = calibration.profile
+                session.turnLimit = calibration.turns
+            } else if session.profile == nil {
+                session.profile = Self.profile(in: context)
+            }
             await session.open()
         }
         .onDisappear {
@@ -95,7 +118,13 @@ struct ConversationView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    if let summary = session.profile?.summary {
+                    if let calibration {
+                        Text("Réponds \(calibration.turns) fois, comme tu parlerais. L'IA parle au niveau "
+                             + "\(calibration.profile.level ?? "trouvé") ; tes fautes ajustent le niveau proposé.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("calibration-intro")
+                    } else if let summary = session.profile?.summary {
                         // Ce que le partenaire a reçu : on voit ce qu'il cherche à faire
                         // pratiquer, et qu'il a bien reçu quelque chose.
                         Text(summary)
@@ -226,8 +255,8 @@ struct ConversationView: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .disabled(busy || isFailed)
-        .opacity(busy || isFailed ? 0.4 : 1)
+        .disabled(busy || isFailed || session.reachedLimit)
+        .opacity(busy || isFailed || session.reachedLimit ? 0.4 : 1)
         .sensoryFeedback(.start, trigger: recording)
         .accessibilityLabel(recording ? "Envoyer" : "Parler")
         .accessibilityIdentifier("conversation-mic")
@@ -241,8 +270,14 @@ struct ConversationView: View {
     @ViewBuilder
     private var status: some View {
         switch session.phase {
+        case .ready where session.reachedLimit:
+            hint("C'est assez pour situer ton niveau : touche Terminer")
         case .ready:
-            hint("Touche le micro pour répondre")
+            if let limit = session.turnLimit {
+                hint("Touche le micro pour répondre (\(session.learnerTurns + 1) sur \(limit))")
+            } else {
+                hint("Touche le micro pour répondre")
+            }
         case .recording:
             hint("Je t'écoute… touche pour envoyer")
         case .opening, .waiting:
@@ -285,7 +320,11 @@ struct ConversationView: View {
     /// Sans phrase de l'apprenant, rien à garder ni à corriger : on revient à
     /// l'accueil.
     private func finish() {
-        guard session.learnerSpoke else { return dismiss() }
+        guard session.learnerSpoke else {
+            // Le calibrage rend la main au test, qu'il ne faut pas fermer.
+            if let calibration { return calibration.onDone(nil, 0) }
+            return dismiss()
+        }
         session.close()
         // Avant de garder celle-ci : elle ne compte pas parmi les précédentes.
         earlier = ErrorPatterns(records: (try? context.fetch(FetchDescriptor<ConversationRecord>())) ?? [])

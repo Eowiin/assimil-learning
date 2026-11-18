@@ -390,3 +390,48 @@ enum PlacementCompletion {
         }
     }
 }
+
+// MARK: - La conversation de calibrage
+
+/// Ce que la conversation de calibrage dit du niveau : à l'oral, sans préparation,
+/// l'apprenant tient-il le niveau que les défis ont trouvé ? Elle ne fait que proposer :
+/// c'est l'apprenant qui valide le niveau.
+struct CalibrationOutcome: Codable, Equatable, Sendable {
+    /// Le niveau auquel l'IA a parlé : celui des défis.
+    let testedLevel: String
+    /// Le niveau proposé après la conversation : le même, ou un cran plus bas.
+    let proposedLevel: String
+    let skipped: Bool
+    let learnerSentences: Int
+    let corrected: Int
+    let objectiveID: String?
+    let objectiveUses: [ObjectiveUse]
+    let lemmasProduced: [String]
+
+    /// Le nombre de réponses de l'apprenant.
+    static let turns = 5
+    /// Plus de la moitié des phrases corrigées : le niveau est trop haut à l'oral.
+    static let tooManyErrors = 0.5
+    /// En dessous, trop peu de phrases pour juger.
+    static let minimumSentences = 3
+
+    static func make(review: ConversationReview, learnerSentences: Int, level: String,
+                     objectiveID: String?) -> CalibrationOutcome {
+        let corrected = review.corrections.filter { !$0.changesNothing }.count
+        let tooHard = learnerSentences >= minimumSentences
+            && Double(corrected) > Double(learnerSentences) * tooManyErrors
+        let index = CurriculumPack.levels.firstIndex(of: level) ?? 0
+        let proposed = tooHard && index > 0 ? CurriculumPack.levels[index - 1] : level
+        return CalibrationOutcome(testedLevel: level, proposedLevel: proposed, skipped: false,
+                                  learnerSentences: learnerSentences, corrected: corrected,
+                                  objectiveID: objectiveID, objectiveUses: review.objectiveUses ?? [],
+                                  lemmasProduced: review.lemmasProduced ?? [])
+    }
+
+    static func skipped(level: String) -> CalibrationOutcome {
+        CalibrationOutcome(testedLevel: level, proposedLevel: level, skipped: true, learnerSentences: 0,
+                           corrected: 0, objectiveID: nil, objectiveUses: [], lemmasProduced: [])
+    }
+
+    var lowered: Bool { proposedLevel != testedLevel }
+}
