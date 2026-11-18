@@ -132,6 +132,7 @@ struct PlacementResultView: View {
     }
 
     private var records: [ChallengeRecord] { result.placementDetails.challenges }
+    private var calibration: CalibrationOutcome? { result.placementDetails.calibration }
 
     var body: some View {
         ScrollView {
@@ -140,7 +141,10 @@ struct PlacementResultView: View {
                     Text("Niveau \(proposed)")
                         .font(.largeTitle.weight(.bold))
                         .accessibilityIdentifier("placement-proposed")
-                    Text("Le premier niveau dont tu n'as pas montré les trois quarts des objectifs.")
+                    Text(calibration?.lowered == true
+                         ? "Un cran sous celui des défis (\(calibration?.testedLevel ?? "")) : la conversation a "
+                           + "montré beaucoup de fautes à l'oral."
+                         : "Le premier niveau dont tu n'as pas montré les trois quarts des objectifs.")
                         .foregroundStyle(.secondary)
                 }
 
@@ -149,6 +153,11 @@ struct PlacementResultView: View {
                         Label(Self.line(outcome),
                               systemImage: outcome.passed ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(outcome.passed ? StudyStyle.accent : .secondary)
+                    }
+                    if let calibration, !calibration.skipped {
+                        Label(Self.line(calibration), systemImage: "bubble.left.and.text.bubble.right")
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("placement-calibration")
                     }
                     if let vocabulary = result.placementDetails.vocabulary {
                         Label("Vocabulaire : environ \(VocabularyTest.rounded(vocabulary.estimate).formatted()) mots "
@@ -216,6 +225,13 @@ struct PlacementResultView: View {
             + "sur \(outcome.shown + outcome.wrong)"
         if outcome.notShown > 0 { text += ", \(outcome.notShown) contourné\(outcome.notShown > 1 ? "s" : "")" }
         return text
+    }
+
+    /// « Conversation : 2 phrases corrigées sur 5 »
+    static func line(_ calibration: CalibrationOutcome) -> String {
+        let corrected = calibration.corrected
+        return "Conversation : \(corrected) phrase\(corrected > 1 ? "s" : "") corrigée\(corrected > 1 ? "s" : "") "
+            + "sur \(calibration.learnerSentences)"
     }
 
     static func symbol(_ verdict: ChallengeVerdict) -> String {

@@ -91,7 +91,7 @@ struct ConversationClientTests {
     func review() async throws {
         let corrections = try await client { _ in
             (200, Data(#"{"corrections":[{"said":"Yo soy cansado","corrected":"Estoy cansado","explanation":"Un état : estar."}]}"#.utf8))
-        }.review(history: [ConversationMessage(role: .user, content: "Yo soy cansado")])
+        }.review(history: [ConversationMessage(role: .user, content: "Yo soy cansado")]).corrections
         #expect(corrections == [ConversationCorrection(said: "Yo soy cansado", corrected: "Estoy cansado",
                                                        explanation: "Un état : estar.")])
     }
@@ -100,7 +100,7 @@ struct ConversationClientTests {
     func reviewTagged() async throws {
         let corrections = try await client { _ in
             (200, Data(#"{"corrections":[{"said":"Yo soy cansado","corrected":"Estoy cansado","explanation":"Un état : estar.","category":"grammaire","tag":"ser/estar"}]}"#.utf8))
-        }.review(history: [ConversationMessage(role: .user, content: "Yo soy cansado")])
+        }.review(history: [ConversationMessage(role: .user, content: "Yo soy cansado")]).corrections
         #expect(corrections.first?.category == .grammar)
         #expect(corrections.first?.tag == "ser/estar")
     }
@@ -179,11 +179,14 @@ private final class ScriptedService: ConversationService, @unchecked Sendable {
 
     var corrections: [ConversationCorrection] = []
     var reviewed: [[ConversationMessage]] = []
+    var reviewedObjectives: [ConversationObjective?] = []
 
-    func review(history: [ConversationMessage]) async throws -> [ConversationCorrection] {
+    func review(history: [ConversationMessage], objective: ConversationObjective?,
+                level: String?) async throws -> ConversationReview {
         reviewed.append(history)
+        reviewedObjectives.append(objective)
         if let error = failNext { failNext = nil; throw error }
-        return corrections
+        return ConversationReview(corrections: corrections, lemmasProduced: ["ir", "mercado"])
     }
 }
 
@@ -394,5 +397,74 @@ struct WordDiffTests {
         #expect(WordDiff.sameWords("que tal, estas bien", "¿Qué tal? ¿Estás bien?"))
         #expect(WordDiff.sameWords("Hola , Laura", "¡Hola, Laura!"))
         #expect(!WordDiff.sameWords("Me gusta los perros", "Me gustan los perros"))
+    }
+}
+
+// MARK: - Le moteur adaptatif (API 2)
+
+@Suite("Conversation : le profil et le récapitulatif de l'API 2", .serialized)
+@MainActor
+struct ConversationAPI2Tests {
+
+    static let objective = ConversationObjective(CurriculumPack.Objective(
+        id: "obj_031", level: "A2", title: "Récit au passé", rule: "Imparfait et indefinido.",
+        aiPrompt: "Demande un récit.", validation: "Les deux temps."))
+
+    @Test("Le profil part avec le niveau, l'objectif et les lemmes connus ; vide, il ne les envoie pas")
+    func profileEncoding() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let full = ConversationProfile(level: "A2", objective: Self.objective, allowedLemmas: ["ser", "casa"])
+        let json = String(decoding: try encoder.encode(full), as: UTF8.self)
+        #expect(json.contains(#""allowed_lemmas":["ser","casa"]"#))
+        #expect(json.contains(#""level":"A2""#))
+        #expect(json.contains(#""prompt_ia":"Demande un récit.""#))
+        #expect(json.contains(#""titre":"Récit au passé""#))
+        let old = ConversationProfile(watch: "ser/estar", words: ["aprovechar"])
+        #expect(String(decoding: try encoder.encode(old), as: UTF8.self)
+                == #"{"watch":"ser\/estar","words":["aprovechar"]}"#)
+        #expect(try JSONDecoder().decode(ConversationProfile.self, from: encoder.encode(full)) == full)
+    }
+
+    @Test("Le récapitulatif envoie l'objectif et le niveau, et lit l'objectif jugé et les lemmes")
+    func reviewWithObjective() async throws {
+        var sent: [String: Any] = [:]
+        let session = StubProtocol.session(host: "conv2.ts.net") { request in
+            sent = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any] ?? [:]
+            return (200, Data(#"{"corrections":[],"objective_uses":[{"said":"Dormía cuando sonó","valide":true,"analyse_courte":"Les deux temps."}],"lemmas_produced":["dormir","sonar"]}"#.utf8))
+        }
+        let client = ConversationClient(baseURL: URL(string: "https://conv2.ts.net")!, session: session)
+        let review = try await client.review(history: [ConversationMessage(role: .user, content: "Dormía cuando sonó")],
+                                             objective: Self.objective, level: "A2")
+        #expect(review.objectiveUses == [ObjectiveUse(said: "Dormía cuando sonó", valid: true, analysis: "Les deux temps.")])
+        #expect(review.lemmasProduced == ["dormir", "sonar"])
+        #expect(sent["level"] as? String == "A2")
+        #expect((sent["objective"] as? [String: Any])?["id"] as? String == "obj_031")
+    }
+
+    @Test("Sans objectif ni spaCy, les champs nouveaux sont absents, pas une erreur")
+    func reviewOld() async throws {
+        let session = StubProtocol.session(host: "conv1.ts.net") { _ in (200, Data(#"{"corrections":[]}"#.utf8)) }
+        let client = ConversationClient(baseURL: URL(string: "https://conv1.ts.net")!, session: session)
+        let review = try await client.review(history: [])
+        #expect(review == ConversationReview(corrections: []))
+    }
+
+    @Test("Le calibrage : le micro se tait après la limite, le récapitulatif reçoit l'objectif")
+    func turnLimit() async {
+        let service = ScriptedService()
+        let session = ConversationSession(service: service, sound: FakeSound())
+        session.profile = ConversationProfile(level: "A2", objective: Self.objective)
+        session.turnLimit = 1
+        await session.open()
+        await session.toggleMic()
+        await session.toggleMic()
+        #expect(session.learnerTurns == 1)
+        #expect(session.reachedLimit)
+        await session.toggleMic()
+        #expect(session.phase == .ready)
+        await session.requestReview()
+        #expect(service.reviewedObjectives == [Self.objective])
+        #expect(session.lastReview?.lemmasProduced == ["ir", "mercado"])
     }
 }

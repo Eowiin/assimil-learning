@@ -122,8 +122,13 @@ verdict.
      reconnus. Le vocabulaire connu reste une frontière de rang (`lexiconEstimate`),
      pas des milliers de lignes `LexemeState` : un statut ne descend jamais, une
      frontière se déplace au test suivant. API 2.
-   - **3c, la conversation de calibrage** : 5 répliques au niveau proposé ; plus de la
-     moitié des phrases corrigées propose un niveau plus bas, Ethan tranche.
+   - **3c, la conversation de calibrage** (`CalibrationOutcome`, `ConversationCalibration`) :
+     5 réponses, l'IA au niveau des défis, avec l'objectif de départ et les lemmes connus
+     (frontière + mots reconnus, `KnownVocabulary`). Sur 3 phrases au moins, plus de la
+     moitié corrigées propose un cran plus bas ; Ethan tranche. Les lemmes produits
+     comptent tout de suite (reconnus, actifs au deuxième jour de production) ; l'objectif
+     jugé est gardé dans le passage, sans preuve (une seule tentative ne dit rien).
+     Passable, et sautée sans le module conversation.
    - **3d, les sons** : 6 phrases lues à froid (θ, jota, r, v), jugées par
      `/pronunciation`, gardées comme les autres prises.
 4. **La séance du jour** : les 4 blocs, branchés sur l'accueil à côté de la séance

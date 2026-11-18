@@ -2,8 +2,8 @@ import SwiftUI
 import SwiftData
 
 /// Le test de niveau du moteur adaptatif (`docs/moteur-adaptatif.md`, étape 3) : le
-/// vocabulaire, sur l'iPhone, puis les défis, jugés par le serveur, et le résultat à
-/// valider. Chaque partie est gardée dans le passage non validé (`PlacementResult`) :
+/// vocabulaire, sur l'iPhone, puis les défis, jugés par le serveur, une courte
+/// conversation de calibrage, et le résultat à valider. Chaque partie est gardée dans le passage non validé (`PlacementResult`) :
 /// le test reprend où il s'était arrêté.
 struct PlacementView: View {
     let pack: CurriculumPack
@@ -18,6 +18,9 @@ struct PlacementView: View {
         case vocabulary(VocabularyTestRun)
         case vocabularyDone(VocabularyTest.Outcome)
         case challenges(ChallengeSession)
+        /// Les défis ont trouvé ce niveau ; la conversation peut le vérifier à l'oral.
+        case calibrationIntro(PlacementResult, workingLevel: String)
+        case calibration(PlacementResult, workingLevel: String, any ConversationService)
         case result(PlacementResult, workingLevel: String)
         case completed(level: String, start: CurriculumPack.Objective?)
     }
@@ -33,9 +36,11 @@ struct PlacementView: View {
                 VocabularyResultView(outcome: outcome, serverReady: server.placement != nil,
                                      redo: startVocabulary, next: startChallenges)
             case .challenges(let session):
-                ChallengeView(session: session) { working in
-                    withAnimation { stage = .result(session.result, workingLevel: working) }
-                }
+                ChallengeView(session: session) { afterChallenges(session.result, working: $0) }
+            case .calibrationIntro(let result, let working):
+                calibrationIntro(result, working: working)
+            case .calibration(let result, let working, let service):
+                ConversationView(service: service, calibration: calibration(result, working: working))
             case .result(let result, let working):
                 PlacementResultView(result: result, pack: pack, proposed: working) { validate(result, level: $0) }
             case .completed(let level, let start):
@@ -51,16 +56,98 @@ struct PlacementView: View {
         .onAppear(perform: resume)
     }
 
-    /// Un passage en cours reprend : aux défis s'il en a, sinon au résultat du vocabulaire.
+    /// Un passage en cours reprend où il en était : après les défis s'ils sont finis
+    /// (sans besoin du PC pour le résultat), aux défis s'ils sont commencés, sinon au
+    /// résultat du vocabulaire.
     private func resume() {
         guard case .intro = stage, let draft = PlacementStore.draft(language: pack.language, in: context),
               let outcome = draft.placementDetails.vocabulary
         else { return }
-        if !draft.placementDetails.challenges.isEmpty, let service = server.placement {
+        let details = draft.placementDetails
+        let start = ChallengeWalk.startLevel(vocabulary: outcome.level, challenges: pack.challenges)
+        if !details.challenges.isEmpty,
+           case .done(let working) = ChallengeWalk.next(records: details.challenges, start: start,
+                                                        challenges: pack.challenges) {
+            afterChallenges(draft, working: working)
+        } else if !details.challenges.isEmpty, let service = server.placement {
             stage = .challenges(ChallengeSession(result: draft, pack: pack, service: service, context: context))
         } else {
             stage = .vocabularyDone(outcome)
         }
+    }
+
+    /// Les défis finis : la conversation de calibrage si elle reste à faire et que le PC
+    /// la porte, sinon le résultat, au niveau qu'elle a proposé.
+    private func afterChallenges(_ result: PlacementResult, working: String) {
+        let next: Stage = if let calibration = result.placementDetails.calibration {
+            .result(result, workingLevel: calibration.proposedLevel)
+        } else if server.conversation != nil {
+            .calibrationIntro(result, workingLevel: working)
+        } else {
+            .result(result, workingLevel: working)
+        }
+        withAnimation { stage = next }
+    }
+
+    private func calibrationIntro(_ result: PlacementResult, working: String) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Une courte conversation")
+                    .font(.title2.weight(.bold))
+                Text("Les défis te placent en \(working). Pour le vérifier à l'oral, l'IA te parle à ce niveau "
+                     + "et tu réponds \(CalibrationOutcome.turns) fois, sans préparer.")
+                Text("Si plus de la moitié de tes phrases sont à corriger, le test te proposera le niveau "
+                     + "d'en dessous. C'est toi qui valides.")
+                    .foregroundStyle(.secondary)
+                Button("Commencer la conversation") {
+                    guard let service = server.conversation else { return skipCalibration(result, working: working) }
+                    withAnimation { stage = .calibration(result, workingLevel: working, service) }
+                }
+                .buttonStyle(StudyPrimaryButtonStyle())
+                .accessibilityIdentifier("calibration-start")
+                Button("Passer") { skipCalibration(result, working: working) }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("calibration-skip")
+            }
+            .padding(20)
+        }
+    }
+
+    /// Le profil de la conversation : le niveau trouvé, l'objectif de départ qu'il
+    /// donnerait, et les lemmes connus, qui font simplifier les répliques trop dures.
+    private func calibration(_ result: PlacementResult, working: String) -> ConversationCalibration {
+        let objective = PlacementCompletion.previewStart(workingLevel: working,
+                                                         records: result.placementDetails.challenges, pack: pack)
+        let states = (try? context.fetch(FetchDescriptor<LexemeState>())) ?? []
+        let profile = ConversationProfile(
+            level: working, objective: objective.map(ConversationObjective.init),
+            allowedLemmas: KnownVocabulary.lemmas(pack: pack, estimate: result.lexiconEstimate, states: states))
+        return ConversationCalibration(profile: profile, turns: CalibrationOutcome.turns) { review, turns in
+            finishCalibration(result, working: working, objectiveID: objective?.id, review: review, turns: turns)
+        }
+    }
+
+    private func finishCalibration(_ result: PlacementResult, working: String, objectiveID: String?,
+                                   review: ConversationReview?, turns: Int) {
+        guard let review, turns > 0 else { return skipCalibration(result, working: working) }
+        let outcome = CalibrationOutcome.make(review: review, learnerSentences: turns, level: working,
+                                              objectiveID: objectiveID)
+        // Ce qu'il a dit, il l'a dit : les mots comptent, que le test soit validé ou non.
+        try? KnownVocabulary.recordProduction(outcome.lemmasProduced, language: pack.language, ranks: pack.ranks,
+                                              source: ObjectiveEvidence.Source.conversation, at: .now, in: context)
+        save(outcome, in: result)
+    }
+
+    private func skipCalibration(_ result: PlacementResult, working: String) {
+        save(.skipped(level: working), in: result)
+    }
+
+    private func save(_ outcome: CalibrationOutcome, in result: PlacementResult) {
+        var details = result.placementDetails
+        details.calibration = outcome
+        result.placementDetails = details
+        try? context.save()
+        withAnimation { stage = .result(result, workingLevel: outcome.proposedLevel) }
     }
 
     private var intro: some View {
