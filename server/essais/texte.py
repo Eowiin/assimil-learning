@@ -91,6 +91,10 @@ def essayer(langue: Spacy, demande: InputRequest, sortie: Path | None) -> None:
         print(f"     {repere} {p.es}\n         {p.fr}")
     print("     (◆ : la phrase emploie l'objectif, d'après le juge)" if texte.objective_hits is not None
           else "     (le juge n'a pas répondu : phrases de l'objectif inconnues)")
+    # Les cartes de l'app (étape 4c) : le mot en gras dans sa première phrase.
+    print("\n   cartes des mots nouveaux :")
+    for o in texte.new_occurrences or []:
+        print(f"     {o.lemma:<12} phrase {o.sentence + 1:>2}, « {o.form} » : {texte.sentences[o.sentence].es}")
     if sortie is not None:
         dire(texte.sentences, sortie / llm.nom.replace(" ", "_").replace(":", "_"))
 

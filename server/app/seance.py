@@ -66,10 +66,19 @@ class Reperage(BaseModel):
     phrases: list[PhraseJugee]
 
 
+class Occurrence(BaseModel):
+    """Où l'app trouve un mot nouveau pour en faire une carte : `sentence`, la place de
+    la phrase (à partir de 0) ; `form`, le mot tel qu'il y est écrit, en minuscules."""
+    lemma: str
+    sentence: int
+    form: str
+
+
 class InputText(BaseModel):
     """`objective_hits` : les places (à partir de 0) des phrases qui emploient l'objectif,
     d'après le juge ; null s'il n'a pas répondu (le texte reste bon). `unknown_lemmas` : les lemmes inconnus, mots nouveaux exclus.
-    `new_used` : les mots nouveaux présents dans le texte."""
+    `new_used` : les mots nouveaux présents dans le texte. `new_occurrences` : la première
+    phrase de chacun, dans l'ordre de `new_used` (champ ajouté à l'étape 4c)."""
     text: str
     sentences: list[SentencePair]
     coverage: float
@@ -77,6 +86,7 @@ class InputText(BaseModel):
     new_used: list[str]
     objective_hits: list[int] | None
     attempts: int
+    new_occurrences: list[Occurrence] | None = None
 
 
 CONSIGNE_TEXTE = """Escribe un texto en español de España para un estudiante francés de \
@@ -215,7 +225,8 @@ def generer(demande: InputRequest, rediger: Rediger, langue: Langue, juger: Juge
         unknown_lemmas=couverture.inconnus,
         new_used=presents(nouveaux, langue, texte),
         objective_hits=reperer(demande.objective, redaction, juger),
-        attempts=essais)
+        attempts=essais,
+        new_occurrences=occurrences(nouveaux, langue, [p.es for p in redaction.sentences]))
 
 
 def presents(lemmes: Iterable[str], langue: Langue, texte: str) -> list[str]:
@@ -225,3 +236,17 @@ def presents(lemmes: Iterable[str], langue: Langue, texte: str) -> list[str]:
     for mot in langue.mots(texte):
         vus.update((mot.lemme, mot.forme))
     return [l for l in lemmes if l.lower() in vus]
+
+
+def occurrences(lemmes: Iterable[str], langue: Langue, phrases: list[str]) -> list[Occurrence]:
+    """Pour chaque lemme de la liste, la première phrase où il apparaît (par lemme ou par
+    forme) et la forme écrite, dans l'ordre de la liste. Un lemme absent n'y est pas."""
+    trouves: dict[str, Occurrence] = {}
+    voulus = {l.lower(): l for l in lemmes}
+    for place, phrase in enumerate(phrases):
+        for mot in langue.mots(phrase):
+            for cle in (mot.lemme, mot.forme):
+                lemme = voulus.get(cle)
+                if lemme and lemme not in trouves:
+                    trouves[lemme] = Occurrence(lemma=lemme, sentence=place, form=mot.forme)
+    return [trouves[l] for l in voulus.values() if l in trouves]

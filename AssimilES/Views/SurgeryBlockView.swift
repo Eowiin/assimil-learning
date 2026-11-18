@@ -27,9 +27,9 @@ enum SurgeryPart: String, CaseIterable, Identifiable, Hashable {
 }
 
 /// Le bloc 1, « Chirurgie » : les révisions du jour, la micro-leçon de l'objectif, puis
-/// cinq phrases sur les sons faibles. Les révisions sont celles du vocabulaire (les mots
-/// du lexique les rejoindront avec le texte du bloc 2) ; les sons, la séance de
-/// prononciation centrée sur les sons les plus ratés.
+/// cinq phrases sur les sons faibles. Les révisions sont celles du vocabulaire, les mots
+/// vus dans le texte du bloc 2 compris ; les sons, la séance de prononciation centrée
+/// sur les sons les plus ratés.
 struct SurgeryBlockContent: View {
     let session: StudySession
     let pack: CurriculumPack
@@ -41,6 +41,8 @@ struct SurgeryBlockContent: View {
     @Environment(ServerStatus.self) private var server
     @EnvironmentObject private var clock: DayClock
     @Query private var cards: [Card]
+    /// Les mots du texte du bloc 2 ont leurs cartes dans la même file.
+    @Query private var lexemes: [LexemeState]
     @Query private var dailySessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @State private var openedPart: SurgeryPart?
@@ -57,9 +59,10 @@ struct SurgeryBlockContent: View {
     private var reviewCounts: (due: Int, new: Int) {
         guard let vocabulary else { return (0, 0) }
         let now = DayClock.systemNow()
+        let lexicon = LexiconWords(states: lexemes)
         let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: vocabLessons, cards: cards,
-                                      limit: VocabStudy.newRemaining(cards, now: now)).count
-        return (VocabStudy.due(cards, in: vocabulary, now: now).count, new)
+                                      limit: VocabStudy.newRemaining(cards, now: now), lexicon: lexicon).count
+        return (VocabStudy.due(cards, in: vocabulary, lexicon: lexicon, now: now).count, new)
     }
 
     var body: some View {

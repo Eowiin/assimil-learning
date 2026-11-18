@@ -14,8 +14,8 @@ from app import main
 from app.llm import LLMIndisponible
 from app.placement import (DEJA_ATTENDUE, PAR_PAQUET, Defi, JugementNumerote, Jugements, evaluer,
                            messages_placement, trier)
-from app.seance import (InputRequest, Phrase, PhraseJugee, Redaction, Reperage, generer, presents,
-                        reperer)
+from app.seance import (InputRequest, Phrase, PhraseJugee, Redaction, Reperage, generer, occurrences,
+                        presents, reperer)
 
 # --- Le placement -------------------------------------------------------------------
 
@@ -277,6 +277,21 @@ def test_presents_par_lemme_ou_par_forme():
         "madrugar", "cumbre"]
 
 
+def test_occurrences_premiere_phrase_et_forme():
+    langue = FausseLangue({"madrugamos": "madrugar", "madrugó": "madrugar"})
+    trouvees = occurrences(["cumbre", "madrugar", "sendero"], langue,
+                           ["Madrugamos mucho.", "La cumbre, y madrugó otra vez.", "Otra cumbre."])
+    assert [(o.lemma, o.sentence, o.form) for o in trouvees] == [
+        ("cumbre", 1, "cumbre"), ("madrugar", 0, "madrugamos")]
+
+
+def test_le_texte_dit_ou_sont_les_mots_nouveaux():
+    texte = generer(demande(), Redacteur(redaction(SIMPLE)), FausseLangue(), Reperer())
+    assert [o.lemma for o in texte.new_occurrences] == texte.new_used
+    for o in texte.new_occurrences:
+        assert o.form in texte.sentences[o.sentence].es.lower()
+
+
 def test_six_a_huit_mots_nouveaux():
     with pytest.raises(ValueError):
         demande(new_lemmas=NOUVEAUX[:5])
@@ -359,7 +374,7 @@ def test_route_texte(faux):
     assert texte["text"] == SIMPLE and texte["attempts"] == 2
     assert texte["objective_hits"] == [0, 2]
     assert set(texte) == {"text", "sentences", "coverage", "unknown_lemmas", "new_used",
-                          "objective_hits", "attempts"}
+                          "objective_hits", "attempts", "new_occurrences"}
 
 
 def test_route_texte_sans_langue_503(faux):

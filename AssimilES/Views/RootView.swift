@@ -56,6 +56,8 @@ struct TodayView: View {
     /// Toutes les cartes, inactives comprises : un mot retiré ne doit pas revenir
     /// parmi les nouveaux.
     @Query private var cards: [Card]
+    /// Les mots du texte du bloc 2 ont leurs cartes dans la même file.
+    @Query private var lexemes: [LexemeState]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @Query(sort: \PlacementResult.takenAt, order: .reverse) private var placements: [PlacementResult]
@@ -88,9 +90,10 @@ struct TodayView: View {
         guard let vocabulary else { return (0, 0) }
         _ = clock.today
         let now = DayClock.systemNow()
+        let lexicon = LexiconWords(states: lexemes)
         let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: vocabLessons, cards: cards,
-                                      limit: VocabStudy.newRemaining(cards, now: now)).count
-        return (VocabStudy.due(cards, in: vocabulary, now: now).count, new)
+                                      limit: VocabStudy.newRemaining(cards, now: now), lexicon: lexicon).count
+        return (VocabStudy.due(cards, in: vocabulary, lexicon: lexicon, now: now).count, new)
     }
 
     var body: some View {

@@ -78,7 +78,7 @@ conversation ou à l'écrit deux jours différents.
 | Route | Entrée | Sortie |
 |---|---|---|
 | `POST /placement/evaluate` | `level`, `items[{objective_id, instruction, prompt, expected, also_correct, check, answer}]` (`instruction` optionnel) | `[{objective_id, verdict, analyse_courte}]`, `verdict` : `shown`, `correct_not_shown`, `wrong` |
-| `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]` (places des phrases, ou null), `attempts` |
+| `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]` (places des phrases, ou null), `attempts`, `new_occurrences[{lemma, sentence, form}]` (étape 4c) |
 | `POST /tts` | `sentences[]` (40 au plus) | `audios[{text, audio}]` : un m4a par phrase, en base64 ; `seconds` |
 | `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]` | + `coverage`, `attempts` (null sans `allowed_lemmas`) |
 | `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]` |
@@ -154,9 +154,19 @@ verdict.
      traduction cachée) ; la séance de prononciation centrée sur les sons faibles. Le
      temps du bloc compte les écrans ouverts ; le temps d'étude, lui, n'est pas compté
      deux fois.
-   - **4c, Absorption** : le texte du jour et sa voix, lus et écoutés ; les mots
-     nouveaux deviennent des cartes : recto la phrase espagnole du texte, le mot en gras ;
-     verso sa traduction, déjà générée.
+   - **4c, Absorption** (`Absorption`, `AbsorptionPreparer`, `AbsorptionBlockContent`) :
+     le texte du jour (170 mots visés) et sa voix, préparés en tâche de fond dès l'écran
+     de la séance, pendant le bloc 1. Le texte est gardé dans `StudySession.inputData`,
+     la voix sur le disque (`absorption/<séance>/NN.m4a`, demandée par paquets de 5 ;
+     seule la séance du jour garde la sienne). Lecteur phrase par phrase : écoute,
+     traduction à la demande, phrases de l'objectif marquées, mots nouveaux en gras. Les
+     mots employés passent « vus » et gardent leur première phrase sur `LexemeState`
+     (`contextES`, `contextForm`, `contextFR`, donnés par `new_occurrences`) ; un mot que
+     l'IA n'a pas employé reste inconnu, et revient. Chacun devient une carte
+     `recognize` du paquet `lexique-es`, dans la même file que les révisions (avant les
+     nouvelles d'Assimil, sous le même plafond de 20) : recto la phrase, le mot en gras ;
+     verso la traduction de la phrase. Une carte connue fait monter son mot
+     (`recognize` : reconnu ; `recall` : actif), pour Assimil comme pour le lexique.
    - **4d, Conversation** : le jeu de rôle de l'objectif, preuves et mots produits.
    - **4e, Automatisation** : ~5 min d'oral en rafale, puis un écrit de 80 à 120 mots
      corrigé, qui rappelle l'objectif à réinjecter.

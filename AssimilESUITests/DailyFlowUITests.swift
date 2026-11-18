@@ -403,6 +403,15 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["block-absorption"].waitForExistence(timeout: 5))
         waitEnabled(app.buttons["block-absorption"])
         tap(app.buttons["block-absorption"])
+        // Le texte imaginaire, préparé dès l'écran de la séance : la traduction à la
+        // demande, les mots nouveaux annoncés.
+        XCTAssertTrue(app.staticTexts["absorption-sentence-0"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["absorption-fr-1"].exists)
+        tap(app.buttons["absorption-reveal-1"])
+        XCTAssertTrue(app.staticTexts["absorption-fr-1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["absorption-new-words"].exists)
+        XCTAssertTrue(app.buttons["absorption-play-all"].exists)
+        snapshot(app, "seance-absorption")
         tap(app.buttons["block-skip"])
         waitEnabled(app.buttons["block-conversation"])
         XCTAssertTrue(app.buttons["block-absorption"].label.contains("Passé"), app.buttons["block-absorption"].label)

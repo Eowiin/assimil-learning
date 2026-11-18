@@ -9,6 +9,9 @@ struct AdaptiveSessionView: View {
     let pack: CurriculumPack
 
     @State private var openedBlock: StudyBlock?
+    @Environment(\.modelContext) private var context
+    @Environment(ServerStatus.self) private var server
+    @Environment(AbsorptionPreparer.self) private var absorption
 
     private var objective: CurriculumPack.Objective? { session.objectiveID.flatMap(pack.objective) }
     private var theme: CurriculumPack.Theme? { pack.themes.first { $0.id == session.theme } }
@@ -39,6 +42,16 @@ struct AdaptiveSessionView: View {
         .navigationDestination(item: $openedBlock) { block in
             StudyBlockView(block: block, session: session, pack: pack)
         }
+        // Le texte du bloc 2 et sa voix prennent une minute : ils se préparent pendant
+        // le bloc 1. Un appel à l'IA même si le bloc 2 est passé ensuite.
+        .onAppear(perform: prepareAbsorption)
+        .onChange(of: server.isOnline) { prepareAbsorption() }
+    }
+
+    private func prepareAbsorption() {
+        guard !blocks.isSettled(.absorption), absorption.phase(for: session) == .idle,
+              let service = server.absorption else { return }
+        absorption.prepare(session, pack: pack, service: service, in: context)
     }
 
     private var header: some View {
@@ -199,6 +212,8 @@ struct StudyBlockView: View {
         switch block {
         case .surgery:
             SurgeryBlockContent(session: session, pack: pack) { childOpen = true }
+        case .absorption:
+            AbsorptionBlockContent(session: session, pack: pack)
         default:
             Text(block.summary)
                 .font(.title3)
