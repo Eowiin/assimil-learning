@@ -3,9 +3,9 @@ from fastapi.testclient import TestClient
 from app import main
 
 
-def client(monkeypatch, gpu, moteurs=None):
+def client(monkeypatch, gpu, moteurs=None, langue=None):
     monkeypatch.setattr(main, "gpu_name", lambda: gpu)
-    return TestClient(main.create_app(moteurs=moteurs, charger=False))
+    return TestClient(main.create_app(moteurs=moteurs, charger=False, langue=langue))
 
 
 def test_health_repond_ok(monkeypatch):
@@ -24,6 +24,19 @@ def test_health_sans_carte_graphique(monkeypatch):
 def test_health_annonce_la_conversation_si_chargee(monkeypatch):
     assert client(monkeypatch, None).get("/health").json()["modules"] == []
     assert client(monkeypatch, None, moteurs=object()).get("/health").json()["modules"] == ["conversation"]
+
+
+def test_health_annonce_la_langue_si_chargee(monkeypatch):
+    from app.langue import Langue, Mot
+
+    class Faux(Langue):
+        nom = "faux"
+
+        def mots(self, texte):
+            return [Mot(f, f) for f in texte.split()]
+
+    modules = client(monkeypatch, None, moteurs=object(), langue=Faux()).get("/health").json()["modules"]
+    assert modules == ["conversation", "language"]
 
 
 def test_gpu_name_sans_nvidia_smi(monkeypatch):
