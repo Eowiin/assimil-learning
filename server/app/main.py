@@ -32,11 +32,11 @@ from .seance import InputRequest, InputText, generer
 
 VERSION = "0.2.0"
 # Monte quand une route change de forme : l'app saura qu'elle parle à un serveur
-# trop ancien ou trop récent pour elle. Ajouter une route ne la fait pas monter :
-# `modules` dit ce qui est prêt. Ajouter un champ optionnel non plus : l'app
-# d'aujourd'hui exige l'égalité (`HomeServer.supportedAPI`), monter couperait le serveur
-# de l'app sans rien lui apporter.
-API_VERSION = 1
+# trop ancien ou trop récent pour elle (elle exige l'égalité, `HomeServer.supportedAPI`).
+# Ajouter une route ne la fait pas monter : `modules` dit ce qui est prêt. 2 : le moteur
+# adaptatif (placement, texte du bloc 2, voix, objectif et lemmes), monté avec l'app qui
+# s'en sert.
+API_VERSION = 2
 
 # Le journal de uvicorn : ses messages sortent dans le terminal du serveur, sans réglage.
 journal = logging.getLogger("uvicorn.error")

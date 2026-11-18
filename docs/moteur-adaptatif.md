@@ -82,9 +82,9 @@ conversation ou à l'écrit deux jours différents.
 | `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]` |
 | `POST /writing/review` | `text`, `level`, `objective` | `corrections[]` (catégorie `orthographe` en plus), `corrected_text`, `objective_uses[]`, `lemmas_produced[]` |
 
-Tout champ nouveau est optionnel : l'app d'avant le moteur continue de marcher. Le
-serveur annonce encore l'API 1, parce que l'app exige l'égalité : il passera à 2 avec
-l'app qui la connaît. `objective_uses` est null sans `objective` ; `lemmas_produced`
+Tout champ nouveau est optionnel. Le serveur annonce l'API 2 depuis l'étape 3b, avec
+l'app qui juge les défis : l'app exige l'égalité, et une app plus ancienne voit le
+serveur hors ligne. `objective_uses` est null sans `objective` ; `lemmas_produced`
 est null si spaCy n'est pas chargé.
 
 Couverture du bloc 2 : 95 % de mots connus visés, nouvelle formulation par le LLM
@@ -113,7 +113,7 @@ verdict.
      aux non-mots). Arrêt après deux tranches de suite sous 20 %. Le niveau est celui
      du lemme dont le rang vaut l'estimation (A0 sous 150). Au-delà de 30 % de oui aux
      non-mots, l'écran prévient. Le résultat ouvre un passage non validé.
-   - **3b, les défis** : 4 défis par niveau (3 en A0), envoyés ensemble ; niveau
+   - **3b, les défis** (`ChallengeWalk`, `ChallengeSession`, `PlacementCompletion`) : 4 défis par niveau (3 en A0), envoyés ensemble ; niveau
      réussi à 3 « montré » sur 4 ; un `correct_not_shown` fait poser le défi d'un
      autre objectif du même niveau, 2 fois au plus. On monte tant que ça passe, on
      descend si le premier niveau échoue. Écran du résultat, niveau modifiable. À la

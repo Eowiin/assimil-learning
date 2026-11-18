@@ -314,6 +314,51 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["vocab-test-estimate"].waitForExistence(timeout: 5))
     }
 
+    /// Le placement entier avec le faux juge : le vocabulaire, des défis (le premier
+    /// tapé, avec un accent, les autres « Je ne sais pas »), le résultat, la validation.
+    /// Tout raté : on descend jusqu'en A0. Validé, le test quitte l'accueil et reste
+    /// dans les Réglages.
+    func testPlacementChallenges() throws {
+        let app = launch(store: newStore(), lesson: 1, fakeServer: true)
+        tap(app.buttons["start-placement"])
+        tap(app.buttons["placement-start"])
+        let unknown = app.buttons["vocab-test-unknown"]
+        XCTAssertTrue(unknown.waitForExistence(timeout: 5))
+        while unknown.exists { unknown.tap() }
+        tap(app.buttons["placement-challenges"])
+
+        let field = app.textViews["challenge-answer"].exists ? app.textViews["challenge-answer"]
+                                                              : app.textFields["challenge-answer"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("est")
+        app.buttons["accent-á"].tap()
+        XCTAssertTrue(app.buttons["challenge-submit"].isEnabled)
+        snapshot(app, "placement-defi")
+        app.buttons["challenge-submit"].tap()
+
+        let proposed = app.staticTexts["placement-proposed"]
+        var skipped = 0
+        while !proposed.exists, skipped < 40 {
+            let skip = app.buttons["challenge-skip"]
+            if skip.waitForExistence(timeout: 5) { skip.tap() }
+            skipped += 1
+        }
+        XCTAssertTrue(proposed.waitForExistence(timeout: 5))
+        XCTAssertEqual(proposed.label, "Niveau A0")
+        snapshot(app, "placement-resultat")
+
+        tap(app.buttons["placement-validate"])
+        XCTAssertTrue(app.staticTexts["placement-completed"].waitForExistence(timeout: 5))
+        snapshot(app, "placement-valide")
+        tap(app.buttons["placement-close"])
+        XCTAssertTrue(app.buttons["start-conversation"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["start-placement"].exists)
+
+        app.tabBars.buttons["Réglages"].tap()
+        XCTAssertTrue(app.buttons["settings-placement"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settings-placement"].label.contains("Niveau A0"))
+    }
+
     func testWeeklyReviewWithoutExercises() throws {
         let app = launch(store: newStore(), lesson: 7)
         XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))

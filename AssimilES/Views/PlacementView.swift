@@ -1,21 +1,25 @@
 import SwiftUI
 import SwiftData
 
-/// Le test de niveau du moteur adaptatif (`docs/moteur-adaptatif.md`, étape 3). Pour
-/// l'instant, sa première partie : le vocabulaire, sur l'iPhone, sans serveur. Le
-/// résultat est gardé dans un passage non validé (`PlacementResult`), que les
-/// parties suivantes compléteront.
+/// Le test de niveau du moteur adaptatif (`docs/moteur-adaptatif.md`, étape 3) : le
+/// vocabulaire, sur l'iPhone, puis les défis, jugés par le serveur, et le résultat à
+/// valider. Chaque partie est gardée dans le passage non validé (`PlacementResult`) :
+/// le test reprend où il s'était arrêté.
 struct PlacementView: View {
     let pack: CurriculumPack
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(ServerStatus.self) private var server
     @State private var stage: Stage = .intro
 
     private enum Stage {
         case intro
         case vocabulary(VocabularyTestRun)
         case vocabularyDone(VocabularyTest.Outcome)
+        case challenges(ChallengeSession)
+        case result(PlacementResult, workingLevel: String)
+        case completed(level: String, start: CurriculumPack.Objective?)
     }
 
     var body: some View {
@@ -26,7 +30,16 @@ struct PlacementView: View {
             case .vocabulary(let run):
                 VocabularyTestView(run: run) { finish($0) }
             case .vocabularyDone(let outcome):
-                VocabularyResultView(outcome: outcome, redo: startVocabulary)
+                VocabularyResultView(outcome: outcome, serverReady: server.placement != nil,
+                                     redo: startVocabulary, next: startChallenges)
+            case .challenges(let session):
+                ChallengeView(session: session) { working in
+                    withAnimation { stage = .result(session.result, workingLevel: working) }
+                }
+            case .result(let result, let working):
+                PlacementResultView(result: result, pack: pack, proposed: working) { validate(result, level: $0) }
+            case .completed(let level, let start):
+                completed(level: level, start: start)
             }
         }
         .frame(maxWidth: 600)
@@ -35,10 +48,17 @@ struct PlacementView: View {
         .navigationTitle("Test de niveau")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .onAppear {
-            guard case .intro = stage,
-                  let outcome = PlacementStore.draft(language: pack.language, in: context)?.placementDetails.vocabulary
-            else { return }
+        .onAppear(perform: resume)
+    }
+
+    /// Un passage en cours reprend : aux défis s'il en a, sinon au résultat du vocabulaire.
+    private func resume() {
+        guard case .intro = stage, let draft = PlacementStore.draft(language: pack.language, in: context),
+              let outcome = draft.placementDetails.vocabulary
+        else { return }
+        if !draft.placementDetails.challenges.isEmpty, let service = server.placement {
+            stage = .challenges(ChallengeSession(result: draft, pack: pack, service: service, context: context))
+        } else {
             stage = .vocabularyDone(outcome)
         }
     }
@@ -52,7 +72,8 @@ struct PlacementView: View {
                      + "Réponds « Je connais » seulement si tu sais ce que le mot veut dire.")
                 Text("Certains mots sont inventés. Dire oui à un mot inventé fait baisser le score : "
                      + "dans le doute, réponds non.")
-                Text("Environ 80 mots, 4 minutes. Le test s'arrête plus tôt si les mots deviennent trop rares.")
+                Text("Environ 80 mots, 4 minutes. Le test s'arrête plus tôt si les mots deviennent trop rares. "
+                     + "Viennent ensuite des phrases à compléter ou à traduire, corrigées par le PC.")
                     .foregroundStyle(.secondary)
                 Button("Commencer", action: startVocabulary)
                     .buttonStyle(StudyPrimaryButtonStyle())
@@ -63,6 +84,30 @@ struct PlacementView: View {
         }
     }
 
+    private func completed(level: String, start: CurriculumPack.Objective?) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Niveau \(level)")
+                    .font(.largeTitle.weight(.bold))
+                    .accessibilityIdentifier("placement-completed")
+                if let start {
+                    Text("Ton premier objectif : \(start.title)")
+                        .font(.title3)
+                } else {
+                    Text("Tous les objectifs sont acquis.")
+                        .font(.title3)
+                }
+                Text("La séance du jour partira de là. Tu pourras refaire le test dans les Réglages.")
+                    .foregroundStyle(.secondary)
+                Button("Fermer") { dismiss() }
+                    .buttonStyle(StudyPrimaryButtonStyle())
+                    .accessibilityIdentifier("placement-close")
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private func startVocabulary() {
         stage = .vocabulary(VocabularyTestRun(pack: pack))
     }
@@ -70,6 +115,19 @@ struct PlacementView: View {
     private func finish(_ outcome: VocabularyTest.Outcome) {
         PlacementStore.startWithVocabulary(outcome, language: pack.language, at: .now, in: context)
         withAnimation { stage = .vocabularyDone(outcome) }
+    }
+
+    private func startChallenges() {
+        guard let service = server.placement,
+              let draft = PlacementStore.draft(language: pack.language, in: context)
+        else { return }
+        let session = ChallengeSession(result: draft, pack: pack, service: service, context: context)
+        withAnimation { stage = .challenges(session) }
+    }
+
+    private func validate(_ result: PlacementResult, level: String) {
+        let start = try? PlacementCompletion.complete(result, workingLevel: level, pack: pack, at: .now, in: context)
+        withAnimation { stage = .completed(level: level, start: start.flatMap(pack.objective)) }
     }
 }
 
@@ -129,7 +187,10 @@ struct VocabularyTestView: View {
 /// Le résultat du vocabulaire. Les défis viendront ensuite.
 struct VocabularyResultView: View {
     let outcome: VocabularyTest.Outcome
+    /// Le PC répond et juge les défis : la suite est possible.
+    let serverReady: Bool
     let redo: () -> Void
+    let next: () -> Void
 
     var body: some View {
         ScrollView {
@@ -154,9 +215,19 @@ struct VocabularyResultView: View {
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("vocab-test-unreliable")
                 }
-                Text("La suite du test, des phrases à compléter ou à traduire, arrive avec la prochaine "
-                     + "version de l'app. Ce résultat est gardé d'ici là.")
-                    .foregroundStyle(.secondary)
+                if serverReady {
+                    Text("La suite : des phrases à compléter ou à traduire, une quinzaine, de ton niveau "
+                         + "vers le haut. Le PC les corrige par paquets.")
+                        .foregroundStyle(.secondary)
+                    Button("Continuer : les défis", action: next)
+                        .buttonStyle(StudyPrimaryButtonStyle())
+                        .accessibilityIdentifier("placement-challenges")
+                } else {
+                    Label("La suite, des phrases à compléter ou à traduire, est corrigée par le PC : "
+                          + "allume-le et lance le serveur. Ce résultat est gardé d'ici là.",
+                          systemImage: "desktopcomputer")
+                        .foregroundStyle(.secondary)
+                }
                 Button("Refaire le test de vocabulaire", systemImage: "arrow.clockwise", action: redo)
                     .buttonStyle(.bordered)
                     .accessibilityIdentifier("vocab-test-redo")

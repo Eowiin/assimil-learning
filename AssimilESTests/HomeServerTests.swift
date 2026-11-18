@@ -32,7 +32,7 @@ struct ServerStatusTests {
         ServerStatus(session: StubProtocol.session(host: "pc.ts.net", handler))
     }
 
-    private let healthy = Data(#"{"status":"ok","version":"0.1.0","api":1,"gpu":"NVIDIA GeForce RTX 5070 Ti"}"#.utf8)
+    private let healthy = Data(#"{"status":"ok","version":"0.1.0","api":2,"gpu":"NVIDIA GeForce RTX 5070 Ti"}"#.utf8)
 
     @Test("Le serveur répond : en ligne, avec sa carte graphique")
     func online() async {
@@ -43,7 +43,7 @@ struct ServerStatusTests {
         }
         await server.check(address: "pc.ts.net")
         #expect(asked?.absoluteString == "https://pc.ts.net/health")
-        #expect(server.state == .online(ServerHealth(status: "ok", version: "0.1.0", api: 1,
+        #expect(server.state == .online(ServerHealth(status: "ok", version: "0.1.0", api: 2,
                                                      gpu: "NVIDIA GeForce RTX 5070 Ti", modules: nil)))
         #expect(server.baseURL?.absoluteString == "https://pc.ts.net")
         // Un serveur 0.1 n'annonce aucun module : pas de conversation.
@@ -70,9 +70,9 @@ struct ServerStatusTests {
 
     @Test("Une autre version d'API : hors ligne, avec la raison")
     func wrongAPI() async {
-        let server = status { _ in (200, Data(#"{"status":"ok","version":"9","api":2,"gpu":null}"#.utf8)) }
+        let server = status { _ in (200, Data(#"{"status":"ok","version":"9","api":3,"gpu":null}"#.utf8)) }
         await server.check(address: "pc.ts.net")
-        #expect(server.state == .offline("Serveur en version 2, l'app attend la 1"))
+        #expect(server.state == .offline("Serveur en version 3, l'app attend la 2"))
     }
 
     @Test("PC introuvable : on pense à Tailscale")

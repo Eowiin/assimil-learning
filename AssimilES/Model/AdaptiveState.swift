@@ -253,6 +253,20 @@ final class PlacementResult {
 /// absente n'a pas encore été faite.
 struct PlacementDetails: Codable, Equatable {
     var vocabulary: VocabularyTest.Outcome?
+    /// Les défis jugés, dans l'ordre où ils ont été posés.
+    var challenges: [ChallengeRecord] = []
+
+    init(vocabulary: VocabularyTest.Outcome? = nil, challenges: [ChallengeRecord] = []) {
+        self.vocabulary = vocabulary
+        self.challenges = challenges
+    }
+
+    /// Un passage commencé avant les défis (étape 3a) n'a pas de clé `challenges`.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        vocabulary = try c.decodeIfPresent(VocabularyTest.Outcome.self, forKey: .vocabulary)
+        challenges = try c.decodeIfPresent([ChallengeRecord].self, forKey: .challenges) ?? []
+    }
 }
 
 @MainActor
