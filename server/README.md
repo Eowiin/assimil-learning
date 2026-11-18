@@ -98,7 +98,8 @@ PC n'entre dans le dépôt public :
 |---|---|---|
 | `ASSIMIL_LLM` | `ollama` | l'IA qui écrit : `ollama` (sur le PC) ou `mistral` (par l'API de Mistral) |
 | `ASSIMIL_IA` | `qwen3:8b` | le modèle Ollama |
-| `MISTRAL_API_KEY` | aucune | la clé de l'API Mistral, avec `ASSIMIL_LLM=mistral` |
+| `ASSIMIL_LLM_JUGE` | celle d'`ASSIMIL_LLM` | l'IA des jugements (récapitulatif, écrit) : `mistral` conseillé, Qwen3 8B y est peu fiable |
+| `MISTRAL_API_KEY` | aucune | la clé de l'API Mistral, avec `ASSIMIL_LLM=mistral` ou `ASSIMIL_LLM_JUGE=mistral` |
 | `ASSIMIL_MISTRAL_MODELE` | `mistral-small-latest` | le modèle de Mistral |
 | `ASSIMIL_TTS` | `xtts` | la voix : `xtts` seulement pour l'instant (`pocket`, `phonon` et `voxtral` sont prévus) |
 | `ASSIMIL_VOIX` | aucune | l'extrait de la voix que XTTS imite (wav) |

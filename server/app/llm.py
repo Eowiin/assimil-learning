@@ -3,6 +3,10 @@
 Le reste du serveur ne voit que le protocole `LLM` : une réponse libre (`chat`) ou
 une réponse qui suit un schéma (`structured`). Le choix se fait par `ASSIMIL_LLM`
 (`ollama` par défaut, ou `mistral`), voir `choisir_llm`.
+
+Les jugements (récapitulatif, écrit, placement) peuvent aller à une autre IA, par
+`ASSIMIL_LLM_JUGE` (`choisir_juge`) : à l'essai du 2026-11-18, Qwen3 8B corrigeait des
+phrases justes et jugeait l'objectif au hasard, Mistral presque sans faute.
 """
 
 from __future__ import annotations
@@ -141,3 +145,16 @@ def choisir_llm(env=os.environ) -> LLM:
         return MistralLLM(cle=env.get("MISTRAL_API_KEY", ""),
                           modele=env.get("ASSIMIL_MISTRAL_MODELE", "mistral-small-latest"))
     raise ValueError(f"ASSIMIL_LLM={choix} : choisir parmi {', '.join(LLMS)}.")
+
+
+def choisir_juge(env=os.environ, llm: LLM | None = None) -> LLM:
+    """L'IA des réponses structurées : celle d'`ASSIMIL_LLM_JUGE`, ou `llm` (celle de
+    la conversation) si la variable est vide ou désigne la même."""
+    choix = env.get("ASSIMIL_LLM_JUGE", "").strip().lower()
+    meme = env.get("ASSIMIL_LLM", "ollama").strip().lower()
+    if llm is not None and (not choix or choix == meme):
+        return llm
+    try:
+        return choisir_llm({**env, "ASSIMIL_LLM": choix or meme})
+    except ValueError as erreur:
+        raise ValueError(str(erreur).replace("ASSIMIL_LLM=", "ASSIMIL_LLM_JUGE=")) from erreur

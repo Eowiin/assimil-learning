@@ -29,6 +29,11 @@ tant que la nouvelle n'a pas fait ses preuves.
    `rewrite`) ne change rien au correcteur, à tous les niveaux.
 8. **Le LLM et la voix passent derrière des protocoles** (`LLM` : Ollama ou Mistral,
    choisi par `ASSIMIL_LLM` ; `TTS` : XTTS v2 isolé, prêt pour une voix en ligne).
+9. **Les jugements vont à Mistral** (2026-11-18), par `ASSIMIL_LLM_JUGE=mistral` :
+   récapitulatif, écrit, puis placement. La conversation reste sur Qwen3, en local. À
+   l'essai sur obj_031, Qwen3 8B corrigeait des phrases justes et jugeait l'objectif
+   au hasard (tout validé, puis tout refusé, à température 0) ; Mistral presque sans
+   faute, en 2 à 4 s.
 
 ## Le paquet `curriculum/es/`
 
