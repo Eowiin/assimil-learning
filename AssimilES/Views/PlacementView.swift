@@ -142,9 +142,11 @@ struct VocabularyResultView: View {
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
-                Text("C'est le nombre de mots parmi les 5 000 plus courants que tu reconnais, "
-                     + "corrigé par tes réponses aux mots inventés "
-                     + "(\(Self.percent(outcome.falseAlarmRate)) de oui).")
+                Text("C'est le nombre de mots que tu reconnais parmi les 5 000 plus courants.")
+                // Un pourcentage seul (« 0 % de oui ») se lisait comme le taux de oui de
+                // tout le test : on compte les mots inventés en clair.
+                Text(Self.pseudowordLine(outcome) + " " + Self.pseudowordMeaning(outcome))
+                    .accessibilityIdentifier("vocab-test-pseudowords")
                 if !outcome.isReliable {
                     Label("Beaucoup de oui aux mots inventés : l'estimation est peu sûre. "
                           + "Refais le test en ne répondant oui qu'aux mots dont tu connais le sens.",
@@ -164,7 +166,21 @@ struct VocabularyResultView: View {
         }
     }
 
-    static func percent(_ rate: Double) -> String {
-        rate.formatted(.percent.precision(.fractionLength(0)))
+    /// « Tu n'as dit oui à aucun des 20 mots inventés. » / « Tu as dit oui à 3 mots inventés sur 20. »
+    static func pseudowordLine(_ outcome: VocabularyTest.Outcome) -> String {
+        let pseudo = outcome.answers.filter(\.item.isPseudoword)
+        let yes = pseudo.filter(\.known).count
+        switch yes {
+        case 0: return "Tu n'as dit oui à aucun des \(pseudo.count) mots inventés."
+        case 1: return "Tu as dit oui à 1 mot inventé sur \(pseudo.count)."
+        default: return "Tu as dit oui à \(yes) mots inventés sur \(pseudo.count)."
+        }
+    }
+
+    static func pseudowordMeaning(_ outcome: VocabularyTest.Outcome) -> String {
+        if outcome.falseAlarmRate == 0 {
+            return "Tes « Je connais » sont fiables : l'estimation n'est pas corrigée."
+        }
+        return "L'estimation est corrigée en conséquence : elle retire la part de oui donnés au hasard."
     }
 }
