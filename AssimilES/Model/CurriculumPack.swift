@@ -12,7 +12,8 @@ import Foundation
 ///   (`server/scripts/build_lexicon.py`) ;
 /// - `pseudowords.json` : des non-mots pour le test de vocabulaire ;
 /// - `phonemes.json` : les sons et règles de prosodie, avec leur priorité pour un francophone ;
-/// - `placement_sounds.json` : les phrases lues à froid au placement (facultatif).
+/// - `placement_sounds.json` : les phrases lues à froid au placement (facultatif) ;
+/// - `themes.json` : les thèmes du texte du bloc 2, qui tournent (facultatif).
 ///
 /// Les noms de champs suivent les fichiers, écrits en français pour une part : le serveur
 /// les lit aussi, tels quels.
@@ -26,6 +27,15 @@ struct CurriculumPack: Equatable {
     let phonemes: [Phoneme]
     /// Les phrases du diagnostic des sons, au placement. Vide sans le fichier.
     var soundSentences: [String] = []
+    /// Les thèmes du bloc 2. Vide sans le fichier.
+    var themes: [Theme] = []
+
+    /// Un thème du texte du bloc 2 : `es` part dans la consigne du serveur, `fr` s'affiche.
+    struct Theme: Decodable, Equatable, Identifiable {
+        let id: String
+        let es: String
+        let fr: String
+    }
 
     struct Objective: Decodable, Equatable, Identifiable {
         let id: String
@@ -154,14 +164,16 @@ extension CurriculumPack {
         let phonemes: [Phoneme] = try read("phonemes.json", key: "phonemes", in: directory, language: language)
 
         // Ajouté à l'étape 3d : un paquet plus ancien, sans ce fichier, se lit encore.
-        let sounds: [String] = FileManager.default.fileExists(atPath: directory.appendingPathComponent("placement_sounds.json").path)
-            ? try read("placement_sounds.json", key: "sentences", in: directory, language: language) : []
+        let sounds: [String] = try readIfPresent("placement_sounds.json", key: "sentences", in: directory,
+                                                 language: language)
+        // Ajouté à l'étape 4a, facultatif lui aussi.
+        let themes: [Theme] = try readIfPresent("themes.json", key: "themes", in: directory, language: language)
 
         let pack = CurriculumPack(
             language: language, objectives: objectives,
             microlessons: Dictionary(lessons.map { ($0.objective, $0) }, uniquingKeysWith: { first, _ in first }),
             challenges: challenges, lexicon: lexicon, pseudowords: pseudowords, phonemes: phonemes,
-            soundSentences: sounds)
+            soundSentences: sounds, themes: themes)
         try pack.validate()
         return pack
     }
@@ -200,6 +212,12 @@ extension CurriculumPack {
         init(_ string: String) { stringValue = string }
         init?(stringValue: String) { self.stringValue = stringValue }
         init?(intValue: Int) { nil }
+    }
+
+    private static func readIfPresent<Item: Decodable>(_ file: String, key: String, in directory: URL,
+                                                       language: String) throws -> [Item] {
+        guard FileManager.default.fileExists(atPath: directory.appendingPathComponent(file).path) else { return [] }
+        return try read(file, key: key, in: directory, language: language)
     }
 
     private static func read<Item: Decodable>(_ file: String, key: String, in directory: URL,
