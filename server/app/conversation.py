@@ -271,7 +271,7 @@ Reglas:
 corrientes, o dilo de otra manera.
 - Mantén el sentido, el tono y la pregunta final.
 - No añadas nada: la misma longitud o más corta.
-- Responde solo con la nueva réplica, sin comillas ni comentarios."""
+- Responde solo con la nueva réplica: sin comillas, sin asteriscos, sin explicaciones ni varias versiones."""
 
 
 class Mesure(BaseModel):
@@ -309,6 +309,19 @@ def _nettoyer(texte: str) -> str:
     return texte.strip().strip("«»\"“”'").strip()
 
 
+# Une réécriture plus longue que ça n'est plus une réplique simplifiée.
+ALLONGEMENT_AU_PLUS = 1.5
+
+
+def _replique_seule(texte: str, avant: str) -> bool:
+    """La réécriture est-elle une réplique, et non un commentaire ? Mistral a rendu
+    « ¿Qué **hiciste**…? → … *(Mantiene "hiciste" porque…)* », gardé parce qu'il
+    comptait plus de mots connus (essai du 2026-11-18)."""
+    if any(marque in texte for marque in ("*", "→", "\n", "(")):
+        return False
+    return len(texte.split()) <= ALLONGEMENT_AU_PLUS * len(avant.split()) + 2
+
+
 def mesurer(premiere: str, repondre: Callable[[list[dict]], str], langue: Langue,
             connus: Iterable[str], niveau: str | None = None) -> Mesure:
     """La réplique telle quelle si l'apprenant en connaît assez de mots ; sinon, l'IA la
@@ -324,7 +337,7 @@ def mesurer(premiere: str, repondre: Callable[[list[dict]], str], langue: Langue
             texte = _nettoyer(repondre(messages_simplifier(meilleure, couverture.inconnus, niveau)))
         except LLMIndisponible:
             break
-        if not texte:
+        if not texte or not _replique_seule(texte, meilleure):
             continue
         nouvelle = langue.couverture(texte, connus)
         if nouvelle.mots and nouvelle.taux > couverture.taux:

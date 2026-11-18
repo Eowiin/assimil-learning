@@ -68,7 +68,11 @@ class OllamaLLM:
             reponse.raise_for_status()
         except httpx.HTTPError as erreur:
             raise LLMIndisponible("Ollama est-il lancé sur le PC ?") from erreur
-        return reponse.json()["message"]["content"].strip()
+        # Sans réflexion, Ollama ajoute « /no_think » au dernier message, et Qwen3 le
+        # recopie parfois dans ce qu'il cite (« Gracias para preguntar /no_think »,
+        # essai du 2026-11-18).
+        return reponse.json()["message"]["content"].replace(" /no_think", "").replace(
+            "/no_think", "").strip()
 
     def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
         return self._appel(messages, temperature)

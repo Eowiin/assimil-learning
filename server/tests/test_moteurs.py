@@ -52,6 +52,11 @@ def test_ollama_ne_coupe_la_reflexion_que_de_qwen3():
     assert "think" not in json.loads(recus[0].content)
 
 
+def test_ollama_ote_le_no_think_que_qwen3_recopie():
+    llm, _ = ollama(contenu='{"said": "Gracias para preguntar /no_think"}')
+    assert llm.chat([]) == '{"said": "Gracias para preguntar"}'
+
+
 def test_ollama_structured_impose_le_schema():
     llm, recus = ollama(contenu='{"ok": true}')
     assert llm.structured([], Verdict) == Verdict(ok=True)

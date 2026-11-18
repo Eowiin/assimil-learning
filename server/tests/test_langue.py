@@ -4,7 +4,8 @@ spaCy (sautés si `es_core_news_lg` n'est pas installé)."""
 import pytest
 
 from app.langue import Couverture, Langue, Mot, couvrir
-from app.langue.analyse import ENCLITIQUES, installe, lemme_utile, sans_accent
+from app.langue.analyse import (ENCLITIQUES, inflechir, installe, lemme_utile, sans_accent,
+                                troisieme_personne)
 
 
 class Faux(Langue):
@@ -73,6 +74,24 @@ def test_pronoms_colles(forme, verbe, pronoms):
     assert (coupe["verbe"], coupe["pronoms"]) == (verbe, pronoms)
 
 
+@pytest.mark.parametrize("forme, candidats", [
+    ("pasaste", ["pasó"]),
+    ("leíste", ["leyó"]),
+    ("hiciste", ["hició", "hizo"]),
+    ("seguiste", ["seguió", "siguió", "seguo"]),
+    ("fuiste", ["fue"]),
+    ("hacías", ["hacía"]),
+    ("cuentes", ["cuente"]),
+    ("sol", []),
+])
+def test_troisieme_personne(forme, candidats):
+    assert troisieme_personne(forme) == candidats
+
+
+def test_inflechir():
+    assert (inflechir("segu"), inflechir("dorm"), inflechir("habl")) == ("sigu", "durm", "habl")
+
+
 # --- Le vrai spaCy -----------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
@@ -110,6 +129,31 @@ def test_imperatifs(spacy_es, phrase, verbe):
 def test_imperatif_en_milieu_de_phrase(spacy_es):
     assert lemmes(spacy_es, "Cómpralo mañana y dímelo.") == ["comprar", "mañana", "y", "decir"]
     assert lemmes(spacy_es, "Dámelo, ponte el abrigo y vete.") == ["dar", "poner", "el", "abrigo", "y", "ir"]
+
+
+@pytest.mark.parametrize("phrase, verbes", [
+    # Essai du 2026-11-18 : la 2e personne du singulier, partout dans une conversation.
+    ("¿Qué hiciste ayer?", ["hacer"]),
+    ("¿Qué hiciste cuando estabas en casa?", ["hacer", "estar"]),
+    ("¿Qué hacías ayer?", ["hacer"]),
+    ("¿Te echaste a correr o buscaste un sitio?", ["echar", "correr", "buscar"]),
+    ("¿Te pusiste a correr o encontraste un lugar?", ["poner", "correr", "encontrar"]),
+    ("¿Y qué pasaste?", ["pasar"]),
+    ("¡Qué bien que me cuentes!", ["contar"]),
+    ("¿Te escondías?", ["esconder"]),
+    ("¿Seguiste en bici?", ["seguir"]),
+    ("¿Dormiste bien? ¿Leíste el libro?", ["dormir", "leer"]),
+    ("¿Qué pediste? ¿Dijiste algo? ¿Tuviste miedo?", ["pedir", "decir", "tener"]),
+])
+def test_deuxieme_personne(spacy_es, phrase, verbes):
+    trouves = lemmes(spacy_es, phrase)
+    assert all(v in trouves for v in verbes), trouves
+
+
+def test_apres_un_point_d_interrogation_le_nom_propre_reste_ecarte(spacy_es):
+    assert lemmes(spacy_es, "¿María viene?") == ["venir"]
+    assert lemmes(spacy_es, "Me gustan los días y las sandías.") == [
+        "yo", "gustar", "el", "día", "y", "el", "sandía"]
 
 
 def test_ecarte_noms_propres_nombres_ponctuation(spacy_es):

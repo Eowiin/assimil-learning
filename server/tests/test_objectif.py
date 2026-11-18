@@ -167,6 +167,16 @@ def test_une_reecriture_vide_ne_gagne_pas():
     assert mesure.texte == "zzz hola" and mesure.couverture == 0.5
 
 
+def test_une_reecriture_commentee_ou_trop_longue_est_ecartee():
+    commentee = ("¡Hola! ¿Qué **hiciste** ayer? → ¿Qué has hecho? *(Mantiene \"hiciste\" porque "
+                 "es común)*")
+    trop_longue = "hola qué tal " * 6
+    repondre, demandes = reecrivain(commentee, trop_longue)
+    mesure = mesurer("zzz hola qué tal", repondre, FausseLangue(), CONNUS)
+    assert mesure.texte == "zzz hola qué tal" and mesure.essais == 3
+    assert "sin asteriscos" in demandes[0][0]["content"]
+
+
 def test_l_ia_tombe_pendant_la_reecriture_la_premiere_sert():
     repondre, _ = reecrivain(LLMIndisponible("Ollama est-il lancé sur le PC ?"))
     mesure = mesurer("zzz hola", repondre, FausseLangue(), CONNUS)
