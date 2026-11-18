@@ -5,8 +5,8 @@ L'objectif est obj_031 (imparfait et indefinido), lu dans le paquet de l'app ; l
 un voyage en train qui tourne mal ; 7 mots nouveaux du thème, pris au-delà des lemmes
 connus. Les lemmes connus : les `-n` premiers du lexique. spaCy est chargé, ni Whisper
 ni XTTS (sauf `--tts`). Pour chaque IA, chaque version écrite : sa couverture, ses mots
-inconnus, les mots nouveaux employés, et les phrases marquées pour l'objectif ; puis le
-texte gardé, avec sa traduction.
+inconnus et les mots nouveaux employés ; puis le texte gardé, avec sa traduction et les
+phrases de l'objectif repérées par le juge (la même IA, à température 0).
 
     uv run python essais/texte.py                     # ollama, puis mistral si MISTRAL_API_KEY est là
     uv run python essais/texte.py mistral -n 1500     # un apprenant qui connaît 1 500 lemmes
@@ -73,25 +73,26 @@ def essayer(choix: str, langue: Spacy, demande: InputRequest, sortie: Path | Non
     try:
         _, duree = chrono(llm.prechauffer)
         print(f"   préchauffage : {duree:.1f} s")
-        texte, duree = chrono(generer, demande, rediger, langue)
+        texte, duree = chrono(generer, demande, rediger, langue,
+                              lambda messages, modele: llm.structured(messages, modele, temperature=0))
     except LLMIndisponible as erreur:
         print(f"   indisponible : {erreur}")
         return
     for i, (r, d) in enumerate(versions, 1):
         brut = texte_de(r)
         c = langue.couverture(brut, connus)
-        marquees = sum(p.objective for p in r.sentences)
-        print(f"\n   v{i} ({d:.1f} s) : {c.taux:.1%}, {len(brut.split())} mots, {len(r.sentences)} phrases, "
-              f"{marquees} pour l'objectif")
+        print(f"\n   v{i} ({d:.1f} s) : {c.taux:.1%}, {len(brut.split())} mots, {len(r.sentences)} phrases")
         print(f"      nouveaux : {', '.join(presents(demande.new_lemmas, langue, brut)) or '(aucun)'}")
         if c.inconnus:
             print(f"      inconnus : {', '.join(c.inconnus)}")
     print(f"\n   → gardé : {texte.coverage:.1%} en {texte.attempts} version(s), {duree:.1f} s ; "
           f"nouveaux absents : {', '.join(set(demande.new_lemmas) - set(texte.new_used)) or 'aucun'}")
+    reperes = texte.objective_hits or []
     for i, p in enumerate(texte.sentences):
-        repere = "◆" if i in texte.objective_hits else " "
+        repere = "◆" if i in reperes else " "
         print(f"     {repere} {p.es}\n         {p.fr}")
-    print("     (◆ : la phrase emploie l'objectif, d'après l'IA)")
+    print("     (◆ : la phrase emploie l'objectif, d'après le juge)" if texte.objective_hits is not None
+          else "     (le juge n'a pas répondu : phrases de l'objectif inconnues)")
     if sortie is not None:
         dire(texte.sentences, sortie / llm.nom.replace(" ", "_").replace(":", "_"))
 

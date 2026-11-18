@@ -14,7 +14,8 @@ from app import main
 from app.llm import LLMIndisponible
 from app.placement import (DEJA_ATTENDUE, PAR_PAQUET, Defi, JugementNumerote, Jugements, evaluer,
                            messages_placement, trier)
-from app.seance import InputRequest, Phrase, Redaction, generer, presents
+from app.seance import (InputRequest, Phrase, PhraseJugee, Redaction, Reperage, generer, presents,
+                        reperer)
 
 # --- Le placement -------------------------------------------------------------------
 
@@ -90,6 +91,12 @@ def test_la_consigne_et_la_mise_en_situation():
     assert "le contournent : aucune" in messages_placement([sans])[1]["content"]
 
 
+def test_l_analyse_avant_le_verdict():
+    # Le juge écrit dans l'ordre du schéma : le verdict suit son analyse.
+    assert list(JugementNumerote.model_fields) == ["numero", "analyse_courte", "verdict"]
+    assert "ne lui prête aucun mot" in messages_placement([defi("x")])[0]["content"]
+
+
 def test_par_paquets_et_dans_l_ordre():
     juge = Juge("wrong")
     defis = [defi(f"respuesta {i}", f"obj_{i:03}") for i in range(PAR_PAQUET + 3)]
@@ -133,11 +140,29 @@ def demande(**champs) -> InputRequest:
                            "new_lemmas": NOUVEAUX, "target_words": 30, **champs})
 
 
-def redaction(texte: str, objectif: tuple[int, ...] = ()) -> Redaction:
+def redaction(texte: str) -> Redaction:
     """Le texte, une phrase par point."""
     phrases = re.split(r"(?<=\.) ", texte)
-    return Redaction(sentences=[Phrase(es=p, fr=f"fr {i}", objective=i in objectif)
-                                for i, p in enumerate(phrases)])
+    return Redaction(sentences=[Phrase(es=p, fr=f"fr {i}") for i, p in enumerate(phrases)])
+
+
+class Reperer:
+    """Un faux juge pour les phrases de l'objectif : `emploie` pour les numéros donnés, et
+    un numéro hors du texte en plus."""
+
+    def __init__(self, *numeros: int, eteint: bool = False):
+        self.numeros = numeros
+        self.eteint = eteint
+        self.appels: list[list[dict]] = []
+
+    def __call__(self, messages, modele):
+        assert modele is Reperage
+        self.appels.append(messages)
+        if self.eteint:
+            raise LLMIndisponible("Mistral ne répond pas.")
+        n = len(messages[1]["content"].splitlines())
+        return Reperage(phrases=[PhraseJugee(numero=i, analyse_courte="?", emploie=i in self.numeros)
+                                 for i in [*range(1, n + 1), 99]])
 
 
 # 30 mots, tous connus ou nouveaux.
@@ -166,25 +191,30 @@ class Redacteur:
 
 
 def test_un_texte_assez_connu_est_garde_tel_quel():
-    r = Redacteur(redaction(SIMPLE, objectif=(1,)))
-    texte = generer(demande(), r, FausseLangue())
+    r, juge = Redacteur(redaction(SIMPLE)), Reperer(2)
+    texte = generer(demande(), r, FausseLangue(), juge)
     assert texte.attempts == 1 and texte.coverage == 1.0
     assert texte.text == SIMPLE
     assert texte.sentences[0].fr == "fr 0"
+    # Le juge repère les phrases de l'objectif, numérotées à partir de 1 ; places à partir de 0.
     assert texte.objective_hits == [1]
+    assert juge.appels[0][1]["content"].startswith("1. Fui a la cumbre")
+    assert "Combinaison réussie" in juge.appels[0][0]["content"]
     assert texte.unknown_lemmas == []
     assert texte.new_used == ["aprovechar", "sendero", "mochila", "cumbre", "agotado"]
     consigne = r.appels[0][0]["content"]
     assert "nivel A2" in consigne and "una excursión a la montaña" in consigne
     assert "aprovechar, madrugar" in consigne and "Dormía cuando sonó" in consigne
-    assert "Unas 30 palabras" in consigne
+    assert "Unas 30 palabras en total, en unas 3 frases" in consigne
+    # Le critère de l'objectif, pour que l'IA l'emploie vraiment.
+    assert "Combinaison réussie" in consigne
     # Les lemmes connus n'entrent jamais dans la consigne.
     assert "amigo" not in consigne
 
 
 def test_sous_92_le_texte_est_reecrit_et_le_meilleur_garde():
     r = Redacteur(redaction(DIFFICILE), redaction(SIMPLE))
-    texte = generer(demande(), r, FausseLangue())
+    texte = generer(demande(), r, FausseLangue(), Reperer())
     assert texte.attempts == 2 and texte.text == SIMPLE
     reecrire = r.appels[1]
     assert "tarta" in reecrire[0]["content"] and "aprovechar" in reecrire[0]["content"]
@@ -195,7 +225,7 @@ def test_sous_92_le_texte_est_reecrit_et_le_meilleur_garde():
 def test_au_dessus_de_92_pas_de_reecriture():
     # Un mot inconnu sur 30 : 96,7 %.
     presque = SIMPLE.replace("frío", "granizo")
-    texte = generer(demande(), Redacteur(redaction(presque)), FausseLangue())
+    texte = generer(demande(), Redacteur(redaction(presque)), FausseLangue(), Reperer())
     assert texte.attempts == 1 and texte.unknown_lemmas == ["granizo"]
 
 
@@ -204,26 +234,41 @@ def test_une_fois_reecrit_le_texte_vise_95():
     deux = SIMPLE.replace("frío", "granizo").replace("tarde", "bruma")
     moins = DIFFICILE
     r = Redacteur(redaction(moins), redaction(deux), redaction(SIMPLE))
-    texte = generer(demande(), r, FausseLangue())
+    texte = generer(demande(), r, FausseLangue(), Reperer())
     assert texte.attempts == 3 and texte.coverage == 1.0
 
 
 def test_une_version_trop_courte_ou_trop_longue_est_ecartee():
     r = Redacteur(redaction(DIFFICILE), redaction("Fui con mi amigo."),
                   redaction(" ".join([SIMPLE] * 2)))
-    texte = generer(demande(), r, FausseLangue())
+    texte = generer(demande(), r, FausseLangue(), Reperer())
     assert texte.attempts == 3 and texte.text == DIFFICILE
 
 
 def test_si_l_ia_tombe_en_reecrivant_la_meilleure_version_sert():
     r = Redacteur(redaction(DIFFICILE), LLMIndisponible("Ollama ?"))
-    texte = generer(demande(), r, FausseLangue())
+    texte = generer(demande(), r, FausseLangue(), Reperer())
     assert texte.text == DIFFICILE and texte.attempts == 2
 
 
 def test_un_texte_vide_est_une_erreur():
     with pytest.raises(LLMIndisponible):
-        generer(demande(), Redacteur(redaction("  ")), FausseLangue())
+        generer(demande(), Redacteur(redaction("  ")), FausseLangue(), Reperer())
+
+
+def test_le_juge_muet_ne_perd_pas_le_texte():
+    texte = generer(demande(), Redacteur(redaction(SIMPLE)), FausseLangue(), Reperer(eteint=True))
+    assert texte.text == SIMPLE and texte.objective_hits is None
+
+
+def test_reperer_ecarte_les_numeros_hors_texte():
+    assert reperer(demande().objective, redaction(SIMPLE), Reperer(1, 99)) == [0]
+
+
+def test_la_longueur_se_demande_aussi_en_phrases():
+    r = Redacteur(redaction(SIMPLE))
+    generer(demande(target_words=150), r, FausseLangue(), Reperer())
+    assert "Unas 150 palabras en total, en unas 12 frases" in r.appels[0][0]["content"]
 
 
 def test_presents_par_lemme_ou_par_forme():
@@ -246,11 +291,14 @@ class FauxSeance(Faux):
         super().__init__()
         self.redactions: list = []
         self.juge = Juge("correct_not_shown")
+        self.reperer = Reperer()
         self.dits: list[str] = []
 
     def structurer(self, messages, modele):
         if modele is Jugements:
             return self.juge(messages, modele)
+        if modele is Reperage:
+            return self.reperer(messages, modele)
         return super().structurer(messages, modele)
 
     def rediger(self, messages, modele):
@@ -302,7 +350,8 @@ def test_route_placement_sans_defi_422(faux):
 
 
 def test_route_texte(faux):
-    faux.redactions = [redaction(DIFFICILE), redaction(SIMPLE, objectif=(0, 2))]
+    faux.redactions = [redaction(DIFFICILE), redaction(SIMPLE)]
+    faux.reperer = Reperer(1, 3)
     corps = demande().model_dump()
     reponse = client(faux).post("/session/generate-input", json=corps)
     assert reponse.status_code == 200

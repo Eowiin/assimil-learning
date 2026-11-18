@@ -52,9 +52,12 @@ class JugementDefi(BaseModel):
 
 
 class JugementNumerote(BaseModel):
+    # L'analyse avant le verdict : le juge écrit dans l'ordre du schéma, et un verdict
+    # écrit d'abord contredisait parfois son analyse (« contourne l'objectif », puis
+    # `wrong` ; essai du 2026-11-18).
     numero: int
-    verdict: Verdict
     analyse_courte: str
+    verdict: Verdict
 
 
 class Jugements(BaseModel):
@@ -105,8 +108,12 @@ réponse et le critère. La ponctuation, les majuscules et les signes ¿ ¡ ne c
 pour les accents écrits, suis le critère. Une petite faute qui ne touche pas l'objectif \
 ne change pas le verdict si le critère est rempli : dis-la dans l'analyse.
 
-Pour chaque défi, rends "numero" (celui du défi), "verdict", et "analyse_courte" : en \
-français, une phrase qui dit pourquoi. Un jugement par défi, sans en oublier."""
+Juge la réponse telle que l'élève l'a écrite : ne lui prête aucun mot qui n'y est pas, \
+même s'il figure dans les réponses attendues.
+
+Pour chaque défi, rends "numero" (celui du défi), puis "analyse_courte" : en français, une \
+phrase qui dit ce que fait la réponse au regard du critère ; puis "verdict", qui suit ton \
+analyse. Un jugement par défi, sans en oublier."""
 
 
 def _liste(reponses: list[str]) -> str:

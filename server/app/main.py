@@ -396,7 +396,7 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
         if langue is None:
             raise HTTPException(503, "La langue (spaCy) n'est pas chargée sur ce serveur.")
         with verrou:
-            texte, duree = penser(generer, body, m.rediger, langue)
+            texte, duree = penser(generer, body, m.rediger, langue, m.structurer)
         journal.info("Texte du bloc 2 : %d versions, couverture %.0f %%, en %.1f s.",
                      texte.attempts, texte.coverage * 100, duree)
         return texte
