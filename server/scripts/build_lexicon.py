@@ -10,6 +10,7 @@
 fréquents de l'espagnol parlé, avec leur transcription castillane.
 
     uv run server/scripts/build_lexicon.py
+    uv run server/scripts/build_lexicon.py --pseudomots   # renouvelle aussi les non-mots
 
 Trois sources, téléchargées une fois dans `server/scripts/.cache/` :
 
@@ -27,9 +28,9 @@ Trois sources, téléchargées une fois dans `server/scripts/.cache/` :
 La transcription vient des règles castillanes du serveur (`coach/g2p.py` :
 distinción, /x/, /ʎ/, /r/ et /ɾ/), la même que juge la prononciation.
 
-Produit `Resources/curriculum/es/lexicon.json` et `pseudowords.json` (des non-mots
-plausibles pour le test de vocabulaire du placement, façon LexTALE), et affiche ce
-qui a été écarté, pour relecture.
+Produit `Resources/curriculum/es/lexicon.json` et, sur demande, `pseudowords.json` (des
+non-mots plausibles pour le test de vocabulaire du placement, façon LexTALE). Affiche ce
+qui a été écarté, et les verbes à relire (`LEMMES_FAUX`).
 """
 
 from __future__ import annotations
@@ -73,6 +74,16 @@ EXCLUS = {"ah", "oh", "eh", "uh", "mm", "hm", "ay", "ja", "je", "jo", "ey", "uy"
 # Les étiquettes gardées. PROPN n'en fait pas partie : un lemme qui n'a été vu
 # que comme nom propre et que le dictionnaire connaît prend NOUN.
 POS_GARDES = {"NOUN", "VERB", "ADJ", "ADV", "PRON", "DET", "ADP", "CCONJ", "SCONJ", "NUM", "INTJ", "AUX"}
+# Les lemmes que spaCy invente pour un verbe irrégulier : un infinitif bien formé, connu
+# de Hunspell, mais d'un homographe rare (« eres » → erar, « dime » → dimir). Relus à la
+# main sur la liste « infinitif absent des sous-titres » que le script affiche.
+LEMMES_FAUX = {"erar": "ser", "seriar": "ser", "dimir": "decir", "dir": "decir", "distar": "dar",
+               "rugir": "rogar", "salgar": "salir", "empecer": "empezar", "vendar": "vender",
+               "morar": "morir"}
+# Ce qu'un infinitif doit avoir été rendu comme lemme par spaCy, ailleurs, pour qu'une
+# forme conjuguée lui soit rattachée (voir `reparer`) : le compte de « asistir », rang
+# 2 500, est de 8 000.
+VU_COMME_LEMME = 200
 # Niveau estimé d'après le rang : une indication pour le placement, pas une vérité.
 NIVEAUX = [(600, "A1"), (1500, "A2"), (2800, "B1"), (4200, "B2"), (TAILLE, "C1")]
 
@@ -137,14 +148,20 @@ PAS_DES_PLURIELS = {"gracias", "lunes", "martes", "miércoles", "jueves", "viern
 def reparer(lemme: str, pos: str, comptes: Counter, dictionnaire: "Dictionnaire") -> str | None:
     """Ce que spaCy rend parfois comme lemme est une forme : un verbe conjugué
     (« quieres », « dame ») ou un pluriel (« años »). Rend le vrai lemme, le même s'il
-    est bon, ou None quand on ne sait pas le retrouver (la forme est alors écartée)."""
+    est bon, ou None quand on ne sait pas le retrouver (la forme est alors écartée).
+
+    Un infinitif n'est retenu que si spaCy l'a déjà rendu comme lemme ailleurs : pour un
+    verbe irrégulier, Hunspell ne propose qu'un homographe rare (« era » → erar,
+    « dime » → dimir, « salga » → salgar, « sería » → seriar), et le vrai verbe est
+    déjà compté par ses autres formes."""
     if pos in ("VERB", "AUX"):
         if INFINITIF.search(lemme):
             return lemme
         for forme in (lemme, CLITIQUES.sub("", lemme).translate(SANS_ACCENT)):
             if not forme or forme not in dictionnaire:
                 continue
-            infinitifs = [r for r in dictionnaire.radicaux(forme) if INFINITIF.search(r)]
+            infinitifs = [r for r in dictionnaire.radicaux(forme)
+                          if INFINITIF.search(r) and comptes[r] >= VU_COMME_LEMME]
             if infinitifs:
                 return max(infinitifs, key=lambda r: comptes[r])
         return None
@@ -161,9 +178,12 @@ def etiquette_brute(vus: Counter) -> str:
 
 
 def lemme_utile(lemme: str, pos: str) -> str:
-    """spaCy rend « hacer él » pour « hacerlo » : le lemme est le verbe."""
-    if " " in lemme and pos in ("VERB", "AUX"):
-        return lemme.split(" ")[0]
+    """spaCy rend « hacer él » pour « hacerlo » : le lemme est le verbe. Un lemme
+    inventé (`LEMMES_FAUX`) devient le vrai verbe."""
+    if pos in ("VERB", "AUX"):
+        if " " in lemme:
+            lemme = lemme.split(" ")[0]
+        return LEMMES_FAUX.get(lemme, lemme)
     return lemme
 
 
@@ -213,6 +233,7 @@ def main() -> None:
 
     comptes: Counter = Counter()
     etiquettes: dict[str, Counter] = defaultdict(Counter)
+    sources: dict[str, Counter] = defaultdict(Counter)
     ecartes: Counter = Counter()
     for forme, total in formes.items():
         vus = contexte[forme]
@@ -225,6 +246,7 @@ def main() -> None:
                 continue
             comptes[lemme] += part
             etiquettes[lemme][pos] += part
+            sources[lemme][forme] += part
 
     # Les formes prises pour des lemmes rejoignent leur lemme.
     for lemme in list(comptes):
@@ -256,13 +278,23 @@ def main() -> None:
                   "filtrés par Hunspell es_ES ; API castillane (server/app/prononciation/coach/g2p.py)",
         "lemmas": lexique,
     })
-    pseudo = pseudomots(lexique, set(formes), dictionnaire)
-    ecrire(SORTIE / "pseudowords.json", {"version": 1, "language": "es", "pseudowords": pseudo})
-
-    print(f"\n{len(lexique)} lemmes, {len(pseudo)} non-mots écrits dans {SORTIE}")
+    # Les non-mots ont été relus : ils ne changent que sur demande. Leur tirage dépend
+    # des rangs, et corriger un lemme les renouvellerait tous.
+    cible = SORTIE / "pseudowords.json"
+    if "--pseudomots" in sys.argv or not cible.exists():
+        pseudo = pseudomots(lexique, set(formes), dictionnaire)
+        ecrire(cible, {"version": 1, "language": "es", "pseudowords": pseudo})
+        print(f"\n{len(pseudo)} non-mots écrits, à relire")
+    print(f"\n{len(lexique)} lemmes écrits dans {SORTIE}")
     print("\nLes 40 masses écartées les plus lourdes (lemme proposé, forme) :")
     for cle, n in ecartes.most_common(40):
         print(f"  {round(n):>9}  {cle}")
+    # Là se repèrent les lemmes inventés pour un verbe irrégulier (`LEMMES_FAUX`).
+    print("\nLes verbes dont l'infinitif n'est pas une forme des sous-titres (verbe : formes) :")
+    for e in lexique:
+        if e["pos"] in ("VERB", "AUX") and e["lemma"] not in formes:
+            haut = ", ".join(f for f, _ in sources[e["lemma"]].most_common(6))
+            print(f"  {e['rank']:>5}  {e['lemma']} : {haut}")
     temoins = ["vino", "madre", "oficina", "universidad", "venir", "ciudad", "cerveza", "jamón"]
     rangs = {e["lemma"]: e["rank"] for e in lexique}
     print("\nTémoins :", {m: rangs.get(m) for m in temoins})
