@@ -119,6 +119,26 @@ uv run python essais/langue.py -n 800 "Siéntate y cuéntame qué pasó."
 uv run python essais/langue.py -f replique.txt
 ```
 
+## `objectif.py` : l'objectif du jour, Qwen3 et Mistral côte à côte
+
+Charge l'IA et spaCy, sans Whisper ni la voix. Sur obj_031 (imparfait et indefinido),
+niveau A2 :
+
+1. le **récapitulatif** d'une conversation aux fautes connues : corrections (celles
+   que le serveur écarte, identiques à la phrase de départ, sont marquées ✗), et
+   chaque tentative de l'objectif jugée ;
+2. la **correction d'un écrit** fautif (temps du passé, accents) et le texte corrigé ;
+3. les **répliques mesurées** de chaque mode (libre, jeu de rôle, rapide), ouverture
+   puis un tour, avec les 800 premiers lemmes comme connus : chaque version avec sa
+   couverture et ses mots inconnus, la version gardée marquée.
+
+Sous chaque partie, ce qu'un bon résultat doit trouver.
+
+```bash
+uv run python essais/objectif.py            # ollama, puis mistral si MISTRAL_API_KEY est là
+uv run python essais/objectif.py mistral -n 1500
+```
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris

@@ -8,9 +8,10 @@ l'apprenant : tout l'état reste sur l'iPhone.
 | Route | Rôle |
 |---|---|
 | `GET /health` | le voyant des Réglages : version, carte graphique, modules prêts |
-| `POST /conversation/start` | l'IA ouvre la conversation et propose un sujet ; `profile` (optionnel) : la faute à surveiller et des mots à faire reprendre |
+| `POST /conversation/start` | l'IA ouvre la conversation et propose un sujet ; `profile` (optionnel) : la faute à surveiller, des mots à faire reprendre, le niveau, l'objectif du jour, le mode (`roleplay`, `speed`) et les lemmes connus, qui font mesurer la réplique (`coverage`, `attempts`) |
 | `POST /conversation/turn` | un tour : l'audio (ou un texte), l'historique et le profil, puis ce qui a été compris et la réponse, en texte et en audio |
-| `POST /conversation/review` | le récapitulatif : les phrases fautives, corrigées et expliquées |
+| `POST /conversation/review` | le récapitulatif : les phrases fautives, corrigées et expliquées ; avec `objective`, chaque tentative de l'objectif jugée ; les lemmes produits (spaCy) |
+| `POST /writing/review` | un écrit corrigé (orthographe et accents comptés) : les phrases fautives, le texte corrigé, l'objectif jugé, les lemmes produits |
 | `POST /pronunciation` | une phrase lue (l'audio et le texte attendu) : chaque son jugé, mot par mot, avec un conseil pour chaque faute |
 
 Le plan du module est dans `docs/module-conversation.md`. Les modèles sont ceux
@@ -97,7 +98,8 @@ PC n'entre dans le dépôt public :
 |---|---|---|
 | `ASSIMIL_LLM` | `ollama` | l'IA qui écrit : `ollama` (sur le PC) ou `mistral` (par l'API de Mistral) |
 | `ASSIMIL_IA` | `qwen3:8b` | le modèle Ollama |
-| `MISTRAL_API_KEY` | aucune | la clé de l'API Mistral, avec `ASSIMIL_LLM=mistral` |
+| `ASSIMIL_LLM_JUGE` | celle d'`ASSIMIL_LLM` | l'IA des jugements (récapitulatif, écrit) : `mistral` conseillé, Qwen3 8B y est peu fiable |
+| `MISTRAL_API_KEY` | aucune | la clé de l'API Mistral, avec `ASSIMIL_LLM=mistral` ou `ASSIMIL_LLM_JUGE=mistral` |
 | `ASSIMIL_MISTRAL_MODELE` | `mistral-small-latest` | le modèle de Mistral |
 | `ASSIMIL_TTS` | `xtts` | la voix : `xtts` seulement pour l'instant (`pocket`, `phonon` et `voxtral` sont prévus) |
 | `ASSIMIL_VOIX` | aucune | l'extrait de la voix que XTTS imite (wav) |
@@ -145,8 +147,12 @@ connus de l'apprenant. Les noms propres, les nombres et la ponctuation ne compte
 pas ; un mot est connu si son lemme ou sa forme est dans la liste envoyée par l'app.
 spaCy rate souvent l'impératif à pronom collé (« dímelo », « siéntate ») : ces mots-là
 sont relus à part (`analyse.py`). Le modèle tourne sur le processeur, en 1 à 2 ms
-par phrase. Aucune route ne s'en sert encore ; il sera le vérificateur des
-répliques et du texte du bloc 2.
+par phrase. Il mesure les répliques de la conversation quand l'app envoie les lemmes
+connus (`allowed_lemmas`) : sous 85 %, l'IA réécrit la sienne plus simple, en recevant
+les mots inconnus, deux fois au plus, et la meilleure version est gardée. Les mots du
+profil (`words`) et ceux de la dernière phrase de l'apprenant comptent comme connus.
+Il donne aussi les lemmes produits par l'apprenant au récapitulatif et à l'écrit. Il
+sera ensuite le vérificateur du texte du bloc 2.
 
 Pour voir ses lemmes et sa couverture sur des phrases à soi :
 `uv run python essais/langue.py` (voir le fichier).

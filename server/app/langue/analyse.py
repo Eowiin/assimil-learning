@@ -9,6 +9,12 @@ reste « cuéntame », « Cómpralo » en tête de phrase passe pour un nom prop
 aussi les impératifs irréguliers courts (« ven », « haz »). `reparer` reprend ces
 mots-là, et eux seuls : ceux où spaCy a visiblement échoué (`rate`). Une réparation
 n'est gardée que si le verbe trouvé existe dans le vocabulaire du modèle.
+
+Il rate enfin la deuxième personne du singulier, rare dans ses textes d'entraînement
+et partout dans une conversation : « hiciste », « hacías », « cuentes » restent tels
+quels, « pasaste » devient « pasastar », « escondías » passe pour un nom. La même
+forme à la troisième personne (« hizo », « hacía », « pasó », « cuente »), il la
+lemmatise sans faute : `troisieme_personne` la fabrique (essai du 2026-11-18).
 """
 
 from __future__ import annotations
@@ -53,6 +59,41 @@ MONOSYLLABES = {"di", "haz", "pon", "ven", "sal", "ten", "ve", "da"}
 
 INFINITIF = re.compile(r"^[a-zñü]*(?:ar|er|ir|ír)$")  # « ir » compris
 
+# Le passé simple de « tú » dont la 3e personne ne se déduit pas de la terminaison.
+TU_IRREGULIERS = {"fuiste": "fue", "diste": "dio", "viste": "vio"}
+
+# Un pronom devant un mot pris pour un nom : « te escondías » est un verbe.
+CLITIQUES = {"me", "te", "se", "nos", "os", "lo", "la", "le", "los", "las", "les"}
+
+
+def troisieme_personne(forme: str) -> list[str]:
+    """La même forme à la 3e personne, si `forme` peut être une 2e personne du
+    singulier ; plusieurs essais quand la terminaison ne suffit pas à trancher.
+    « hiciste » : « hició » (régulier), puis « hizo » ; « seguiste » : « siguió »."""
+    if forme in TU_IRREGULIERS:
+        return [TU_IRREGULIERS[forme]]
+    if forme.endswith("íste"):                       # leíste → leyó
+        return [forme[:-4] + "yó"]
+    if forme.endswith("aste"):                       # pasaste → pasó
+        return [forme[:-4] + "ó"]
+    if forme.endswith("iste"):
+        radical = forme[:-4]
+        fort = radical[:-1] + "z" if radical.endswith("c") else radical
+        candidats = [radical + "ió", inflechir(radical) + "ió", fort + "o"]
+        return list(dict.fromkeys(candidats))       # comiste, seguiste, hiciste / pusiste
+    if forme.endswith("s") and len(forme) > 3:     # hacías, hablabas, cuentes, harás
+        return [forme[:-1]]
+    return []
+
+
+def inflechir(radical: str) -> str:
+    """La voyelle du radical qui change au passé simple des verbes en -ir : e → i,
+    o → u (« segu » → « sigu », « dorm » → « durm »)."""
+    for i in range(len(radical) - 1, -1, -1):
+        if radical[i] in "eo":
+            return radical[:i] + ("i" if radical[i] == "e" else "u") + radical[i + 1:]
+    return radical
+
 
 def sans_accent(mot: str) -> str:
     """L'accent écrit qu'ajoute le pronom collé (« cómpra-lo ») s'en va ; ñ et ü restent."""
@@ -78,15 +119,26 @@ def rate(token, connu) -> bool:
     - un mot accentué qui finit par un pronom, laissé tel quel ou mal lemmatisé
       (« dáselo » pris pour un nom, « vámonos » → « vámono ») ;
     - un nom propre en tête de phrase (« Cómpralo », « Come »), ou sans majuscule
-      (« ponte »). Au milieu d'une phrase, la majuscule ne trompe pas."""
+      (« ponte »). Au milieu d'une phrase, la majuscule ne trompe pas. Après « ¿ » ou
+      « ¡ », on est encore en tête (« ¿Seguiste en bici? ») ;
+    - un nom ou un adjectif juste après un pronom (« te escondías »)."""
     forme = token.text.lower()
     lemme = lemme_utile(token.lemma_.lower(), token.pos_)
     if token.pos_ == "PROPN":
-        return token.is_sent_start or token.text[0].islower()
+        return en_tete(token) or token.text[0].islower()
     if token.pos_ in ("VERB", "AUX"):
         return not INFINITIF.match(lemme) or not connu(lemme)
+    if token.pos_ in ("NOUN", "ADJ") and token.i > 0:
+        avant = token.doc[token.i - 1]
+        if avant.pos_ == "PRON" and avant.text.lower() in CLITIQUES:
+            return True
     return ((lemme == forme or not connu(lemme)) and forme != sans_accent(forme)
             and ENCLITIQUES.match(forme) is not None)
+
+
+def en_tete(token) -> bool:
+    """Le premier mot de sa phrase, la ponctuation d'ouverture (« ¿ », « ¡ ») mise à part."""
+    return all(t.is_punct for t in token.doc[token.sent.start:token.i])
 
 
 def colle(forme: str, coupe: re.Match) -> bool:
@@ -135,7 +187,12 @@ class Spacy(Langue):
             pronoms = re.findall(rf"{DATIFS}|{OBJETS}", coupe["pronoms"])
             if (lemme := self.verbe(["él", *pronoms, verbe])) is not None:
                 return lemme
-        return self.verbe(["él", forme])
+        if (lemme := self.verbe(["él", forme])) is not None:
+            return lemme
+        for candidat in troisieme_personne(forme):
+            if (lemme := self.verbe(["él", candidat])) is not None:
+                return lemme
+        return None
 
     def connu(self, mot: str) -> bool:
         return self.nlp.vocab.has_vector(mot)

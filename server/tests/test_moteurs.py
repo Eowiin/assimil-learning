@@ -9,7 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from app.conversation import Correction, Corrections
-from app.llm import LLMIndisponible, MistralLLM, OllamaLLM, choisir_llm
+from app.llm import LLMIndisponible, MistralLLM, OllamaLLM, choisir_juge, choisir_llm
 from app.moteurs import Reels, Reglages
 from app.voix import Audio, choisir_tts, en_m4a
 
@@ -50,6 +50,11 @@ def test_ollama_ne_coupe_la_reflexion_que_de_qwen3():
     llm, recus = ollama(modele="mistral-nemo")
     llm.chat([])
     assert "think" not in json.loads(recus[0].content)
+
+
+def test_ollama_ote_le_no_think_que_qwen3_recopie():
+    llm, _ = ollama(contenu='{"said": "Gracias para preguntar /no_think"}')
+    assert llm.chat([]) == '{"said": "Gracias para preguntar"}'
 
 
 def test_ollama_structured_impose_le_schema():
@@ -132,6 +137,22 @@ def test_choisir_mistral():
     assert isinstance(llm, MistralLLM) and llm.modele == "mistral-medium-latest"
 
 
+def test_le_juge_est_la_meme_ia_sans_variable():
+    llm = choisir_llm({})
+    assert choisir_juge({}, llm) is llm
+    assert choisir_juge({"ASSIMIL_LLM_JUGE": " Ollama "}, llm) is llm
+
+
+def test_le_juge_peut_etre_mistral():
+    juge = choisir_juge({"ASSIMIL_LLM_JUGE": "mistral", "MISTRAL_API_KEY": "x"}, choisir_llm({}))
+    assert isinstance(juge, MistralLLM)
+
+
+def test_juge_inconnu_nomme_la_bonne_variable():
+    with pytest.raises(ValueError, match="ASSIMIL_LLM_JUGE=gpt"):
+        choisir_juge({"ASSIMIL_LLM_JUGE": "gpt"}, choisir_llm({}))
+
+
 def test_choix_inconnu():
     with pytest.raises(ValueError, match="ollama, mistral"):
         choisir_llm({"ASSIMIL_LLM": "gpt"})
@@ -204,6 +225,17 @@ def test_reels_assemble_sans_changer_les_reglages_de_la_conversation():
     # Une réplique à 0.7, une correction à 0, comme avant les protocoles.
     assert llm.appels == [("chat", 0.7), ("structured", 0)]
     assert reels.dire("Hola") == b"m4a:Hola"
+
+
+def test_les_jugements_vont_au_juge(monkeypatch):
+    llm, juge = FauxLLM(), FauxLLM()
+    reels = Reels(Reglages(), FauxWhisper(), llm, FauxTTS(), juge=juge)
+    reels.repondre([])
+    reels.structurer([], Corrections)
+    assert llm.appels == [("chat", 0.7)] and juge.appels == [("structured", 0)]
+    monkeypatch.setattr(reels, "ecouter", lambda audio, contexte=None: "hola")
+    reels.prechauffer()
+    assert juge.appels[-1] == ("prechauffer", None)
 
 
 def test_le_prechauffage_passe_par_le_llm(monkeypatch):
