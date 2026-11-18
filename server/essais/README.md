@@ -139,6 +139,32 @@ uv run python essais/objectif.py            # ollama, puis mistral si MISTRAL_AP
 uv run python essais/objectif.py mistral -n 1500
 ```
 
+## `placement.py` : les défis du placement, Qwen3 et Mistral côte à côte
+
+Charge l'IA seule. Douze défis du paquet (A1 à B2), trois réponses chacun en général :
+une qui montre l'objectif, une juste qui le contourne, une fausse. Aucune n'est
+identique au paquet : toutes vont au juge. Chaque verdict s'affiche à côté de celui
+qu'on attend (deux sont acceptés quand le cas se discute), avec l'analyse des
+désaccords, puis le score et le temps de chaque appel (paquets de 10).
+
+```bash
+uv run python essais/placement.py            # ollama, puis mistral si MISTRAL_API_KEY est là
+uv run python essais/placement.py mistral -v # toutes les analyses
+```
+
+## `texte.py` : le texte du bloc 2, Qwen3 et Mistral côte à côte
+
+Charge l'IA et spaCy. obj_031, niveau A2, un voyage en train qui tourne mal, 7 mots
+nouveaux du thème, 150 mots visés, les 800 premiers lemmes comme connus. Chaque version
+écrite s'affiche avec sa couverture, ses inconnus, les mots nouveaux employés et les
+phrases marquées pour l'objectif ; puis le texte gardé et sa traduction.
+
+```bash
+uv run python essais/texte.py
+uv run python essais/texte.py mistral -n 1500 --mots 250
+uv run python essais/texte.py mistral --tts essais/sortie/texte   # et les m4a (XTTS)
+```
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris

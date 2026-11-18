@@ -12,6 +12,9 @@ l'apprenant : tout l'état reste sur l'iPhone.
 | `POST /conversation/turn` | un tour : l'audio (ou un texte), l'historique et le profil, puis ce qui a été compris et la réponse, en texte et en audio |
 | `POST /conversation/review` | le récapitulatif : les phrases fautives, corrigées et expliquées ; avec `objective`, chaque tentative de l'objectif jugée ; les lemmes produits (spaCy) |
 | `POST /writing/review` | un écrit corrigé (orthographe et accents comptés) : les phrases fautives, le texte corrigé, l'objectif jugé, les lemmes produits |
+| `POST /placement/evaluate` | les défis du placement, un verdict chacun : `shown` (l'objectif montré), `correct_not_shown` (juste, mais sans l'objectif), `wrong` |
+| `POST /session/generate-input` | le texte du bloc 2, phrase par phrase avec la traduction, mesuré par spaCy (95 % de mots connus visés, réécrit sous 92 %) |
+| `POST /tts` | des phrases à voix haute, un .m4a par phrase |
 | `POST /pronunciation` | une phrase lue (l'audio et le texte attendu) : chaque son jugé, mot par mot, avec un conseil pour chaque faute |
 
 Le plan du module est dans `docs/module-conversation.md`. Les modèles sont ceux
@@ -130,7 +133,7 @@ Refais l'étape 3 en 4G ou en 5G, Wi-Fi coupé : c'est le cas « de n'importe o�
 La réponse ressemble à :
 
 ```json
-{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation", "pronunciation", "language"]}
+{"status": "ok", "version": "0.2.0", "api": 1, "gpu": "NVIDIA GeForce RTX 5070 Ti", "modules": ["conversation", "placement", "session_input", "tts", "pronunciation", "language"]}
 ```
 
 Si la prononciation ou la langue ne se chargent pas, le serveur démarre quand même :
@@ -152,7 +155,10 @@ connus (`allowed_lemmas`) : sous 85 %, l'IA réécrit la sienne plus simple, en 
 les mots inconnus, deux fois au plus, et la meilleure version est gardée. Les mots du
 profil (`words`) et ceux de la dernière phrase de l'apprenant comptent comme connus.
 Il donne aussi les lemmes produits par l'apprenant au récapitulatif et à l'écrit. Il
-sera ensuite le vérificateur du texte du bloc 2.
+vérifie enfin le texte du bloc 2 (`app/seance.py`) : sous 92 % de mots connus, l'IA le
+réécrit, deux fois au plus, jusqu'à 95 % ; les mots nouveaux du jour comptent comme
+connus. Sans spaCy, `/session/generate-input` répond 503 et `modules` ne cite pas
+`session_input`.
 
 Pour voir ses lemmes et sa couverture sur des phrases à soi :
 `uv run python essais/langue.py` (voir le fichier).
@@ -186,6 +192,27 @@ La réponse, pour une jota et un r dits à la française (extrait) :
 
 `hint` marque un simple indice, pas une faute : un r roulé dit battu, ce que font
 beaucoup de natifs. Une phrase prend environ 0,2 s.
+
+## Le placement, le texte et la voix sans l'app
+
+```bash
+# Un défi jugé (les champs viennent de placement_challenges.json, plus la réponse)
+curl -s localhost:8000/placement/evaluate -H 'Content-Type: application/json' -d '{"level": "B1",
+  "items": [{"objective_id": "obj_064", "instruction": "Complète avec une supposition.",
+             "prompt": "—¿Dónde está Ana? —No sé, ___ en el gimnasio.", "expected": ["estará"],
+             "also_correct": ["debe de estar"], "check": "Le futur de probabilité montre l'objectif.",
+             "answer": "No sé, debe estar en el gimnasio."}]}'
+
+# Deux phrases dites : un .m4a chacune, en base64
+curl -s localhost:8000/tts -H 'Content-Type: application/json' \
+  -d '{"sentences": ["Hacía frío.", "El tren llegó tarde."]}' \
+  | python3 -c 'import sys, json, base64
+for i, a in enumerate(json.load(sys.stdin)["audios"], 1):
+    open(f"phrase{i}.m4a", "wb").write(base64.b64decode(a["audio"]))'
+```
+
+Le texte du bloc 2 demande les lemmes connus : `essais/texte.py` l'écrit comme le
+serveur, sans passer par lui.
 
 ## Essais de modèles
 

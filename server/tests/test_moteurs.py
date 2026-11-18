@@ -238,6 +238,14 @@ def test_les_jugements_vont_au_juge(monkeypatch):
     assert juge.appels[-1] == ("prechauffer", None)
 
 
+def test_le_texte_du_bloc_2_va_au_llm_avec_de_la_variete():
+    llm, juge = FauxLLM(), FauxLLM()
+    reels = Reels(Reglages(), FauxWhisper(), llm, FauxTTS(), juge=juge)
+    reels.rediger([], Corrections)
+    # Écrire n'est pas juger : l'IA de la conversation, à 0.7.
+    assert llm.appels == [("structured", 0.7)] and juge.appels == []
+
+
 def test_le_prechauffage_passe_par_le_llm(monkeypatch):
     llm = FauxLLM()
     reels = Reels(Reglages(), FauxWhisper(), llm, FauxTTS())

@@ -13,10 +13,11 @@ from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
 
-from .langue import Langue
+from .langue import Couverture, Langue
 from .llm import LLMIndisponible
 
 M = TypeVar("M", bound=BaseModel)
+V = TypeVar("V")
 
 Niveau = Literal["A0", "A1", "A2", "B1", "B2", "C1", "C2"]
 Mode = Literal["roleplay", "speed"]
@@ -221,7 +222,13 @@ class Moteurs(Protocol):
         ...
 
     def structurer(self, messages: list[dict], modele: type[M]) -> M:
-        """Une réponse de l'IA dans un format imposé (les corrections, par exemple)."""
+        """Un jugement de l'IA dans un format imposé (les corrections, par exemple),
+        à température 0."""
+        ...
+
+    def rediger(self, messages: list[dict], modele: type[M]) -> M:
+        """Un texte écrit par l'IA dans un format imposé (le texte du bloc 2 et sa
+        traduction), avec de la variété : ce n'est pas un jugement."""
         ...
 
     def dire(self, texte: str) -> bytes:
@@ -322,27 +329,46 @@ def _replique_seule(texte: str, avant: str) -> bool:
     return len(texte.split()) <= ALLONGEMENT_AU_PLUS * len(avant.split()) + 2
 
 
+def ameliorer(premiere: V, mesure: Callable[[V], Couverture],
+              reecrire: Callable[[V, Couverture], V | None], seuil: float,
+              cible: float | None = None,
+              au_plus: int = REECRITURES_AU_PLUS) -> tuple[V, Couverture, int]:
+    """La mécanique commune à la réplique et au texte du bloc 2. La première version
+    est gardée si sa couverture atteint `seuil` ; sinon l'IA la réécrit (`reecrire`
+    reçoit la meilleure version et sa couverture, et rend None pour une version à
+    écarter), `au_plus` fois, jusqu'à `cible` (par défaut, `seuil`). La meilleure
+    version est gardée. Si l'IA tombe pendant une réécriture, la meilleure version déjà
+    écrite sert. Rend la version, sa couverture et le nombre de versions écrites."""
+    cible = seuil if cible is None else cible
+    meilleure, couverture = premiere, mesure(premiere)
+    essais = 1
+    while couverture.taux < (seuil if essais == 1 else cible) and essais <= au_plus:
+        essais += 1
+        try:
+            version = reecrire(meilleure, couverture)
+        except LLMIndisponible:
+            break
+        if version is None:
+            continue
+        nouvelle = mesure(version)
+        if nouvelle.mots and nouvelle.taux > couverture.taux:
+            meilleure, couverture = version, nouvelle
+    return meilleure, couverture, essais
+
+
 def mesurer(premiere: str, repondre: Callable[[list[dict]], str], langue: Langue,
             connus: Iterable[str], niveau: str | None = None) -> Mesure:
     """La réplique telle quelle si l'apprenant en connaît assez de mots ; sinon, l'IA la
-    réécrit en recevant les mots inconnus, deux fois au plus, et la meilleure version
-    est gardée. Si l'IA tombe pendant une réécriture, la meilleure version déjà écrite
-    sert."""
+    réécrit en recevant les mots inconnus, deux fois au plus (`ameliorer`)."""
     connus = set(connus)
-    meilleure, couverture = premiere, langue.couverture(premiere, connus)
-    essais = 1
-    while couverture.taux < SEUIL_REPLIQUE and essais <= REECRITURES_AU_PLUS:
-        essais += 1
-        try:
-            texte = _nettoyer(repondre(messages_simplifier(meilleure, couverture.inconnus, niveau)))
-        except LLMIndisponible:
-            break
-        if not texte or not _replique_seule(texte, meilleure):
-            continue
-        nouvelle = langue.couverture(texte, connus)
-        if nouvelle.mots and nouvelle.taux > couverture.taux:
-            meilleure, couverture = texte, nouvelle
-    return Mesure(texte=meilleure, couverture=round(couverture.taux, 3), essais=essais)
+
+    def reecrire(avant: str, couverture: Couverture) -> str | None:
+        texte = _nettoyer(repondre(messages_simplifier(avant, couverture.inconnus, niveau)))
+        return texte if texte and _replique_seule(texte, avant) else None
+
+    texte, couverture, essais = ameliorer(premiere, lambda t: langue.couverture(t, connus),
+                                          reecrire, SEUIL_REPLIQUE)
+    return Mesure(texte=texte, couverture=round(couverture.taux, 3), essais=essais)
 
 
 def lemmes_produits(phrases: Iterable[str], langue: Langue) -> list[str]:

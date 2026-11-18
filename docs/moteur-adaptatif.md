@@ -69,9 +69,9 @@ conversation ou à l'écrit deux jours différents.
 
 | Route | Entrée | Sortie |
 |---|---|---|
-| `POST /placement/evaluate` | `level`, `items[{objective_id, prompt, expected, also_correct, check, answer}]` | `[{objective_id, verdict, analyse_courte}]`, `verdict` : `shown`, `correct_not_shown`, `wrong` |
-| `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]`, `attempts` |
-| `POST /tts` | `sentences[]` | un m4a par phrase |
+| `POST /placement/evaluate` | `level`, `items[{objective_id, instruction, prompt, expected, also_correct, check, answer}]` (`instruction` optionnel) | `[{objective_id, verdict, analyse_courte}]`, `verdict` : `shown`, `correct_not_shown`, `wrong` |
+| `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]` (places des phrases), `attempts` |
+| `POST /tts` | `sentences[]` (40 au plus) | `audios[{text, audio}]` : un m4a par phrase, en base64 ; `seconds` |
 | `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]` | + `coverage`, `attempts` (null sans `allowed_lemmas`) |
 | `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]` |
 | `POST /writing/review` | `text`, `level`, `objective` | `corrections[]` (catégorie `orthographe` en plus), `corrected_text`, `objective_uses[]`, `lemmas_produced[]` |
@@ -82,7 +82,14 @@ l'app qui la connaît. `objective_uses` est null sans `objective` ; `lemmas_prod
 est null si spaCy n'est pas chargé.
 
 Couverture du bloc 2 : 95 % de mots connus visés, nouvelle formulation par le LLM
-sous 92 %. Les noms propres et les nombres ne comptent pas.
+sous 92 %. Les noms propres et les nombres ne comptent pas. Les mots nouveaux du jour
+comptent comme connus. Les phrases de l'objectif (`objective_hits`) sont celles que
+l'IA marque en écrivant : rien ne les juge.
+
+Au placement, une réponse vide ou identique au paquet (casse et ponctuation mises à
+part, accents gardés) est jugée sans l'IA. Les autres vont au juge par paquets de 10 ;
+un défi oublié est rejugé seul, puis la route répond 503 plutôt que d'inventer un
+verdict.
 
 ## Étapes
 

@@ -26,7 +26,9 @@ from .conversation import (Correction, CorrectionEcrite, Corrections, Correction
                            messages_tour, mesurer, vraies_corrections)
 from .langue import Langue
 from .llm import LLMIndisponible
+from .placement import JugementDefi, PlacementRequest, evaluer
 from .prononciation.jugement import par_mots
+from .seance import InputRequest, InputText, generer
 
 VERSION = "0.2.0"
 # Monte quand une route change de forme : l'app saura qu'elle parle à un serveur
@@ -101,6 +103,25 @@ class WritingReview(BaseModel):
     corrected_text: str
     objective_uses: list[UsageObjectif] | None = None
     lemmas_produced: list[str] | None = None
+
+
+# Les phrases dites en une demande : le texte du bloc 2 en compte une vingtaine.
+PHRASES_TTS_AU_PLUS = 40
+
+
+class TTSRequest(BaseModel):
+    sentences: list[str] = Field(min_length=1, max_length=PHRASES_TTS_AU_PLUS)
+
+
+class SentenceAudio(BaseModel):
+    """Une phrase et sa voix, un .m4a (AAC) en base64."""
+    text: str
+    audio: str
+
+
+class Speech(BaseModel):
+    audios: list[SentenceAudio]
+    seconds: float
 
 
 class Phone(BaseModel):
@@ -273,10 +294,14 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
         """Ce que le voyant de l'app interroge : le serveur répond, sur quelle carte,
         et quels modules sont prêts."""
         etat = request.app.state
-        modules = [nom for nom, pret in (("conversation", etat.moteurs),
-                                         ("pronunciation", etat.prononciation),
-                                         ("language", etat.langue))
-                   if pret is not None]
+        moteurs, langue = etat.moteurs is not None, etat.langue is not None
+        modules = [nom for nom, pret in (("conversation", moteurs),
+                                         ("placement", moteurs),
+                                         ("session_input", moteurs and langue),
+                                         ("tts", moteurs),
+                                         ("pronunciation", etat.prononciation is not None),
+                                         ("language", langue))
+                   if pret]
         return Health(status="ok", version=VERSION, api=API_VERSION, gpu=gpu_name(), modules=modules)
 
     @app.post("/conversation/start")
@@ -351,6 +376,43 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
                              corrected_text=recap.corrected_text,
                              objective_uses=recap.objective_uses if body.objective else None,
                              lemmas_produced=produits)
+
+    @app.post("/placement/evaluate")
+    def placement(request: Request, body: PlacementRequest) -> list[JugementDefi]:
+        """Les défis du placement, un verdict chacun : `shown`, `correct_not_shown` ou
+        `wrong`. Les réponses vides ou identiques au paquet sont triées sans l'IA."""
+        m = prets(request)
+        with verrou:
+            verdicts, duree = penser(evaluer, body.items, m.structurer, body.level)
+        journal.info("Placement : %d défis jugés en %.1f s.", len(verdicts), duree)
+        return verdicts
+
+    @app.post("/session/generate-input")
+    def generate_input(request: Request, body: InputRequest) -> InputText:
+        """Le texte du bloc 2, écrit pour l'apprenant et mesuré : 95 % de mots connus
+        visés, nouvelle formulation sous 92 %."""
+        m = prets(request)
+        langue: Langue | None = request.app.state.langue
+        if langue is None:
+            raise HTTPException(503, "La langue (spaCy) n'est pas chargée sur ce serveur.")
+        with verrou:
+            texte, duree = penser(generer, body, m.rediger, langue)
+        journal.info("Texte du bloc 2 : %d versions, couverture %.0f %%, en %.1f s.",
+                     texte.attempts, texte.coverage * 100, duree)
+        return texte
+
+    @app.post("/tts")
+    def tts(request: Request, body: TTSRequest) -> Speech:
+        """Chaque phrase à voix haute, un .m4a par phrase, dans l'ordre."""
+        m = prets(request)
+        phrases = [p.strip() for p in body.sentences]
+        if not all(phrases):
+            raise HTTPException(422, "Une phrase est vide.")
+        debut = time.perf_counter()
+        with verrou:
+            audios = [SentenceAudio(text=p, audio=base64.b64encode(m.dire(p)).decode())
+                      for p in phrases]
+        return Speech(audios=audios, seconds=round(time.perf_counter() - debut, 2))
 
     @app.post("/pronunciation")
     def pronunciation(request: Request,
