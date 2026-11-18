@@ -125,6 +125,14 @@ enum StudySessionProgress {
         update(session, blocks, at: date)
     }
 
+    /// Une partie d'un bloc faite (la micro-leçon lue, les sons travaillés…).
+    static func markPart(_ part: String, in session: StudySession, at date: Date) {
+        var blocks = session.blocks
+        guard blocks.parts[part] == nil else { return }
+        blocks.parts[part] = date
+        session.blocks = blocks
+    }
+
     /// Le temps passé dans un bloc qu'on quitte sans le finir.
     static func addTime(_ seconds: Double, to block: StudyBlock, in session: StudySession) {
         var blocks = session.blocks

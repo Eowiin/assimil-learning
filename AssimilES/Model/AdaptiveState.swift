@@ -358,6 +358,8 @@ struct StudyBlockProgress: Codable, Equatable {
     /// Passé sans être fait : on ne peut pas parler à voix haute, le PC est éteint…
     var skipped: [StudyBlock: Date] = [:]
     var seconds: [StudyBlock: Double] = [:]
+    /// Les parties d'un bloc déjà faites (« surgery.microlesson »), pour les cocher.
+    var parts: [String: Date] = [:]
 
     init() {}
 
@@ -367,6 +369,7 @@ struct StudyBlockProgress: Codable, Equatable {
         completed = try c.decodeIfPresent([StudyBlock: Date].self, forKey: .completed) ?? [:]
         skipped = try c.decodeIfPresent([StudyBlock: Date].self, forKey: .skipped) ?? [:]
         seconds = try c.decodeIfPresent([StudyBlock: Double].self, forKey: .seconds) ?? [:]
+        parts = try c.decodeIfPresent([String: Date].self, forKey: .parts) ?? [:]
     }
 
     func isSettled(_ block: StudyBlock) -> Bool { completed[block] != nil || skipped[block] != nil }

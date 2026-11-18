@@ -148,8 +148,12 @@ verdict.
      `themes.json` (une trentaine, `es` pour le serveur, `fr` affiché). Ordre fixe des
      blocs, chacun passable ; séance faite quand les quatre sont faits ou passés. Le
      temps de chaque bloc s'affiche (15 min visées), sans chronomètre qui coupe.
-   - **4b, Chirurgie** : les révisions (mots Assimil et mots du lexique, une seule
-     file), la micro-leçon de l'objectif, 5 phrases sur les sons faibles.
+   - **4b, Chirurgie** (`SurgeryBlockContent`, `MicroLessonView`) : trois parties à
+     ouvrir, cochées au retour. Les révisions reprennent celles du vocabulaire (les mots
+     du lexique les rejoignent en 4c) ; la micro-leçon de l'objectif (lignes, exemples à
+     traduction cachée) ; la séance de prononciation centrée sur les sons faibles. Le
+     temps du bloc compte les écrans ouverts ; le temps d'étude, lui, n'est pas compté
+     deux fois.
    - **4c, Absorption** : le texte du jour et sa voix, lus et écoutés ; les mots
      nouveaux deviennent des cartes : recto la phrase espagnole du texte, le mot en gras ;
      verso sa traduction, déjà générée.

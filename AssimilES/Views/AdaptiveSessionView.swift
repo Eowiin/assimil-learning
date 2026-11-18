@@ -129,8 +129,11 @@ extension StudyBlock {
     }
 }
 
-/// Un bloc de la séance. Pour l'instant une coquille : le temps passé, « Bloc fait »
-/// et « Passer ». Les étapes 4b à 4e y mettent le contenu.
+/// Un bloc de la séance : son contenu, le temps passé, « Bloc fait » et « Passer ».
+///
+/// Le temps du bloc court tant qu'il est ouvert, écrans qu'il ouvre compris (la révision,
+/// la prononciation) : c'est lui qui s'affiche et qui vise 15 min. Ces écrans inscrivent
+/// déjà leur temps d'étude ; le bloc n'inscrit que le sien propre, sans compter deux fois.
 struct StudyBlockView: View {
     let block: StudyBlock
     let session: StudySession
@@ -139,16 +142,17 @@ struct StudyBlockView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    /// Le bloc entier, écrans ouverts compris.
     @State private var clock = BlockClock()
+    /// Le bloc seul, arrêté pendant qu'un autre écran est ouvert par-dessus.
+    @State private var ownClock = BlockClock()
+    /// Une partie ouverte par-dessus le bloc : on n'en est pas sorti.
+    @State private var childOpen = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(block.summary)
-                    .font(.title3)
-                Text("Le contenu de ce bloc arrive avec les prochaines versions de l'app. "
-                     + "Tu peux déjà le marquer fait ou le passer, pour essayer la séance.")
-                    .foregroundStyle(.secondary)
+                content
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Label(Self.elapsed(clock.seconds(at: context.date) + (session.blocks.seconds[block] ?? 0)),
                           systemImage: "clock")
@@ -170,10 +174,37 @@ struct StudyBlockView: View {
         .background(StudyStyle.paper)
         .navigationTitle(block.title)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { clock.resume() }
-        .onDisappear { saveTime() }
+        .onAppear {
+            childOpen = false
+            clock.resume()
+            ownClock.resume()
+        }
+        .onDisappear {
+            ownClock.pause()
+            if !childOpen { saveTime() }
+        }
         .onChange(of: scenePhase) {
-            if scenePhase == .active { clock.resume() } else { clock.pause() }
+            if scenePhase == .active {
+                clock.resume()
+                if !childOpen { ownClock.resume() }
+            } else {
+                clock.pause()
+                ownClock.pause()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch block {
+        case .surgery:
+            SurgeryBlockContent(session: session, pack: pack) { childOpen = true }
+        default:
+            Text(block.summary)
+                .font(.title3)
+            Text("Le contenu de ce bloc arrive avec les prochaines versions de l'app. "
+                 + "Tu peux déjà le marquer fait ou le passer, pour essayer la séance.")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -190,7 +221,7 @@ struct StudyBlockView: View {
         } else {
             StudySessionProgress.complete(block, seconds: seconds, in: session, at: .now)
         }
-        StudyTime.record(seconds, as: .adaptive, in: context)
+        StudyTime.record(ownClock.take(), as: .adaptive, in: context)
         try? context.save()
         dismiss()
     }
@@ -198,9 +229,10 @@ struct StudyBlockView: View {
     /// Parti sans finir : le temps est gardé dans le bloc.
     private func saveTime() {
         let seconds = clock.take()
+        let own = ownClock.take()
         guard seconds >= 1 else { return }
         StudySessionProgress.addTime(seconds, to: block, in: session)
-        StudyTime.record(seconds, as: .adaptive, in: context)
+        StudyTime.record(own, as: .adaptive, in: context)
         try? context.save()
     }
 }
