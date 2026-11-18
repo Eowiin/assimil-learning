@@ -1,56 +1,41 @@
-"""Les vrais modèles : Whisper, l'IA par Ollama, et XTTS v2.
+"""Les vrais modèles : Whisper pour écouter, un `LLM` pour écrire, un `TTS` pour parler.
 
-Chargés une fois, au démarrage du serveur, puis gardés en mémoire graphique. Leur
-réglage passe par des variables d'environnement, pour que rien de propre au PC
-(le chemin de la voix clonée, notamment) n'entre dans le dépôt public.
+Chargés une fois, au démarrage du serveur. Leur réglage passe par des variables
+d'environnement, pour que rien de propre au PC (le chemin de la voix clonée, une
+clé d'API) n'entre dans le dépôt public. L'IA et la voix sont chacune derrière un
+protocole (`llm.py`, `voix.py`) : `Reels` ne fait que les assembler.
 """
 
 from __future__ import annotations
 
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TypeVar
 
-import httpx
+from pydantic import BaseModel
 
-from .conversation import Corrections
+from .llm import LLM, choisir_llm
+from .voix import TTS, choisir_tts, en_m4a
+
+M = TypeVar("M", bound=BaseModel)
 
 
 @dataclass(frozen=True)
 class Reglages:
-    ia: str = "qwen3:8b"
     whisper: str = "large-v3-turbo"
     appareil: str = "cuda"
-    ollama: str = "http://localhost:11434"
-    # Un extrait de 6 à 15 s de la voix à imiter. Sans lui, une voix fournie avec XTTS.
-    voix: Path | None = None
-    locuteur: str = "Ana Florence"
-    # Combien de temps Ollama garde l'IA en mémoire après le dernier tour.
-    garder_ia: str = "30m"
     # À l'essai, désactivé tant qu'il n'est pas mesuré (`essais/whisper_contexte.py`) :
     # Whisper reçoit la dernière réplique de l'IA comme amorce.
     whisper_contexte: bool = False
 
     @classmethod
-    def depuis_environnement(cls) -> "Reglages":
-        env = os.environ.get
-        voix = env("ASSIMIL_VOIX")
+    def depuis_environnement(cls, env=os.environ) -> "Reglages":
         return cls(
-            ia=env("ASSIMIL_IA", cls.ia),
-            whisper=env("ASSIMIL_WHISPER", cls.whisper),
-            appareil=env("ASSIMIL_APPAREIL", cls.appareil),
-            ollama=env("OLLAMA_HOST_URL", cls.ollama),
-            voix=Path(voix).expanduser() if voix else None,
-            locuteur=env("ASSIMIL_LOCUTEUR", cls.locuteur),
-            garder_ia=env("ASSIMIL_GARDER_IA", cls.garder_ia),
-            whisper_contexte=env("ASSIMIL_WHISPER_CONTEXTE", "") == "1",
+            whisper=env.get("ASSIMIL_WHISPER", cls.whisper),
+            appareil=env.get("ASSIMIL_APPAREIL", cls.appareil),
+            whisper_contexte=env.get("ASSIMIL_WHISPER_CONTEXTE", "") == "1",
         )
-
-
-class OllamaIndisponible(RuntimeError):
-    pass
 
 
 def decoder_16k(audio: bytes):
@@ -66,19 +51,6 @@ def decoder_16k(audio: bytes):
     return numpy.frombuffer(brut, numpy.int16).astype(numpy.float32) / 32768.0
 
 
-def encoder_aac(wav: Path) -> bytes:
-    """Le WAV de XTTS en AAC : une réponse de 4 s passe de 190 à environ 40 Ko.
-    Le conteneur MP4 a besoin d'un fichier, pas d'un flux."""
-    with tempfile.TemporaryDirectory() as dossier:
-        sortie = Path(dossier) / "reponse.m4a"
-        subprocess.run(
-            ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", str(wav),
-             "-c:a", "aac", "-b:a", "64k", "-ac", "1", str(sortie)],
-            check=True, capture_output=True,
-        )
-        return sortie.read_bytes()
-
-
 def transcrire(whisper, audio, amorce: str | None = None) -> str:
     """Whisper, l'espagnol imposé : sans ça, un accent français peut faire détecter
     du français. `amorce` (`initial_prompt`) : un texte que Whisper prend pour ce
@@ -90,17 +62,21 @@ def transcrire(whisper, audio, amorce: str | None = None) -> str:
 
 
 class Reels:
-    def __init__(self, reglages: Reglages):
-        from faster_whisper import WhisperModel
-        from TTS.api import TTS
+    """Les moteurs du serveur, tels que `conversation.Moteurs` les attend."""
 
+    def __init__(self, reglages: Reglages, whisper, llm: LLM, tts: TTS):
         self.reglages = reglages
+        self.whisper = whisper
+        self.llm = llm
+        self.tts = tts
+
+    @classmethod
+    def charger(cls, reglages: Reglages, env=os.environ) -> "Reels":
+        from faster_whisper import WhisperModel
+
         calcul = "float16" if reglages.appareil == "cuda" else "int8"
-        self.whisper = WhisperModel(reglages.whisper, device=reglages.appareil, compute_type=calcul)
-        self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(reglages.appareil)
-        if reglages.voix and not reglages.voix.exists():
-            raise FileNotFoundError(f"ASSIMIL_VOIX : {reglages.voix} introuvable")
-        self.ollama = httpx.Client(base_url=reglages.ollama, timeout=120)
+        whisper = WhisperModel(reglages.whisper, device=reglages.appareil, compute_type=calcul)
+        return cls(reglages, whisper, choisir_llm(env), choisir_tts(reglages.appareil, env))
 
     # --- Écouter --------------------------------------------------------------
 
@@ -110,48 +86,22 @@ class Reels:
 
     # --- Penser ---------------------------------------------------------------
 
-    def _chat(self, messages: list[dict], **extra) -> str:
-        corps = {"model": self.reglages.ia, "messages": messages, "stream": False,
-                 "keep_alive": self.reglages.garder_ia, **extra}
-        # Qwen3 réfléchit avant de répondre : utile pour un problème, trop lent pour
-        # une conversation.
-        if self.reglages.ia.startswith("qwen3"):
-            corps["think"] = False
-        try:
-            reponse = self.ollama.post("/api/chat", json=corps)
-            reponse.raise_for_status()
-        except httpx.HTTPError as erreur:
-            raise OllamaIndisponible(str(erreur)) from erreur
-        return reponse.json()["message"]["content"].strip()
-
     def repondre(self, messages: list[dict]) -> str:
-        return self._chat(messages, options={"temperature": 0.7})
+        return self.llm.chat(messages, temperature=0.7)
 
-    def corriger(self, messages: list[dict]) -> Corrections:
-        # Sortie structurée d'Ollama : la réponse suit le schéma, pas besoin de la
-        # découper à la main.
-        texte = self._chat(messages, format=Corrections.model_json_schema(),
-                           options={"temperature": 0})
-        return Corrections.model_validate_json(texte)
+    def structurer(self, messages: list[dict], modele: type[M]) -> M:
+        return self.llm.structured(messages, modele, temperature=0)
 
     # --- Parler ---------------------------------------------------------------
 
     def dire(self, texte: str) -> bytes:
-        with tempfile.TemporaryDirectory() as dossier:
-            wav = Path(dossier) / "reponse.wav"
-            if self.reglages.voix:
-                self.tts.tts_to_file(text=texte, speaker_wav=str(self.reglages.voix),
-                                     language="es", file_path=str(wav))
-            else:
-                self.tts.tts_to_file(text=texte, speaker=self.reglages.locuteur,
-                                     language="es", file_path=str(wav))
-            return encoder_aac(wav)
+        return en_m4a(self.tts.dire(texte))
 
     # --- Démarrage ------------------------------------------------------------
 
     def prechauffer(self) -> None:
         """Le premier passage sur la carte graphique prépare son code : 20 s au lieu
-        d'une. On le fait au démarrage, pour ne jamais le subir en conversation."""
-        audio = self.dire("Hola, ¿qué tal?")
-        self.ecouter(audio)
-        self.repondre([{"role": "user", "content": "Hola"}])
+        d'une. On le fait au démarrage, pour ne jamais le subir en conversation.
+        La voix et Whisper d'abord : si l'IA ne répond pas, ils sont déjà prêts."""
+        self.ecouter(self.dire("Hola, ¿qué tal?"))
+        self.llm.prechauffer()

@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 from app import main
 from app.conversation import (CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections, Profil, consigne,
                               note_du_tour)
-from app.moteurs import OllamaIndisponible, Reglages
+from app.llm import LLMIndisponible
+from app.moteurs import Reglages
 
 
 class Faux:
@@ -26,11 +27,12 @@ class Faux:
 
     def repondre(self, messages):
         if self.ollama_eteint:
-            raise OllamaIndisponible("connexion refusée")
+            raise LLMIndisponible("Ollama est-il lancé sur le PC ?")
         self.messages = messages
         return "¡Qué rico! ¿Lo comes con pan?"
 
-    def corriger(self, messages):
+    def structurer(self, messages, modele):
+        assert modele is Corrections
         self.messages = messages
         return Corrections(corrections=[Correction(
             said="Yo soy cansado", corrected="Estoy cansado",
