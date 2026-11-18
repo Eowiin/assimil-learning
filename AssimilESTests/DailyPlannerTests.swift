@@ -144,6 +144,18 @@ struct StudyBlockProgressTests {
         #expect(AdaptiveSessionView.detail(.surgery, blocks: session.blocks) == "Fait · 10 min")
     }
 
+    @Test("Une partie de bloc se coche une fois, et se relit")
+    func parts() throws {
+        let session = StudySession(language: "es", day: Fixture.date(day: 1), objectiveID: nil,
+                                   startedAt: Fixture.date(day: 1))
+        StudySessionProgress.markPart(SurgeryPart.microlesson.key, in: session, at: Fixture.date(day: 1, hour: 10))
+        StudySessionProgress.markPart(SurgeryPart.microlesson.key, in: session, at: Fixture.date(day: 1, hour: 11))
+        #expect(session.blocks.parts == ["surgery.microlesson": Fixture.date(day: 1, hour: 10)])
+        let decoded = try JSONDecoder().decode(StudyBlockProgress.self, from: session.blocksData)
+        #expect(decoded.parts.count == 1)
+        #expect(!decoded.isSettled(.surgery))
+    }
+
     @Test("Un avancement d'avant les blocs passés se relit")
     func oldJSON() throws {
         let blocks = try JSONDecoder().decode(StudyBlockProgress.self, from: Data(#"{"completed":{},"seconds":{}}"#.utf8))
