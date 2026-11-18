@@ -33,10 +33,11 @@ HISTORIQUE = [
     Message(role="assistant", content="¡Qué bien! ¿Y qué tal el agua?"),
     Message(role="user", content="El agua era muy fría pero me gusta mucho nadar por la mañana"),
     Message(role="assistant", content="¿Vas a volver pronto?"),
-    Message(role="user", content="Sí, voy a volver para el próximo sábado"),
+    Message(role="user", content="Sí, el sábado, y gracias para la idea"),
 ]
 # Ce qu'un bon récapitulatif doit trouver : ser/estar (« soy cansado ») et por/para
-# (« para el próximo sábado »). « El agua era muy fría » est juste.
+# (« gracias para la idea »). « El agua era muy fría » se défend, « estaba » est plus
+# naturel : le relever n'est pas une erreur. Les phrases justes ne doivent pas sortir.
 ATTENDU = ("ser/estar", "por/para")
 
 
