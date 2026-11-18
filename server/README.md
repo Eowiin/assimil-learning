@@ -17,9 +17,10 @@ l'apprenant : tout l'état reste sur l'iPhone.
 | `POST /tts` | des phrases à voix haute, un .m4a par phrase |
 | `POST /pronunciation` | une phrase lue (l'audio et le texte attendu) : chaque son jugé, mot par mot, avec un conseil pour chaque faute |
 
-Le plan du module est dans `docs/module-conversation.md`. Les modèles sont ceux
-mesurés par `essais/conversation.py` : Whisper large-v3-turbo, Qwen3 8B servi par
-Ollama, et XTTS v2.
+Le plan du module est dans `docs/module-conversation.md`. Les modèles : Whisper
+large-v3-turbo et XTTS v2 sur la carte graphique, et Mistral par son API pour écrire et
+juger. Qwen3 8B, servi par Ollama sur le PC, a été retiré le 2026-11-18 : il jugeait
+mal (28 défis du placement sur 35, contre 32 pour Mistral) et deux fois plus lentement.
 
 La prononciation (`app/prononciation/`) reprend la méthode mesurée par
 `essais/prononciation/` : un wav2vec2 phonétique sur la carte graphique, ZIPA sur le
@@ -59,8 +60,6 @@ iPhone ──HTTPS──▶ Tailscale (Windows) ── tailscale serve ──▶
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # si uv n'est pas installé
 sudo apt install ffmpeg                            # lecture et encodage de l'audio
-curl -fsSL https://ollama.com/install.sh | sh      # le moteur de l'IA
-ollama pull qwen3:8b
 cd assimil-learning/server
 uv sync                                            # PyTorch (CUDA 12.8), Whisper, XTTS : plusieurs Go
 uv run pytest -q
@@ -80,10 +79,11 @@ tailscale serve status    # doit montrer https://nom-du-pc....ts.net -> http://1
 
 ## Lancer le serveur
 
-Dans WSL2, Ollama lancé (`ollama serve`, s'il ne tourne pas déjà en service) :
+Dans WSL2 :
 
 ```bash
 cd assimil-learning/server
+export MISTRAL_API_KEY=…                   # la clé de l'API Mistral : l'IA qui écrit et juge
 export ASSIMIL_VOIX=~/voix/ma-voix.wav     # la voix clonée : un extrait de 6 à 15 s
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -99,23 +99,18 @@ PC n'entre dans le dépôt public :
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `ASSIMIL_LLM` | `ollama` | l'IA qui écrit : `ollama` (sur le PC) ou `mistral` (par l'API de Mistral) |
-| `ASSIMIL_IA` | `qwen3:8b` | le modèle Ollama |
-| `ASSIMIL_LLM_JUGE` | celle d'`ASSIMIL_LLM` | l'IA des jugements (récapitulatif, écrit) : `mistral` conseillé, Qwen3 8B y est peu fiable |
-| `MISTRAL_API_KEY` | aucune | la clé de l'API Mistral, avec `ASSIMIL_LLM=mistral` ou `ASSIMIL_LLM_JUGE=mistral` |
+| `MISTRAL_API_KEY` | aucune, obligatoire | la clé de l'API Mistral ; sans elle, le serveur ne démarre pas |
 | `ASSIMIL_MISTRAL_MODELE` | `mistral-small-latest` | le modèle de Mistral |
 | `ASSIMIL_TTS` | `xtts` | la voix : `xtts` seulement pour l'instant (`pocket`, `phonon` et `voxtral` sont prévus) |
 | `ASSIMIL_VOIX` | aucune | l'extrait de la voix que XTTS imite (wav) |
 | `ASSIMIL_LOCUTEUR` | `Ana Florence` | la voix fournie avec XTTS, sans `ASSIMIL_VOIX` |
 | `ASSIMIL_WHISPER` | `large-v3-turbo` | le modèle Whisper |
-| `ASSIMIL_GARDER_IA` | `30m` | combien de temps Ollama garde l'IA en mémoire après un tour |
 | `ASSIMIL_APPAREIL` | `cuda` | `cpu` pour essayer sans carte graphique |
 | `ASSIMIL_WHISPER_CONTEXTE` | désactivé | `1` : Whisper reçoit la dernière réplique de l'IA comme amorce. À l'essai (`essais/whisper_contexte.py`) |
 | `ASSIMIL_PRONONCIATION_MODELE` | `xlsr53` | le wav2vec2 de la prononciation : `xlsr53`, `lv60` ou `cnam` |
 
-Avec Mistral, Ollama n'a pas besoin de tourner, et les phrases de l'apprenant partent
-chez Mistral. Pour comparer les deux IA sans charger Whisper ni XTTS :
-`uv run python essais/llm.py` (voir le fichier).
+Les phrases de l'apprenant (conversation, écrit, placement) partent chez Mistral ; sans
+internet, le serveur répond 503 à ce qui demande l'IA, la prononciation continue.
 
 Si une bibliothèque CUDA est introuvable au chargement de Whisper, voir
 `essais/README.md`, « Si ça coince ».

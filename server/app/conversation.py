@@ -95,7 +95,7 @@ class Profil(BaseModel):
     allowed_lemmas: list[str] = Field(default_factory=list)
 
 
-# Une consigne courte garde Qwen3 8B rapide et concentré.
+# Une consigne courte garde l'IA rapide et concentrée.
 MOTS_AU_PLUS = 5
 # Le point qui revient : à l'ouverture, puis une réplique sur trois. À chaque tour,
 # la conversation ne parle plus que de lui.
@@ -518,7 +518,7 @@ def _a_l_oral(texte: str) -> str:
 
 
 def vraies_corrections(corrections: list[Correction], ecrit: bool = False) -> list[Correction]:
-    """Écarte une « correction » qui rend la phrase telle quelle : Qwen3 en renvoie
+    """Écarte une « correction » qui rend la phrase telle quelle : Qwen3 en renvoyait
     (essai du 2026-11-18). À l'oral, la casse, la ponctuation et les accents ne
     comptent pas ; à l'écrit, si : seule la phrase identique est écartée."""
     meme = (lambda a, b: " ".join(a.split()) == " ".join(b.split())) if ecrit else (

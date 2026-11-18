@@ -9,7 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from app.conversation import Correction, Corrections
-from app.llm import LLMIndisponible, MistralLLM, OllamaLLM, choisir_juge, choisir_llm
+from app.llm import LLMIndisponible, MistralLLM, choisir_llm
 from app.moteurs import Reels, Reglages
 from app.voix import Audio, choisir_tts, en_m4a
 
@@ -24,59 +24,6 @@ def transport(reponse, recus: list):
 
 class Verdict(BaseModel):
     ok: bool
-
-
-# --- Ollama ------------------------------------------------------------------------
-
-def ollama(contenu="¡Hola!", statut=200, modele="qwen3:8b"):
-    recus = []
-    client = httpx.Client(base_url="http://ollama", transport=transport(
-        lambda _: httpx.Response(statut, json={"message": {"content": contenu}}), recus))
-    return OllamaLLM(modele=modele, client=client), recus
-
-
-def test_ollama_chat_comme_avant():
-    llm, recus = ollama(contenu="  ¿Qué tal?  ")
-    assert llm.chat([{"role": "user", "content": "Hola"}], temperature=0.7) == "¿Qué tal?"
-    corps = json.loads(recus[0].content)
-    assert recus[0].url.path == "/api/chat"
-    assert corps["think"] is False and corps["stream"] is False
-    assert corps["keep_alive"] == "30m"
-    assert corps["options"] == {"temperature": 0.7}
-    assert "format" not in corps
-
-
-def test_ollama_ne_coupe_la_reflexion_que_de_qwen3():
-    llm, recus = ollama(modele="mistral-nemo")
-    llm.chat([])
-    assert "think" not in json.loads(recus[0].content)
-
-
-def test_ollama_ote_le_no_think_que_qwen3_recopie():
-    llm, _ = ollama(contenu='{"said": "Gracias para preguntar /no_think"}')
-    assert llm.chat([]) == '{"said": "Gracias para preguntar"}'
-
-
-def test_ollama_structured_impose_le_schema():
-    llm, recus = ollama(contenu='{"ok": true}')
-    assert llm.structured([], Verdict) == Verdict(ok=True)
-    corps = json.loads(recus[0].content)
-    assert corps["format"] == Verdict.model_json_schema()
-    assert corps["options"] == {"temperature": 0}
-
-
-def test_ollama_eteint():
-    def refuser(requete):
-        raise httpx.ConnectError("connexion refusée", request=requete)
-    llm = OllamaLLM(client=httpx.Client(base_url="http://ollama", transport=httpx.MockTransport(refuser)))
-    with pytest.raises(LLMIndisponible, match="Ollama"):
-        llm.chat([])
-
-
-def test_reponse_hors_format():
-    llm, _ = ollama(contenu='{"ok": "peut-être"}')
-    with pytest.raises(LLMIndisponible, match="format"):
-        llm.structured([], Verdict)
 
 
 # --- Mistral -----------------------------------------------------------------------
@@ -124,38 +71,37 @@ def test_le_nom_ne_montre_pas_la_cle():
     assert "cle-secrete" not in llm.nom
 
 
+def test_reponse_hors_format():
+    llm, _ = mistral(contenu='{"ok": "peut-être"}')
+    with pytest.raises(LLMIndisponible, match="format"):
+        llm.structured([], Verdict)
+
+
+def test_mistral_injoignable():
+    def refuser(requete):
+        raise httpx.ConnectError("pas de réseau")
+
+    llm = MistralLLM(cle="x", client=httpx.Client(base_url="https://mistral",
+                                                  transport=httpx.MockTransport(refuser)))
+    with pytest.raises(LLMIndisponible, match="internet"):
+        llm.chat([])
+
+
 # --- Le choix par l'environnement --------------------------------------------------
 
-def test_ollama_par_defaut():
-    llm = choisir_llm({})
-    assert isinstance(llm, OllamaLLM) and llm.modele == "qwen3:8b"
+def test_mistral_par_defaut():
+    llm = choisir_llm({"MISTRAL_API_KEY": "x"})
+    assert isinstance(llm, MistralLLM) and llm.modele == "mistral-small-latest"
 
 
-def test_choisir_mistral():
-    llm = choisir_llm({"ASSIMIL_LLM": "mistral", "MISTRAL_API_KEY": "x",
-                       "ASSIMIL_MISTRAL_MODELE": "mistral-medium-latest"})
-    assert isinstance(llm, MistralLLM) and llm.modele == "mistral-medium-latest"
+def test_le_modele_se_regle():
+    llm = choisir_llm({"MISTRAL_API_KEY": "x", "ASSIMIL_MISTRAL_MODELE": "mistral-medium-latest"})
+    assert llm.modele == "mistral-medium-latest"
 
 
-def test_le_juge_est_la_meme_ia_sans_variable():
-    llm = choisir_llm({})
-    assert choisir_juge({}, llm) is llm
-    assert choisir_juge({"ASSIMIL_LLM_JUGE": " Ollama "}, llm) is llm
-
-
-def test_le_juge_peut_etre_mistral():
-    juge = choisir_juge({"ASSIMIL_LLM_JUGE": "mistral", "MISTRAL_API_KEY": "x"}, choisir_llm({}))
-    assert isinstance(juge, MistralLLM)
-
-
-def test_juge_inconnu_nomme_la_bonne_variable():
-    with pytest.raises(ValueError, match="ASSIMIL_LLM_JUGE=gpt"):
-        choisir_juge({"ASSIMIL_LLM_JUGE": "gpt"}, choisir_llm({}))
-
-
-def test_choix_inconnu():
-    with pytest.raises(ValueError, match="ollama, mistral"):
-        choisir_llm({"ASSIMIL_LLM": "gpt"})
+def test_sans_cle_le_serveur_le_dit():
+    with pytest.raises(ValueError, match="MISTRAL_API_KEY"):
+        choisir_llm({})
 
 
 @pytest.mark.parametrize("prevu", ["pocket", "phonon", "voxtral"])
@@ -227,23 +173,12 @@ def test_reels_assemble_sans_changer_les_reglages_de_la_conversation():
     assert reels.dire("Hola") == b"m4a:Hola"
 
 
-def test_les_jugements_vont_au_juge(monkeypatch):
-    llm, juge = FauxLLM(), FauxLLM()
-    reels = Reels(Reglages(), FauxWhisper(), llm, FauxTTS(), juge=juge)
-    reels.repondre([])
-    reels.structurer([], Corrections)
-    assert llm.appels == [("chat", 0.7)] and juge.appels == [("structured", 0)]
-    monkeypatch.setattr(reels, "ecouter", lambda audio, contexte=None: "hola")
-    reels.prechauffer()
-    assert juge.appels[-1] == ("prechauffer", None)
-
-
-def test_le_texte_du_bloc_2_va_au_llm_avec_de_la_variete():
-    llm, juge = FauxLLM(), FauxLLM()
-    reels = Reels(Reglages(), FauxWhisper(), llm, FauxTTS(), juge=juge)
+def test_une_seule_ia_ecrit_et_juge():
+    llm = FauxLLM()
+    reels = Reels(Reglages(), FauxWhisper(), llm, FauxTTS())
     reels.rediger([], Corrections)
-    # Écrire n'est pas juger : l'IA de la conversation, à 0.7.
-    assert llm.appels == [("structured", 0.7)] and juge.appels == []
+    # Écrire le texte du bloc 2 n'est pas juger : à 0.7, pas à 0.
+    assert llm.appels == [("structured", 0.7)]
 
 
 def test_le_prechauffage_passe_par_le_llm(monkeypatch):

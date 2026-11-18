@@ -183,7 +183,7 @@ def charger_moteurs() -> Moteurs:
     reglages = Reglages.depuis_environnement()
     journal.info("Chargement de Whisper %s et de la voix…", reglages.whisper)
     moteurs = Reels.charger(reglages)
-    journal.info("IA : %s. Juge : %s. Voix : %s.", moteurs.llm.nom, moteurs.juge.nom, moteurs.tts.nom)
+    journal.info("IA : %s. Voix : %s.", moteurs.llm.nom, moteurs.tts.nom)
     debut = time.perf_counter()
     try:
         moteurs.prechauffer()

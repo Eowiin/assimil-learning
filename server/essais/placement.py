@@ -1,22 +1,20 @@
-"""Le placement, Qwen3 et Mistral côte à côte : douze défis du paquet, trois réponses
+"""Le placement, avec Mistral : douze défis du paquet, trois réponses
 chacun (en général : une qui montre l'objectif, une juste qui le contourne, une
 fausse), jugés comme le fait le serveur (`app.placement.evaluer`).
 
 Les réponses sont écrites pour ne jamais être identiques au paquet : elles vont toutes
 au juge, aucune n'est triée d'avance. Ni Whisper, ni XTTS, ni spaCy ne sont chargés :
-seulement l'IA (`app.llm.choisir_llm`, comme le serveur). Pour chaque IA : chaque verdict
+seulement l'IA (`app.llm.choisir_llm`, comme le serveur). Chaque verdict
 à côté de celui qu'on attend, l'analyse des désaccords, le score et le temps.
 
-    uv run python essais/placement.py                 # ollama, puis mistral si MISTRAL_API_KEY est là
-    uv run python essais/placement.py mistral
-    uv run python essais/placement.py mistral -v      # toutes les analyses, pas seulement les désaccords
+    uv run python essais/placement.py
+    uv run python essais/placement.py -v      # toutes les analyses, pas seulement les désaccords
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -96,13 +94,11 @@ def defis() -> tuple[list[Defi], list[tuple[str, ...]], list[str]]:
     return liste, attendus, ids
 
 
-def essayer(choix: str, bavard: bool) -> None:
-    env = {**os.environ, "ASSIMIL_LLM": choix}
+def essayer(bavard: bool) -> None:
     try:
-        llm = choisir_llm(env)
+        llm = choisir_llm()
     except ValueError as erreur:
-        print(f"\n== {choix} : {erreur}")
-        return
+        sys.exit(str(erreur))
     print(f"\n== {llm.nom}")
     liste, attendus, ids = defis()
     appels = []
@@ -137,12 +133,9 @@ def essayer(choix: str, bavard: bool) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("ia", nargs="*", help="ollama, mistral (par défaut : les deux si la clé est là)")
     p.add_argument("-v", action="store_true", help="toutes les analyses")
     args = p.parse_args()
-    choix = args.ia or (["ollama", "mistral"] if os.environ.get("MISTRAL_API_KEY") else ["ollama"])
-    for c in choix:
-        essayer(c, args.v)
+    essayer(args.v)
 
 
 if __name__ == "__main__":

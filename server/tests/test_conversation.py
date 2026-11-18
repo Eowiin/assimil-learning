@@ -18,7 +18,7 @@ class Faux:
         self.entendu = entendu
         self.messages = None
         self.contexte = "pas appelé"
-        self.ollama_eteint = False
+        self.ia_eteinte = False
         # Les répliques à rendre, dans l'ordre (la première, puis les réécritures) ;
         # vide : toujours la même. `appels` : chaque demande faite à l'IA.
         self.repliques: list[str] = []
@@ -33,8 +33,8 @@ class Faux:
         return self.entendu
 
     def repondre(self, messages):
-        if self.ollama_eteint:
-            raise LLMIndisponible("Ollama est-il lancé sur le PC ?")
+        if self.ia_eteinte:
+            raise LLMIndisponible("Mistral ne répond pas : le PC a-t-il accès à internet ?")
         self.appels.append(messages)
         if self.repliques:
             reponse = self.repliques.pop(0)
@@ -238,11 +238,11 @@ def test_turn_historique_illisible(client):
     assert reponse.json()["detail"].startswith("Historique illisible")
 
 
-def test_ollama_eteint_dit_quoi_faire(client, faux):
-    faux.ollama_eteint = True
+def test_ia_eteinte_dit_quoi_faire(client, faux):
+    faux.ia_eteinte = True
     reponse = client.post("/conversation/turn", data={"text": "Hola"})
     assert reponse.status_code == 503
-    assert "Ollama" in reponse.json()["detail"]
+    assert "Mistral" in reponse.json()["detail"]
 
 
 # --- review ------------------------------------------------------------------------

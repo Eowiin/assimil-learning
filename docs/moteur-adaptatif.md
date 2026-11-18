@@ -27,13 +27,19 @@ tant que la nouvelle n'a pas fait ses preuves.
    objectif non montré (« debe de estar » au lieu du futur de probabilité ; on repose
    un défi, sans compter de lacune), faux. Le type du défi (`complete`, `translate`,
    `rewrite`) ne change rien au correcteur, à tous les niveaux.
-8. **Le LLM et la voix passent derrière des protocoles** (`LLM` : Ollama ou Mistral,
-   choisi par `ASSIMIL_LLM` ; `TTS` : XTTS v2 isolé, prêt pour une voix en ligne).
+8. **Le LLM et la voix passent derrière des protocoles** (`LLM` : Mistral depuis la
+   décision 10 ; `TTS` : XTTS v2 isolé, prêt pour une voix en ligne).
 9. **Les jugements vont à Mistral** (2026-11-18), par `ASSIMIL_LLM_JUGE=mistral` :
    récapitulatif, écrit, puis placement. La conversation reste sur Qwen3, en local. À
    l'essai sur obj_031, Qwen3 8B corrigeait des phrases justes et jugeait l'objectif
    au hasard (tout validé, puis tout refusé, à température 0) ; Mistral presque sans
    faute, en 2 à 4 s.
+10. **Tout passe par Mistral** (2026-11-18), conversation comprise ; Ollama et Qwen3 sont
+    retirés, avec `ASSIMIL_LLM` et `ASSIMIL_LLM_JUGE`. Au placement (12 défis, 35
+    réponses), Qwen3 8B en jugeait 28 justes en 21 s, Mistral 32 en 12 s ; il écrivait
+    le texte du bloc 2 trop court (49 mots pour 150). La carte graphique ne porte plus
+    que Whisper, XTTS et la prononciation. En échange, l'IA demande internet, et les
+    phrases de l'apprenant partent chez Mistral.
 
 ## Le paquet `curriculum/es/`
 

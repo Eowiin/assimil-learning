@@ -178,7 +178,7 @@ def test_une_reecriture_commentee_ou_trop_longue_est_ecartee():
 
 
 def test_l_ia_tombe_pendant_la_reecriture_la_premiere_sert():
-    repondre, _ = reecrivain(LLMIndisponible("Ollama est-il lancé sur le PC ?"))
+    repondre, _ = reecrivain(LLMIndisponible("Mistral ne répond pas : le PC a-t-il accès à internet ?"))
     mesure = mesurer("zzz hola", repondre, FausseLangue(), CONNUS)
     assert mesure.texte == "zzz hola" and mesure.essais == 2
 
