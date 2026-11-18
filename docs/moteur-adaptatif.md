@@ -51,6 +51,7 @@ tant que la nouvelle n'a pas fait ses preuves.
 | `lexicon.json` | 5 000 lemmes : rang, catégorie, API castillane, niveau estimé d'après le rang | `build_lexicon.py` |
 | `pseudowords.json` | 80 non-mots plausibles | `build_lexicon.py` |
 | `phonemes.json` | 28 sons et règles de prosodie, priorité pour un francophone | Fourni par Ethan |
+| `themes.json` | Une trentaine de thèmes du quotidien pour le texte du bloc 2, en espagnol et en français | Écrit par Claude, relu par Ethan |
 | `placement_sounds.json` | 6 phrases lues à froid au placement, pour les sons d'un francophone | Écrit par Claude, relu par Ethan |
 
 ## L'état de l'apprenant (SwiftData)
@@ -137,4 +138,21 @@ verdict.
      même seuil que le profil : 6 occurrences) est montré au résultat ; il ne change pas
      le niveau. Passable, et sauté sans le module prononciation.
 4. **La séance du jour** : les 4 blocs, branchés sur l'accueil à côté de la séance
-   Assimil.
+   Assimil. Plan validé le 2026-11-18, une PR par sous-étape :
+   - **4a, le squelette** (`DailyPlanner`, `AdaptiveSessionView`) : la séance d'un jour
+     est créée au premier passage sur l'accueil, une fois le placement validé.
+     L'objectif est l'actif ; deux jours actif sans être acquis, il passe « à
+     réinjecter » et le suivant s'ouvre. L'objectif à rappeler au bloc 4 est celui des
+     « à réinjecter » revu le moins récemment. Les 7 mots nouveaux sont les premiers mots
+     pleins au-delà de la frontière, inconnus de l'état. Le thème tourne dans
+     `themes.json` (une trentaine, `es` pour le serveur, `fr` affiché). Ordre fixe des
+     blocs, chacun passable ; séance faite quand les quatre sont faits ou passés. Le
+     temps de chaque bloc s'affiche (15 min visées), sans chronomètre qui coupe.
+   - **4b, Chirurgie** : les révisions (mots Assimil et mots du lexique, une seule
+     file), la micro-leçon de l'objectif, 5 phrases sur les sons faibles.
+   - **4c, Absorption** : le texte du jour et sa voix, lus et écoutés ; les mots
+     nouveaux deviennent des cartes : recto la phrase espagnole du texte, le mot en gras ;
+     verso sa traduction, déjà générée.
+   - **4d, Conversation** : le jeu de rôle de l'objectif, preuves et mots produits.
+   - **4e, Automatisation** : ~5 min d'oral en rafale, puis un écrit de 80 à 120 mots
+     corrigé, qui rappelle l'objectif à réinjecter.

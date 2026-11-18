@@ -59,6 +59,7 @@ struct TodayView: View {
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
     @Query(sort: \PlacementResult.takenAt, order: .reverse) private var placements: [PlacementResult]
+    @Query(sort: \StudySession.day, order: .reverse) private var studySessions: [StudySession]
     @State private var openedSession: DailySession?
 
     private var store: DailyCourseStore { DailyCourseStore(context: context, manifest: manifest) }
@@ -101,6 +102,7 @@ struct TodayView: View {
                     header
                     weeklyActivity
                     dailyCard
+                    adaptiveCard
                     reviews
                 }
                 .padding(.horizontal, 20)
@@ -119,7 +121,57 @@ struct TodayView: View {
             .navigationDestination(item: $openedSession) { session in
                 DailySessionView(session: session)
             }
+            // La séance adaptative du jour se prépare une fois par jour, dès l'accueil, et
+            // dès qu'un placement est validé (sinon la carte attendrait le lendemain).
+            .task(id: "\(clock.today.timeIntervalSince1970)-\(placements.filter(\.isCompleted).count)") {
+                guard let pack = CurriculumStore.spanish else { return }
+                _ = try? DailyPlanner.today(pack: pack, now: DayClock.systemNow(), in: context)
+            }
         }
+    }
+
+    // MARK: Séance adaptative
+
+    /// La séance du moteur adaptatif, à côté de celle d'Assimil, une fois le placement
+    /// validé. Elle dit l'objectif du jour et le bloc où l'on en est.
+    @ViewBuilder
+    private var adaptiveCard: some View {
+        if let pack = CurriculumStore.spanish,
+           let session = studySessions.first(where: {
+               $0.language == pack.language && Calendar.current.isDate($0.day, inSameDayAs: clock.today)
+           }) {
+            NavigationLink {
+                AdaptiveSessionView(session: session, pack: pack)
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Séance adaptative")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(Self.adaptiveProgress(session.blocks))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(session.objectiveID.flatMap(pack.objective)?.title ?? "Tous les objectifs sont acquis")
+                        .font(.headline)
+                        .multilineTextAlignment(.leading)
+                    ProgressView(value: Double(StudyBlock.allCases.filter(session.blocks.isSettled).count),
+                                 total: Double(StudyBlock.allCases.count))
+                        .tint(StudyStyle.accent)
+                }
+                .studySection()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-adaptive")
+        }
+    }
+
+    /// « Bloc 2 sur 4 · Absorption », ou « Faite ».
+    static func adaptiveProgress(_ blocks: StudyBlockProgress) -> String {
+        guard let next = blocks.next, let index = StudyBlock.allCases.firstIndex(of: next) else { return "Faite" }
+        return "Bloc \(index + 1) sur \(StudyBlock.allCases.count) · \(next.title)"
     }
 
     /// Les séances validées, pas le temps écouté : un jour coché est un jour où la

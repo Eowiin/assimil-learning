@@ -355,10 +355,41 @@ enum StudyBlock: String, Codable, CodingKeyRepresentable, CaseIterable, Identifi
 /// Où en est chaque bloc. Rangé en JSON dans `StudySession`, comme `DailyProgress`.
 struct StudyBlockProgress: Codable, Equatable {
     var completed: [StudyBlock: Date] = [:]
+    /// Passé sans être fait : on ne peut pas parler à voix haute, le PC est éteint…
+    var skipped: [StudyBlock: Date] = [:]
     var seconds: [StudyBlock: Double] = [:]
 
-    var next: StudyBlock? { StudyBlock.allCases.first { completed[$0] == nil } }
+    init() {}
+
+    /// `skipped` est venu à l'étape 4a.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        completed = try c.decodeIfPresent([StudyBlock: Date].self, forKey: .completed) ?? [:]
+        skipped = try c.decodeIfPresent([StudyBlock: Date].self, forKey: .skipped) ?? [:]
+        seconds = try c.decodeIfPresent([StudyBlock: Double].self, forKey: .seconds) ?? [:]
+    }
+
+    func isSettled(_ block: StudyBlock) -> Bool { completed[block] != nil || skipped[block] != nil }
+    /// Le prochain bloc ni fait ni passé, dans l'ordre fixe.
+    var next: StudyBlock? { StudyBlock.allCases.first { !isSettled($0) } }
     var isDone: Bool { next == nil }
+    var totalSeconds: Double { seconds.values.reduce(0, +) }
+
+    /// Fait : il ne l'est plus de passé.
+    mutating func complete(_ block: StudyBlock, at date: Date) {
+        completed[block] = date
+        skipped[block] = nil
+    }
+
+    mutating func skip(_ block: StudyBlock, at date: Date) {
+        guard completed[block] == nil else { return }
+        skipped[block] = date
+    }
+
+    mutating func add(_ seconds: Double, to block: StudyBlock) {
+        guard seconds > 0 else { return }
+        self.seconds[block, default: 0] += seconds
+    }
 }
 
 /// La séance adaptative d'un jour, une par jour et par langue. Le texte du bloc 2 y est
@@ -373,7 +404,12 @@ final class StudySession {
     var language: String = "es"
     var day: Date = Date.now
     var objectiveID: String?
+    /// L'identifiant du thème du bloc 2 (« th_04 », `themes.json`).
     var theme: String?
+    /// Les mots nouveaux du jour, apportés par le texte du bloc 2. Ajouté à l'étape 4a.
+    var newLemmas: [String] = []
+    /// Un objectif laissé de côté, que la consigne de l'écrit du bloc 4 rappelle.
+    var reinjectObjectiveID: String?
     var blocksData: Data = Data()
     /// La réponse de `/session/generate-input`, en JSON. Nil avant la génération.
     var inputData: Data?
