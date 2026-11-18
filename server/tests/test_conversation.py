@@ -19,6 +19,13 @@ class Faux:
         self.messages = None
         self.contexte = "pas appelé"
         self.ollama_eteint = False
+        # Les répliques à rendre, dans l'ordre (la première, puis les réécritures) ;
+        # vide : toujours la même. `appels` : chaque demande faite à l'IA.
+        self.repliques: list[str] = []
+        self.appels: list[list[dict]] = []
+        # Ce que rend `structurer` ; None : les corrections d'un récapitulatif simple.
+        self.recap = None
+        self.modele = None
 
     def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
         assert audio == b"audio-du-tour"
@@ -28,12 +35,21 @@ class Faux:
     def repondre(self, messages):
         if self.ollama_eteint:
             raise LLMIndisponible("Ollama est-il lancé sur le PC ?")
+        self.appels.append(messages)
+        if self.repliques:
+            reponse = self.repliques.pop(0)
+            if isinstance(reponse, Exception):
+                raise reponse
+            return reponse
         self.messages = messages
         return "¡Qué rico! ¿Lo comes con pan?"
 
     def structurer(self, messages, modele):
-        assert modele is Corrections
         self.messages = messages
+        self.modele = modele
+        if self.recap is not None:
+            return self.recap
+        assert modele is Corrections
         return Corrections(corrections=[Correction(
             said="Yo soy cansado", corrected="Estoy cansado",
             explanation="Un état passager se dit avec estar.",
@@ -258,7 +274,7 @@ def test_la_consigne_previent_des_erreurs_de_transcription():
 
 def test_review_sans_phrase_de_l_eleve(client, faux):
     corps = client.post("/conversation/review", json={"history": HISTORIQUE}).json()
-    assert corps == {"corrections": []}
+    assert corps == {"corrections": [], "objective_uses": None, "lemmas_produced": None}
     assert faux.messages is None
 
 

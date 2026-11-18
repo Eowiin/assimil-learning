@@ -19,8 +19,11 @@ from functools import lru_cache
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from .conversation import (Correction, Corrections, Message, Moteurs, Profil, derniere_replique,
-                           messages_correction, messages_ouverture, messages_tour)
+from .conversation import (Correction, CorrectionEcrite, Corrections, CorrectionsEcrit,
+                           CorrectionsEcritObjectif, CorrectionsObjectif, Message, Moteurs, Niveau,
+                           Objectif, Profil, UsageObjectif, connus_du_tour, derniere_replique,
+                           lemmes_produits, messages_correction, messages_ecrit, messages_ouverture,
+                           messages_tour, mesurer, vraies_corrections)
 from .langue import Langue
 from .llm import LLMIndisponible
 from .prononciation.jugement import par_mots
@@ -28,7 +31,9 @@ from .prononciation.jugement import par_mots
 VERSION = "0.2.0"
 # Monte quand une route change de forme : l'app saura qu'elle parle à un serveur
 # trop ancien ou trop récent pour elle. Ajouter une route ne la fait pas monter :
-# `modules` dit ce qui est prêt.
+# `modules` dit ce qui est prêt. Ajouter un champ optionnel non plus : l'app
+# d'aujourd'hui exige l'égalité (`HomeServer.supportedAPI`), monter couperait le serveur
+# de l'app sans rien lui apporter.
 API_VERSION = 1
 
 # Le journal de uvicorn : ses messages sortent dans le terminal du serveur, sans réglage.
@@ -51,10 +56,15 @@ class Timings(BaseModel):
 
 
 class Reply(BaseModel):
-    """Une réplique de l'IA. `audio` est un .m4a (AAC) en base64."""
+    """Une réplique de l'IA. `audio` est un .m4a (AAC) en base64. `coverage` : la part
+    de mots connus de la réplique, et `attempts` : combien de versions l'IA en a
+    écrites (1 à 3), quand le profil donne `allowed_lemmas` et que la langue est
+    chargée ; null sinon."""
     reply: str
     audio: str
     timings: Timings
+    coverage: float | None = None
+    attempts: int | None = None
 
 
 class Turn(Reply):
@@ -68,10 +78,29 @@ class StartRequest(BaseModel):
 
 class ReviewRequest(BaseModel):
     history: list[Message]
+    objective: Objectif | None = None
+    level: Niveau | None = None
 
 
 class Review(BaseModel):
+    """`objective_uses` : null sans objectif demandé. `lemmas_produced` : les lemmes
+    des phrases de l'apprenant, par spaCy ; null si la langue n'est pas chargée."""
     corrections: list[Correction]
+    objective_uses: list[UsageObjectif] | None = None
+    lemmas_produced: list[str] | None = None
+
+
+class WritingRequest(BaseModel):
+    text: str
+    level: Niveau | None = None
+    objective: Objectif | None = None
+
+
+class WritingReview(BaseModel):
+    corrections: list[CorrectionEcrite]
+    corrected_text: str
+    objective_uses: list[UsageObjectif] | None = None
+    lemmas_produced: list[str] | None = None
 
 
 class Phone(BaseModel):
@@ -214,10 +243,30 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
         except LLMIndisponible as erreur:
             raise HTTPException(503, f"L'IA ne répond pas : {erreur}") from erreur
 
-    def repliquer(m: Moteurs, messages: list[dict]) -> tuple[str, str, float, float]:
-        reponse, ia = penser(m.repondre, messages)
+    def repliquer(request: Request, messages: list[dict], profil: Profil | None,
+                  phrase: str | None = None, ecoute: float | None = None) -> Reply:
+        """La réplique de l'IA, mesurée si l'app donne les mots connus, puis dite."""
+        m = request.app.state.moteurs
+        langue: Langue | None = request.app.state.langue
+        debut = time.perf_counter()
+        reponse, _ = penser(m.repondre, messages)
+        couverture = essais = None
+        if profil and profil.allowed_lemmas and langue is not None:
+            mesure = mesurer(reponse, m.repondre, langue, connus_du_tour(profil, phrase, langue),
+                             profil.level)
+            reponse, couverture, essais = mesure.texte, mesure.couverture, mesure.essais
+            if essais > 1:
+                journal.info("Réplique réécrite (%d versions), couverture %.0f %%.",
+                             essais, couverture * 100)
+        ia = round(time.perf_counter() - debut, 2)
         audio, voix = chrono(m.dire, reponse)
-        return reponse, base64.b64encode(audio).decode(), ia, voix
+        return Reply(reply=reponse, audio=base64.b64encode(audio).decode(),
+                     timings=Timings(listen=ecoute, think=ia, speak=voix),
+                     coverage=couverture, attempts=essais)
+
+    def lemmes(request: Request, phrases: list[str]) -> list[str] | None:
+        langue: Langue | None = request.app.state.langue
+        return lemmes_produits(phrases, langue) if langue is not None else None
 
     @app.get("/health")
     def health(request: Request) -> Health:
@@ -233,13 +282,12 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
     @app.post("/conversation/start")
     def start(request: Request, body: StartRequest | None = None) -> Reply:
         """La première réplique : l'IA salue et propose un sujet."""
-        m = prets(request)
-        if body and body.profile:
-            journal.info("Profil reçu : %s", body.profile.model_dump_json())
+        prets(request)
+        profil = body.profile if body else None
+        if profil:
+            journal.info("Profil reçu : %s", _resume(profil))
         with verrou:
-            reponse, audio, ia, voix = repliquer(m, messages_ouverture(body.topic if body else None,
-                                                                       body.profile if body else None))
-        return Reply(reply=reponse, audio=audio, timings=Timings(think=ia, speak=voix))
+            return repliquer(request, messages_ouverture(body.topic if body else None, profil), profil)
 
     @app.post("/conversation/turn")
     def turn(request: Request,
@@ -266,19 +314,43 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
                 compris, ecoute = text.strip(), None
             if not compris:
                 raise HTTPException(422, "Je n'ai rien entendu.")
-            reponse, son, ia, voix = repliquer(m, messages_tour(historique, compris, profil))
-        return Turn(heard=compris, reply=reponse, audio=son,
-                    timings=Timings(listen=ecoute, think=ia, speak=voix))
+            replique = repliquer(request, messages_tour(historique, compris, profil), profil,
+                                 compris, ecoute)
+        return Turn(heard=compris, **replique.model_dump())
 
     @app.post("/conversation/review")
     def review(request: Request, body: ReviewRequest) -> Review:
         """Le récapitulatif : les phrases fautives de l'apprenant, corrigées."""
         m = prets(request)
-        if not any(msg.role == "user" for msg in body.history):
-            return Review(corrections=[])
+        phrases = [msg.content for msg in body.history if msg.role == "user"]
+        if not phrases:
+            return Review(corrections=[], objective_uses=[] if body.objective else None,
+                          lemmas_produced=[] if request.app.state.langue is not None else None)
+        modele = CorrectionsObjectif if body.objective else Corrections
         with verrou:
-            corrections, _ = penser(m.structurer, messages_correction(body.history), Corrections)
-        return Review(corrections=corrections.corrections)
+            recap, _ = penser(m.structurer,
+                              messages_correction(body.history, body.objective, body.level), modele)
+            produits = lemmes(request, phrases)
+        return Review(corrections=vraies_corrections(recap.corrections),
+                      objective_uses=recap.objective_uses if body.objective else None,
+                      lemmas_produced=produits)
+
+    @app.post("/writing/review")
+    def writing_review(request: Request, body: WritingRequest) -> WritingReview:
+        """L'écrit du bloc 4, corrigé : les phrases fautives, le texte entier corrigé, et
+        l'objectif du jour jugé."""
+        m = prets(request)
+        texte = body.text.strip()
+        if not texte:
+            raise HTTPException(422, "Il faut un texte.")
+        modele = CorrectionsEcritObjectif if body.objective else CorrectionsEcrit
+        with verrou:
+            recap, _ = penser(m.structurer, messages_ecrit(texte, body.objective, body.level), modele)
+            produits = lemmes(request, [texte])
+        return WritingReview(corrections=vraies_corrections(recap.corrections, ecrit=True),
+                             corrected_text=recap.corrected_text,
+                             objective_uses=recap.objective_uses if body.objective else None,
+                             lemmas_produced=produits)
 
     @app.post("/pronunciation")
     def pronunciation(request: Request,
@@ -308,6 +380,16 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
                              seconds=duree)
 
     return app
+
+
+def _resume(profil: Profil) -> str:
+    """Le profil pour le journal, sans la liste des lemmes connus (des centaines)."""
+    resume = profil.model_dump(exclude={"allowed_lemmas", "objective"}, exclude_none=True)
+    if profil.objective:
+        resume["objective"] = profil.objective.id
+    if profil.allowed_lemmas:
+        resume["allowed_lemmas"] = len(profil.allowed_lemmas)
+    return str(resume)
 
 
 app = create_app()

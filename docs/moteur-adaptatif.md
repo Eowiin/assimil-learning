@@ -67,9 +67,14 @@ conversation ou à l'écrit deux jours différents.
 | `POST /placement/evaluate` | `level`, `items[{objective_id, prompt, expected, also_correct, check, answer}]` | `[{objective_id, verdict, analyse_courte}]`, `verdict` : `shown`, `correct_not_shown`, `wrong` |
 | `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]`, `attempts` |
 | `POST /tts` | `sentences[]` | un m4a par phrase |
-| `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]` | inchangé |
+| `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]` | + `coverage`, `attempts` (null sans `allowed_lemmas`) |
 | `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]` |
-| `POST /writing/review` | `text`, `level`, `objective` | `corrections[]`, `corrected_text`, `objective_uses[]`, `lemmas_produced[]` |
+| `POST /writing/review` | `text`, `level`, `objective` | `corrections[]` (catégorie `orthographe` en plus), `corrected_text`, `objective_uses[]`, `lemmas_produced[]` |
+
+Tout champ nouveau est optionnel : l'app d'avant le moteur continue de marcher. Le
+serveur annonce encore l'API 1, parce que l'app exige l'égalité : il passera à 2 avec
+l'app qui la connaît. `objective_uses` est null sans `objective` ; `lemmas_produced`
+est null si spaCy n'est pas chargé.
 
 Couverture du bloc 2 : 95 % de mots connus visés, nouvelle formulation par le LLM
 sous 92 %. Les noms propres et les nombres ne comptent pas.
