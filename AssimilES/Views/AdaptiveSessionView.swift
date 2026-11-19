@@ -214,7 +214,9 @@ struct StudyBlockView: View {
             SurgeryBlockContent(session: session, pack: pack) { childOpen = true }
         case .absorption:
             AbsorptionBlockContent(session: session, pack: pack)
-        default:
+        case .conversation:
+            ConversationBlockContent(session: session, pack: pack) { childOpen = true }
+        case .automation:
             Text(block.summary)
                 .font(.title3)
             Text("Le contenu de ce bloc arrive avec les prochaines versions de l'app. "

@@ -149,7 +149,9 @@ verdict.
      blocs, chacun passable ; séance faite quand les quatre sont faits ou passés. Le
      temps de chaque bloc s'affiche (15 min visées), sans chronomètre qui coupe.
    - **4b, Chirurgie** (`SurgeryBlockContent`, `MicroLessonView`) : trois parties à
-     ouvrir, cochées au retour. Les révisions reprennent celles du vocabulaire (les mots
+     ouvrir, cochées quand elles sont finies (depuis la 4d) : les révisions quand la file
+     du jour est vide (ou qu'il n'y a rien à revoir), les sons à la dernière phrase jugée,
+     la micro-leçon quand on la referme. Les révisions reprennent celles du vocabulaire (les mots
      du lexique les rejoignent en 4c) ; la micro-leçon de l'objectif (lignes, exemples à
      traduction cachée) ; la séance de prononciation centrée sur les sons faibles. Le
      temps du bloc compte les écrans ouverts ; le temps d'étude, lui, n'est pas compté
@@ -167,6 +169,15 @@ verdict.
      nouvelles d'Assimil, sous le même plafond de 20) : recto la phrase, le mot en gras ;
      verso la traduction de la phrase. Une carte connue fait monter son mot
      (`recognize` : reconnu ; `recall` : actif), pour Assimil comme pour le lexique.
-   - **4d, Conversation** : le jeu de rôle de l'objectif, preuves et mots produits.
+   - **4d, Conversation** (`SessionConversation`, `ConversationBlockContent`,
+     `ConversationSetup`) : le jeu de rôle de l'objectif (`mode = roleplay`), au niveau de
+     l'objectif, sans faute à surveiller. `allowed_lemmas` : les lemmes connus, plus les
+     mots que le texte du bloc 2 a employés (`new_used`), qui vont aussi en `words`. Au
+     récapitulatif, chaque `objective_uses` devient une preuve (source `conversation`),
+     mais **une production ne compte qu'une réussite au plus** (2026-11-19) : une
+     conversation, ou un écrit, n'acquiert pas un objectif seul ; il faut le réemployer à
+     l'écrit ou un autre jour. Les `lemmas_produced` montent (`KnownVocabulary`). La partie
+     se coche quand le récapitulatif est arrivé ; le bloc montre les emplois du jour et
+     se refait. `ConversationSetup` sert aussi au calibrage du placement.
    - **4e, Automatisation** : ~5 min d'oral en rafale, puis un écrit de 80 à 120 mots
      corrigé, qui rappelle l'objectif à réinjecter.

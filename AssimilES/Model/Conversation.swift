@@ -443,7 +443,12 @@ struct FakeConversationService: ConversationService {
             corrections: [ConversationCorrection(said: "Hoy yo soy cansado.", corrected: "Hoy estoy cansado.",
                                                  explanation: "Un état passager se dit avec « estar », pas avec « ser ».",
                                                  category: .grammar, tag: "ser/estar")],
-            objectiveUses: objective == nil ? nil : [],
+            // Avec un objectif, une tentative réussie et une manquée : le jeu de rôle de la
+            // séance en tire deux preuves et une seule réussite.
+            objectiveUses: objective == nil ? nil : [
+                ObjectiveUse(said: "Hoy yo soy cansado.", valid: true, analysis: "L'objectif est employé."),
+                ObjectiveUse(said: "¡Vaya!", valid: false, analysis: "Pas d'emploi correct de l'objectif."),
+            ],
             lemmasProduced: ["hoy", "cansado"])
     }
 }
