@@ -1,14 +1,20 @@
 import SwiftUI
 import SwiftData
 
-/// La conversation de calibrage du placement : un profil fixé (niveau, objectif,
-/// lemmes connus), un nombre de réponses, et une fin qui rend la main au test au lieu
-/// de fermer l'écran.
-struct ConversationCalibration {
+/// Une conversation réglée d'avance : celle du calibrage du placement, ou le jeu de
+/// rôle de la séance du jour. Un profil fixé (niveau, objectif, lemmes connus), parfois
+/// un nombre de réponses, et ce qu'il faut faire du récapitulatif.
+struct ConversationSetup {
     let profile: ConversationProfile
-    let turns: Int
-    /// Le récapitulatif (nil s'il a échoué, ou sans phrase) et le nombre de réponses.
-    let onDone: (ConversationReview?, Int) -> Void
+    /// Le nombre de réponses au-delà duquel le micro se tait. Nil : sans limite.
+    var turns: Int? = nil
+    /// La ligne au-dessus des bulles. Nil : le résumé du profil, s'il en a un.
+    var intro: String? = nil
+    /// Le récapitulatif reçu, une fois par conversation (même après « Réessayer »).
+    var onReview: ((ConversationReview) -> Void)? = nil
+    /// La fin rend la main au lieu de fermer l'écran (« Continuer ») : le récapitulatif
+    /// (nil s'il a échoué, ou sans phrase) et le nombre de réponses. Nil : « Fermer ».
+    var onDone: ((ConversationReview?, Int) -> Void)? = nil
 }
 
 /// La conversation avec l'IA, en talkie-walkie : elle ouvre, on touche le micro
@@ -40,11 +46,14 @@ struct ConversationView: View {
     /// posé ne fait pas du temps d'étude.
     private static let maxGap: Double = 120
 
-    /// La conversation de calibrage du placement ; nil pour la conversation libre.
-    private let calibration: ConversationCalibration?
+    /// Le calibrage du placement ou le jeu de rôle de la séance ; nil pour la
+    /// conversation libre.
+    private let setup: ConversationSetup?
+    /// Le récapitulatif a déjà été remis à `setup.onReview`.
+    @State private var reviewReported = false
 
-    init(service: any ConversationService, calibration: ConversationCalibration? = nil) {
-        self.calibration = calibration
+    init(service: any ConversationService, setup: ConversationSetup? = nil) {
+        self.setup = setup
         _session = State(initialValue: ConversationSession(service: service, sound: Self.sound()))
     }
 
@@ -58,7 +67,8 @@ struct ConversationView: View {
     var body: some View {
         Group {
             if finished {
-                ConversationRecapView(review: session.review, earlier: earlier) { await review() }
+                ConversationRecapView(review: session.review, objectiveUses: session.lastReview?.objectiveUses,
+                                      earlier: earlier) { await review() }
             } else {
                 VStack(spacing: 0) {
                     transcript
@@ -74,8 +84,8 @@ struct ConversationView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                if finished, let calibration {
-                    Button("Continuer") { calibration.onDone(session.lastReview, session.learnerTurns) }
+                if finished, let onDone = setup?.onDone {
+                    Button("Continuer") { onDone(session.lastReview, session.learnerTurns) }
                         .disabled(session.review == .loading)
                         .accessibilityIdentifier("calibration-continue")
                 } else if finished {
@@ -90,9 +100,9 @@ struct ConversationView: View {
         .task {
             player.pause()
             lastTick = DayClock.systemNow()
-            if let calibration {
-                session.profile = calibration.profile
-                session.turnLimit = calibration.turns
+            if let setup {
+                session.profile = setup.profile
+                session.turnLimit = setup.turns
             } else if session.profile == nil {
                 session.profile = Self.profile(in: context)
             }
@@ -118,12 +128,11 @@ struct ConversationView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    if let calibration {
-                        Text("Réponds \(calibration.turns) fois, comme tu parlerais. L'IA parle au niveau "
-                             + "\(calibration.profile.level ?? "trouvé") ; tes fautes ajustent le niveau proposé.")
+                    if let intro = setup?.intro {
+                        Text(intro)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("calibration-intro")
+                            .accessibilityIdentifier("conversation-intro")
                     } else if let summary = session.profile?.summary {
                         // Ce que le partenaire a reçu : on voit ce qu'il cherche à faire
                         // pratiquer, et qu'il a bien reçu quelque chose.
@@ -322,7 +331,7 @@ struct ConversationView: View {
     private func finish() {
         guard session.learnerSpoke else {
             // Le calibrage rend la main au test, qu'il ne faut pas fermer.
-            if let calibration { return calibration.onDone(nil, 0) }
+            if let onDone = setup?.onDone { return onDone(nil, 0) }
             return dismiss()
         }
         session.close()
@@ -339,6 +348,10 @@ struct ConversationView: View {
         if case .done(let corrections) = session.review, let record {
             record.reviewedCorrections = corrections
             try? context.save()
+        }
+        if !reviewReported, let reviewed = session.lastReview, let onReview = setup?.onReview {
+            reviewReported = true
+            onReview(reviewed)
         }
     }
 

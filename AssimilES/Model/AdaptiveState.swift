@@ -69,7 +69,9 @@ final class ObjectiveProgress {
     }
 }
 
-/// Une preuve d'emploi d'un objectif, ajoutée et jamais modifiée.
+/// Une preuve d'emploi d'un objectif, ajoutée et jamais modifiée. Une conversation ou un
+/// écrit peut en donner plusieurs ; il ne compte qu'une réussite au plus
+/// (`ObjectiveTracker.recordProduction`).
 @Model
 final class ObjectiveEvidence {
     #Index<ObjectiveEvidence>([\.objectiveKey], [\.at])
@@ -120,14 +122,26 @@ enum ObjectiveTracker {
     /// compte ; à la troisième, l'objectif est acquis (même s'il avait été laissé de
     /// côté : il revient en emploi, et c'est ce qu'on attendait de lui).
     static func record(_ evidence: ObjectiveEvidence, on progress: ObjectiveProgress, in context: ModelContext) {
-        context.insert(evidence)
-        progress.lastEvidenceAt = max(progress.lastEvidenceAt ?? .distantPast, evidence.at)
-        progress.updatedAt = evidence.at
-        guard evidence.valid, evidence.isSpontaneous, !progress.isAcquired else { return }
+        recordProduction([evidence], on: progress, in: context)
+    }
+
+    /// Les tentatives d'une même production (une conversation, un écrit) : toutes vont au
+    /// journal, mais la production ne compte qu'une réussite au plus. Un point validé
+    /// trois fois dans la même conversation n'est pas acquis : il doit revenir à
+    /// l'écrit, ou un autre jour.
+    static func recordProduction(_ evidences: [ObjectiveEvidence], on progress: ObjectiveProgress,
+                                 in context: ModelContext) {
+        for evidence in evidences {
+            context.insert(evidence)
+            progress.lastEvidenceAt = max(progress.lastEvidenceAt ?? .distantPast, evidence.at)
+            progress.updatedAt = evidence.at
+        }
+        guard let success = evidences.first(where: { $0.valid && $0.isSpontaneous }),
+              !progress.isAcquired else { return }
         progress.successes += 1
         if progress.successes >= ObjectiveProgress.successesToAcquire {
             progress.status = ObjectiveProgress.Status.acquired
-            progress.acquiredAt = evidence.at
+            progress.acquiredAt = success.at
         }
     }
 

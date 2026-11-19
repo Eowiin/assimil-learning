@@ -4,6 +4,8 @@ import SwiftUI
 /// changé en couleur, et la règle en une phrase. Rien n'a coupé l'échange avant.
 struct ConversationRecapView: View {
     let review: ConversationSession.Review
+    /// Les phrases où l'objectif a été tenté, jugées. Nil : aucun objectif demandé.
+    var objectiveUses: [ObjectiveUse]? = nil
     /// Les fautes des conversations d'avant : une faute qui revient le dit.
     var earlier = ErrorPatterns(conversations: [])
     let retry: () async -> Void
@@ -42,26 +44,64 @@ struct ConversationRecapView: View {
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity, minHeight: 200)
-        case .done(let corrections) where corrections.isEmpty:
-            VStack(spacing: 10) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(StudyStyle.accent)
-                Text("Aucune faute relevée")
-                    .font(.title3.weight(.semibold))
-                    .accessibilityIdentifier("recap-clean")
-                Text("Tout ce que tu as dit était correct.")
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, minHeight: 240)
         case .done(let corrections):
-            Text(corrections.count == 1 ? "Une phrase à reprendre" : "\(corrections.count) phrases à reprendre")
+            if let objectiveUses { objective(objectiveUses) }
+            if corrections.isEmpty { clean } else { list(corrections) }
+        }
+    }
+
+    private var clean: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(StudyStyle.accent)
+            Text("Aucune faute relevée")
                 .font(.title3.weight(.semibold))
-                .accessibilityIdentifier("recap-count")
-            ForEach(Array(corrections.enumerated()), id: \.offset) { _, correction in
-                card(correction)
+                .accessibilityIdentifier("recap-clean")
+            Text("Tout ce que tu as dit était correct.")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+
+    @ViewBuilder
+    private func list(_ corrections: [ConversationCorrection]) -> some View {
+        Text(corrections.count == 1 ? "Une phrase à reprendre" : "\(corrections.count) phrases à reprendre")
+            .font(.title3.weight(.semibold))
+            .accessibilityIdentifier("recap-count")
+        ForEach(Array(corrections.enumerated()), id: \.offset) { _, correction in
+            card(correction)
+        }
+    }
+
+    /// L'objectif du jour : chaque phrase où il a été tenté, réussie ou non, et le mot
+    /// du correcteur. Une conversation ne compte qu'une réussite au plus.
+    private func objective(_ uses: [ObjectiveUse]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Objectif du jour")
+                .font(.title3.weight(.semibold))
+            if uses.isEmpty {
+                Text("Tu ne l'as pas employé cette fois.")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("recap-objective-none")
+            }
+            ForEach(Array(uses.enumerated()), id: \.offset) { _, use in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: use.valid ? "checkmark.circle.fill" : "xmark.circle")
+                        .foregroundStyle(use.valid ? StudyStyle.accent : .red)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(use.said)
+                        Text(use.analysis)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("recap-objective-use")
             }
         }
+        .studySection()
     }
 
     private func card(_ correction: ConversationCorrection) -> some View {

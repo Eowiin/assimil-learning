@@ -14,6 +14,8 @@ struct PronunciationView: View {
     @State private var session: PronunciationSession
     /// Les sons que la séance vise, d'après les prises passées. Vide sans profil.
     private let focus: [SpanishTarget]
+    /// Appelé quand la dernière phrase est jugée (la séance du jour coche sa partie).
+    private let onFinished: (() -> Void)?
     /// Secondes d'étude pas encore inscrites (`StudyTime`).
     @State private var unrecorded: Double = 0
     @State private var lastTick = DayClock.systemNow()
@@ -24,8 +26,9 @@ struct PronunciationView: View {
 
     /// `context` : chaque prise jugée y est gardée (`PronunciationRecord`).
     init(sentences: [DrillSentence], service: any PronunciationService, manifest: Manifest,
-         context: ModelContext, focus: [SpanishTarget] = []) {
+         context: ModelContext, focus: [SpanishTarget] = [], onFinished: (() -> Void)? = nil) {
         self.focus = focus
+        self.onFinished = onFinished
         _session = State(initialValue: PronunciationSession(
             sentences: sentences, service: service, sound: Self.sound(),
             nativeURL: { sentence in
@@ -90,7 +93,10 @@ struct PronunciationView: View {
             session.close()
             recordTime()
         }
-        .onChange(of: session.phase) { tick() }
+        .onChange(of: session.phase) {
+            tick()
+            if session.phase == .finished { onFinished?() }
+        }
         .onChange(of: scenePhase) {
             if scenePhase == .background { recordTime() }
             if scenePhase == .active { lastTick = DayClock.systemNow() }
@@ -472,6 +478,7 @@ struct WordFlow: Layout {
 struct PronunciationEntry: View {
     let service: any PronunciationService
     let lessons: Set<Int>
+    var onFinished: (() -> Void)? = nil
 
     /// Les sons les plus ratés du dernier mois (`PhonemeStats`). Seules les prises
     /// de la fenêtre sont lues.
@@ -490,7 +497,7 @@ struct PronunciationEntry: View {
     var body: some View {
         if let sentences {
             PronunciationView(sentences: sentences, service: service, manifest: manifest, context: context,
-                              focus: focus)
+                              focus: focus, onFinished: onFinished)
         } else {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

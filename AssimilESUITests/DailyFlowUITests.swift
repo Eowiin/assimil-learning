@@ -349,7 +349,7 @@ final class DailyFlowUITests: XCTestCase {
 
         // La conversation de calibrage : une réponse, puis Terminer et Continuer.
         calibration.tap()
-        XCTAssertTrue(app.staticTexts["calibration-intro"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["conversation-intro"].waitForExistence(timeout: 5))
         tap(app.buttons["conversation-mic"])
         tap(app.buttons["conversation-mic"])
         XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
@@ -416,9 +416,27 @@ final class DailyFlowUITests: XCTestCase {
         waitEnabled(app.buttons["block-conversation"])
         XCTAssertTrue(app.buttons["block-absorption"].label.contains("Passé"), app.buttons["block-absorption"].label)
         snapshot(app, "seance-adaptative-avancee")
+        // Le bloc 3 : le jeu de rôle, une réponse, puis le récapitulatif et l'objectif jugé.
+        tap(app.buttons["block-conversation"])
+        tap(app.buttons["roleplay-start"])
+        XCTAssertTrue(app.staticTexts["conversation-intro"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["conversation-intro"].label.hasPrefix("Jeu de rôle"))
+        tap(app.buttons["conversation-mic"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        tap(app.buttons["conversation-end"])
+        XCTAssertTrue(app.descendants(matching: .any)["recap-objective-use"].firstMatch.waitForExistence(timeout: 5))
+        snapshot(app, "seance-conversation-recap")
+        tap(app.buttons["recap-close"])
+        let tally = app.descendants(matching: .any)["roleplay-tally"]
+        XCTAssertTrue(tally.waitForExistence(timeout: 5))
+        XCTAssertTrue(tally.label.contains("1 emploi réussi sur 2"), tally.label)
+        snapshot(app, "seance-conversation")
+        tap(app.buttons["block-complete"])
+        waitEnabled(app.buttons["block-automation"])
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["start-adaptive"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["start-adaptive"].label.contains("Bloc 3 sur 4"), app.buttons["start-adaptive"].label)
+        XCTAssertTrue(app.buttons["start-adaptive"].label.contains("Bloc 4 sur 4"), app.buttons["start-adaptive"].label)
 
         app.tabBars.buttons["Réglages"].tap()
         XCTAssertTrue(app.buttons["settings-placement"].waitForExistence(timeout: 5))

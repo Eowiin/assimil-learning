@@ -1,7 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Les parties du bloc 1, dans l'ordre. Une partie ouverte puis refermée est cochée.
+/// Les parties du bloc 1, dans l'ordre. Une partie se coche quand elle est finie : les
+/// révisions quand la file du jour est vide, les sons quand la séance est jugée jusqu'au
+/// bout, la micro-leçon quand on la referme après l'avoir lue.
 enum SurgeryPart: String, CaseIterable, Identifiable, Hashable {
     case reviews, microlesson, sounds
 
@@ -71,17 +73,35 @@ struct SurgeryBlockContent: View {
         }
         .navigationDestination(item: $openedPart) { part in destination(part) }
         .onChange(of: openedPart) { old, new in
-            // Refermée : la partie est faite.
-            if new == nil, let old {
-                StudySessionProgress.markPart(old.key, in: session, at: .now)
-                try? context.save()
+            guard new == nil, let old else { return }
+            switch old {
+            case .microlesson: mark(.microlesson)
+            // Fermées à mi-chemin, les révisions restent à finir.
+            case .reviews where reviewsCleared: mark(.reviews)
+            // Les sons se cochent à la dernière phrase jugée (`onFinished`).
+            case .reviews, .sounds: break
             }
         }
     }
 
+    /// Plus rien à revoir aujourd'hui : file vidée, ou rien d'échu.
+    private var reviewsCleared: Bool {
+        let counts = reviewCounts
+        return counts.due + counts.new == 0
+    }
+
+    private func isDone(_ part: SurgeryPart) -> Bool {
+        session.blocks.parts[part.key] != nil || (part == .reviews && reviewsCleared)
+    }
+
+    private func mark(_ part: SurgeryPart) {
+        StudySessionProgress.markPart(part.key, in: session, at: .now)
+        try? context.save()
+    }
+
     private func row(_ part: SurgeryPart) -> some View {
         let state = availability(part)
-        let done = session.blocks.parts[part.key] != nil
+        let done = isDone(part)
         return Button {
             onOpen()
             openedPart = part
@@ -138,7 +158,9 @@ struct SurgeryBlockContent: View {
             }
         case .sounds:
             if let service = server.pronunciation {
-                PronunciationEntry(service: service, lessons: PronunciationDrill.lessons(available: vocabLessons))
+                PronunciationEntry(service: service, lessons: PronunciationDrill.lessons(available: vocabLessons)) {
+                    mark(.sounds)
+                }
             }
         }
     }

@@ -44,7 +44,7 @@ struct PlacementView: View {
             case .calibrationIntro(let result, let working):
                 calibrationIntro(result, working: working)
             case .calibration(let result, let working, let service):
-                ConversationView(service: service, calibration: calibration(result, working: working))
+                ConversationView(service: service, setup: calibration(result, working: working))
             case .soundsIntro(let result, let working):
                 soundsIntro(result, working: working)
             case .sounds(let result, let working, let check):
@@ -179,16 +179,19 @@ struct PlacementView: View {
 
     /// Le profil de la conversation : le niveau trouvé, l'objectif de départ qu'il
     /// donnerait, et les lemmes connus, qui font simplifier les répliques trop dures.
-    private func calibration(_ result: PlacementResult, working: String) -> ConversationCalibration {
+    private func calibration(_ result: PlacementResult, working: String) -> ConversationSetup {
         let objective = PlacementCompletion.previewStart(workingLevel: working,
                                                          records: result.placementDetails.challenges, pack: pack)
         let states = (try? context.fetch(FetchDescriptor<LexemeState>())) ?? []
         let profile = ConversationProfile(
             level: working, objective: objective.map(ConversationObjective.init),
             allowedLemmas: KnownVocabulary.lemmas(pack: pack, estimate: result.lexiconEstimate, states: states))
-        return ConversationCalibration(profile: profile, turns: CalibrationOutcome.turns) { review, turns in
+        let intro = "Réponds \(CalibrationOutcome.turns) fois, comme tu parlerais. L'IA parle au niveau "
+            + "\(working) ; tes fautes ajustent le niveau proposé."
+        return ConversationSetup(profile: profile, turns: CalibrationOutcome.turns, intro: intro,
+                                 onDone: { review, turns in
             finishCalibration(result, working: working, objectiveID: objective?.id, review: review, turns: turns)
-        }
+        })
     }
 
     private func finishCalibration(_ result: PlacementResult, working: String, objectiveID: String?,
