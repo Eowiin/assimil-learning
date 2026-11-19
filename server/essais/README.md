@@ -98,7 +98,9 @@ uv run python essais/placement.py -v   # toutes les analyses
 Charge l'IA et spaCy. obj_031, niveau A2, un voyage en train qui tourne mal, 7 mots
 nouveaux du thème, 150 mots visés, les 800 premiers lemmes comme connus. Chaque version
 écrite s'affiche avec sa couverture, ses inconnus et les mots nouveaux employés ; puis
-le texte gardé, sa traduction, et les phrases de l'objectif repérées par le juge.
+le texte gardé, sa traduction, les phrases de l'objectif repérées par le juge, et la
+phrase de chaque mot nouveau, avec sa forme écrite (`new_occurrences` : le recto de sa
+carte dans l'app).
 
 ```bash
 uv run python essais/texte.py

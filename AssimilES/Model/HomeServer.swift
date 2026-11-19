@@ -13,6 +13,8 @@ struct ServerHealth: Decodable, Equatable {
     static let conversation = "conversation"
     static let pronunciation = "pronunciation"
     static let placement = "placement"
+    static let sessionInput = "session_input"
+    static let tts = "tts"
 
     func has(_ module: String) -> Bool { modules?.contains(module) == true }
 }
@@ -107,6 +109,16 @@ final class ServerStatus {
         #endif
         guard let baseURL = base(for: ServerHealth.placement) else { return nil }
         return PlacementClient(baseURL: baseURL, session: session)
+    }
+
+    /// Le texte du bloc 2 et sa voix, si le serveur est en ligne et sait les faire
+    /// (spaCy chargé). Nil sinon : le bloc attend le PC.
+    var absorption: (any AbsorptionService)? {
+        #if DEBUG
+        if fake { return FakeAbsorptionService() }
+        #endif
+        guard let baseURL = base(for: ServerHealth.sessionInput), base(for: ServerHealth.tts) != nil else { return nil }
+        return AbsorptionClient(baseURL: baseURL, session: session)
     }
 
     /// L'adresse du serveur, s'il est en ligne et annonce ce module.

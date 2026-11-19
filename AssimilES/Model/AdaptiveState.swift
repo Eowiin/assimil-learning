@@ -174,6 +174,12 @@ final class LexemeState {
     var activeAt: Date?
     /// D'où vient la connaissance : « assimil », « placement », « input »…
     var source: String = ""
+    /// La phrase du texte du bloc 2 où le mot a été vu, la forme qui y est écrite et la
+    /// traduction de la phrase : le recto et le verso de sa carte (étape 4c). Nil pour
+    /// un mot venu d'ailleurs (placement, Assimil, conversation).
+    var contextES: String?
+    var contextForm: String?
+    var contextFR: String?
 
     init(language: String, lemma: String, rank: Int?, source: String, at date: Date) {
         self.key = AdaptiveKey.make(language: language, lemma)
@@ -218,6 +224,19 @@ final class LexemeState {
         if newStatus == Status.active, activeAt == nil { activeAt = date }
         status = newStatus
         return true
+    }
+
+    /// La phrase de sa carte est connue (étape 4c).
+    var hasContext: Bool { contextES?.isEmpty == false && contextFR?.isEmpty == false }
+
+    /// Vu dans le texte du jour. La première phrase donne la carte et la garde : la
+    /// carte ne change pas de recto d'un jour à l'autre.
+    func recordSeen(sentence es: String, form: String?, translation fr: String) {
+        seenCount += 1
+        guard !hasContext else { return }
+        contextES = es
+        contextForm = form
+        contextFR = fr
     }
 }
 
