@@ -217,11 +217,7 @@ struct StudyBlockView: View {
         case .conversation:
             ConversationBlockContent(session: session, pack: pack) { childOpen = true }
         case .automation:
-            Text(block.summary)
-                .font(.title3)
-            Text("Le contenu de ce bloc arrive avec les prochaines versions de l'app. "
-                 + "Tu peux déjà le marquer fait ou le passer, pour essayer la séance.")
-                .foregroundStyle(.secondary)
+            AutomationBlockContent(session: session, pack: pack) { childOpen = true }
         }
     }
 

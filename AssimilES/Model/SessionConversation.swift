@@ -7,7 +7,7 @@ import SwiftData
 @MainActor
 enum SessionConversation {
     /// La partie du bloc cochée quand un récapitulatif est arrivé.
-    static let part = "\(StudyBlock.conversation.rawValue).roleplay"
+    nonisolated static let part = "\(StudyBlock.conversation.rawValue).roleplay"
 
     /// Les mots du jour compris : ceux que le texte du bloc 2 a vraiment employés, pas
     /// les sept proposés. Sans texte, aucun.
@@ -34,21 +34,30 @@ enum SessionConversation {
 
     /// Le récapitulatif d'une conversation, à inscrire une fois : chaque emploi de
     /// l'objectif va au journal (une réussite au plus pour la conversation), les mots
-    /// produits montent, la partie du bloc est cochée.
+    /// produits montent, la partie du bloc est cochée. `part` : le jeu de rôle, ou la
+    /// rafale du bloc 4.
     static func record(_ review: ConversationReview, in session: StudySession, pack: CurriculumPack,
-                       at date: Date, in context: ModelContext) throws {
-        if let objectiveID = session.objectiveID, let uses = review.objectiveUses, !uses.isEmpty {
+                       part: String = SessionConversation.part, at date: Date, in context: ModelContext) throws {
+        try recordProduction(uses: review.objectiveUses, lemmas: review.lemmasProduced, objectiveID: session.objectiveID,
+                             source: ObjectiveEvidence.Source.conversation, pack: pack, at: date, in: context)
+        StudySessionProgress.markPart(part, in: session, at: date)
+    }
+
+    /// Une production jugée (une conversation, un écrit) : ses emplois de l'objectif au
+    /// journal, une réussite au plus ; ses lemmes, produits.
+    static func recordProduction(uses: [ObjectiveUse]?, lemmas: [String]?, objectiveID: String?, source: String,
+                                 pack: CurriculumPack, at date: Date, in context: ModelContext) throws {
+        if let objectiveID, let uses, !uses.isEmpty {
             let progress = try ObjectiveTracker.progress(language: pack.language, objectiveID: objectiveID,
                                                          at: date, in: context)
             let evidences = uses.map {
-                ObjectiveEvidence(objectiveKey: progress.key, at: date, source: ObjectiveEvidence.Source.conversation,
+                ObjectiveEvidence(objectiveKey: progress.key, at: date, source: source,
                                   valid: $0.valid, said: $0.said, analysis: $0.analysis)
             }
             ObjectiveTracker.recordProduction(evidences, on: progress, in: context)
         }
-        try KnownVocabulary.recordProduction(review.lemmasProduced ?? [], language: pack.language, ranks: pack.ranks,
-                                             source: ObjectiveEvidence.Source.conversation, at: date, in: context)
-        StudySessionProgress.markPart(part, in: session, at: date)
+        try KnownVocabulary.recordProduction(lemmas ?? [], language: pack.language, ranks: pack.ranks,
+                                             source: source, at: date, in: context)
     }
 
     /// Le bilan du jour : les emplois de l'objectif en conversation depuis le début de

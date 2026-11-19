@@ -10,6 +10,11 @@ struct ConversationSetup {
     var turns: Int? = nil
     /// La ligne au-dessus des bulles. Nil : le résumé du profil, s'il en a un.
     var intro: String? = nil
+    /// La durée visée (la rafale du bloc 4) : un décompte, puis une invitation à
+    /// terminer. Rien ne coupe. Nil : pas de durée.
+    var targetSeconds: Double? = nil
+    /// Le titre de l'écran. Nil : « Conversation ».
+    var title: String? = nil
     /// Le récapitulatif reçu, une fois par conversation (même après « Réessayer »).
     var onReview: ((ConversationReview) -> Void)? = nil
     /// La fin rend la main au lieu de fermer l'écran (« Continuer ») : le récapitulatif
@@ -79,7 +84,7 @@ struct ConversationView: View {
         .frame(maxWidth: 600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(StudyStyle.paper)
-        .navigationTitle(finished ? "Récapitulatif" : "Conversation")
+        .navigationTitle(finished ? "Récapitulatif" : setup?.title ?? "Conversation")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
@@ -227,7 +232,13 @@ struct ConversationView: View {
 
     private var controls: some View {
         VStack(spacing: 10) {
-            status
+            if let target = setup?.targetSeconds {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    countdown(target, now: context.date)
+                }
+            } else {
+                status
+            }
             HStack(spacing: 24) {
                 if session.phase == .recording {
                     Button("Annuler", systemImage: "xmark") { session.cancelRecording() }
@@ -306,6 +317,26 @@ struct ConversationView: View {
                 .accessibilityIdentifier("conversation-retry")
             }
             .padding(.horizontal, 20)
+        }
+    }
+
+    /// Le temps qui reste, puis « touche Terminer » une fois la durée passée, quand
+    /// c'est à l'apprenant.
+    @ViewBuilder
+    private func countdown(_ target: Double, now: Date) -> some View {
+        let left = max(0, target - now.timeIntervalSince(session.startedAt))
+        if left == 0, session.phase == .ready {
+            hint("C'est \(Int(target / 60)) minutes : touche Terminer")
+                .accessibilityIdentifier("conversation-time-up")
+        } else {
+            VStack(spacing: 4) {
+                Text("\(Int(left) / 60):\(String(format: "%02d", Int(left) % 60))")
+                    .font(.footnote.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("conversation-countdown")
+                status
+            }
         }
     }
 

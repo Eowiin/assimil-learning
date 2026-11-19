@@ -6,6 +6,7 @@ import Foundation
 /// Les mots se comparent sans casse, sans ponctuation et sans accents écrits : la
 /// phrase dite vient de la transcription de Whisper, dont la ponctuation et les
 /// accents ne sont pas ceux de l'apprenant. Seul un vrai changement de mot ressort.
+/// À l'écrit (`accents: true`), l'apprenant a tapé ses accents : un accent changé ressort.
 enum WordDiff {
 
     struct Word: Equatable {
@@ -14,9 +15,9 @@ enum WordDiff {
         let changed: Bool
     }
 
-    static func compare(said: String, corrected: String) -> (said: [Word], corrected: [Word]) {
+    static func compare(said: String, corrected: String, accents: Bool = false) -> (said: [Word], corrected: [Word]) {
         let a = words(said), b = words(corrected)
-        let keyA = a.map(key), keyB = b.map(key)
+        let keyA = a.map { key($0, accents: accents) }, keyB = b.map { key($0, accents: accents) }
         let common = longestCommon(keyA, keyB)
         return (mark(a, kept: common.left), mark(b, kept: common.right))
     }
@@ -28,15 +29,16 @@ enum WordDiff {
     }
 
     private static func keys(_ sentence: String) -> [String] {
-        words(sentence).map(key).filter { !$0.isEmpty }
+        words(sentence).map { key($0) }.filter { !$0.isEmpty }
     }
 
     private static func words(_ sentence: String) -> [String] {
         sentence.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
-    static func key(_ word: String) -> String {
-        word.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "es"))
+    static func key(_ word: String, accents: Bool = false) -> String {
+        word.folding(options: accents ? [.caseInsensitive] : [.caseInsensitive, .diacriticInsensitive],
+                     locale: Locale(identifier: "es"))
             .filter { $0.isLetter || $0.isNumber }
     }
 

@@ -179,5 +179,18 @@ verdict.
      l'écrit ou un autre jour. Les `lemmas_produced` montent (`KnownVocabulary`). La partie
      se coche quand le récapitulatif est arrivé ; le bloc montre les emplois du jour et
      se refait. `ConversationSetup` sert aussi au calibrage du placement.
-   - **4e, Automatisation** : ~5 min d'oral en rafale, puis un écrit de 80 à 120 mots
-     corrigé, qui rappelle l'objectif à réinjecter.
+   - **4e, Automatisation** (`SessionAutomation`, `AutomationBlockContent`, `WritingView`,
+     `WritingClient`) : deux parties, cochées quand leur correction est arrivée.
+     - **La rafale** : le profil du jeu de rôle en `mode = speed` ; `words`, les mots du
+       jour puis les reconnus pas encore actifs, les plus récents d'abord (5 au plus).
+       Cinq minutes visées par un décompte, sans couper. Preuves `conversation`, une
+       réussite au plus.
+     - **L'écrit** : la consigne est composée sur l'iPhone (le thème du jour, l'objectif
+       entre guillemets). L'objectif rappelé et jugé est celui à réinjecter s'il y en a
+       un, sinon celui du jour (2026-11-19) : c'est le seul moment où un objectif « à
+       réinjecter » gagne une preuve. « Faire corriger » à 80 mots, avertissement
+       au-delà de 120. Brouillon gardé ; l'écrit est gardé (`WritingRecord`) avant la
+       correction, qui se relance après un échec. Preuves `writing`, une réussite au
+       plus ; la catégorie `orthographe` est lue, et un accent changé ressort à l'écrit
+       (`WordDiff`, `accents: true`). Les fautes de l'écrit ne nourrissent pas encore
+       `ErrorPatterns`.

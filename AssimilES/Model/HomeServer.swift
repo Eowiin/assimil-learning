@@ -91,6 +91,16 @@ final class ServerStatus {
         return ConversationClient(baseURL: baseURL, session: session)
     }
 
+    /// La correction de l'écrit du bloc 4 : elle passe par la même IA que la
+    /// conversation, et vient avec elle.
+    var writing: (any WritingService)? {
+        #if DEBUG
+        if fake { return FakeWritingService() }
+        #endif
+        guard let baseURL = base(for: ServerHealth.conversation) else { return nil }
+        return WritingClient(baseURL: baseURL, session: session)
+    }
+
     /// Le jugement des sons, si le serveur est en ligne et l'a chargé. Nil sinon : la
     /// ligne Prononciation de l'accueil n'apparaît pas.
     var pronunciation: (any PronunciationService)? {
