@@ -38,6 +38,8 @@ struct ConversationCorrection: Codable, Equatable, Sendable {
         case grammar = "grammaire"
         case vocabulary = "vocabulaire"
         case phrasing = "tournure"
+        /// À l'écrit seulement (`/writing/review`).
+        case spelling = "orthographe"
     }
 
     let said: String

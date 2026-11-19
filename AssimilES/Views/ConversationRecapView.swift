@@ -6,6 +6,8 @@ struct ConversationRecapView: View {
     let review: ConversationSession.Review
     /// Les phrases où l'objectif a été tenté, jugées. Nil : aucun objectif demandé.
     var objectiveUses: [ObjectiveUse]? = nil
+    /// Un écrit : le texte entier corrigé, montré sous les phrases. Nil : une conversation.
+    var correctedText: String? = nil
     /// Les fautes des conversations d'avant : une faute qui revient le dit.
     var earlier = ErrorPatterns(conversations: [])
     let retry: () async -> Void
@@ -47,6 +49,17 @@ struct ConversationRecapView: View {
         case .done(let corrections):
             if let objectiveUses { objective(objectiveUses) }
             if corrections.isEmpty { clean } else { list(corrections) }
+            if let correctedText, !corrections.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Ton texte corrigé")
+                        .font(.title3.weight(.semibold))
+                    Text(correctedText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("recap-corrected-text")
+                }
+                .studySection()
+            }
         }
     }
 
@@ -58,7 +71,7 @@ struct ConversationRecapView: View {
             Text("Aucune faute relevée")
                 .font(.title3.weight(.semibold))
                 .accessibilityIdentifier("recap-clean")
-            Text("Tout ce que tu as dit était correct.")
+            Text(correctedText == nil ? "Tout ce que tu as dit était correct." : "Tout ce que tu as écrit était correct.")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 240)
@@ -78,7 +91,7 @@ struct ConversationRecapView: View {
     /// du correcteur. Une conversation ne compte qu'une réussite au plus.
     private func objective(_ uses: [ObjectiveUse]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Objectif du jour")
+            Text(correctedText == nil ? "Objectif du jour" : "Objectif rappelé")
                 .font(.title3.weight(.semibold))
             if uses.isEmpty {
                 Text("Tu ne l'as pas employé cette fois.")
@@ -105,9 +118,10 @@ struct ConversationRecapView: View {
     }
 
     private func card(_ correction: ConversationCorrection) -> some View {
-        let diff = WordDiff.compare(said: correction.said, corrected: correction.corrected)
+        let written = correctedText != nil
+        let diff = WordDiff.compare(said: correction.said, corrected: correction.corrected, accents: written)
         return VStack(alignment: .leading, spacing: 10) {
-            line(label: "Tu as dit", words: diff.said, mark: .removed)
+            line(label: written ? "Tu as écrit" : "Tu as dit", words: diff.said, mark: .removed)
             line(label: "Correct", words: diff.corrected, mark: .added)
             Text(correction.explanation)
                 .font(.subheadline)
