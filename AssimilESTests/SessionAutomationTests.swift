@@ -88,6 +88,27 @@ struct SessionAutomationTests {
         #expect(prompt.hasSuffix("« \(reinject.title) »."))
     }
 
+    @Test("L'orthographe reprise dans deux productions ajoute un rappel des accents à la consigne")
+    func accentReminder() throws {
+        let container = try Fixture.container()
+        let session = AbsorptionTests.session(in: container.mainContext)
+        let accent = ConversationCorrection(said: "compre", corrected: "compré", explanation: "",
+                                            category: .spelling, tag: "accent écrit")
+        let tilde = ConversationCorrection(said: "manana", corrected: "mañana", explanation: "",
+                                           category: .spelling, tag: "tilde")
+        let once = ErrorPatterns(productions: [.init(date: Fixture.date(day: 1), kind: .writing,
+                                                     corrections: [accent, tilde])])
+        #expect(!SessionAutomation.writingPrompt(for: session, pack: Self.pack, patterns: once)
+            .contains("Attention aux accents écrits."))
+        // Deux points différents, mais deux productions : l'orthographe revient.
+        let twice = ErrorPatterns(productions: [
+            .init(date: Fixture.date(day: 1), kind: .writing, corrections: [accent]),
+            .init(date: Fixture.date(day: 2), kind: .conversation, corrections: [tilde]),
+        ])
+        #expect(SessionAutomation.writingPrompt(for: session, pack: Self.pack, patterns: twice)
+            .hasSuffix("». Attention aux accents écrits."))
+    }
+
     @Test("À l'écrit, un accent changé ressort ; à l'oral, non")
     func accentDiff() {
         let written = WordDiff.compare(said: "Ayer compre pan.", corrected: "Ayer compré pan.", accents: true)

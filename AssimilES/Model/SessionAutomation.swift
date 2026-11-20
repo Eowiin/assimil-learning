@@ -68,13 +68,19 @@ enum SessionAutomation {
         session.reinjectObjectiveID.flatMap(pack.objective) ?? session.objectiveID.flatMap(pack.objective)
     }
 
-    /// La consigne, composée sans l'IA : le thème du jour et l'objectif à employer.
-    static func writingPrompt(for session: StudySession, pack: CurriculumPack) -> String {
+    /// La consigne, composée sans l'IA : le thème du jour, l'objectif à employer et,
+    /// si l'orthographe revient dans les fautes d'avant (`patterns`), un rappel des accents.
+    static func writingPrompt(for session: StudySession, pack: CurriculumPack,
+                              patterns: ErrorPatterns = ErrorPatterns()) -> String {
         let theme = pack.themes.first { $0.id == session.theme }
         let subject = theme.map { "sur ce thème : \($0.fr.lowercasedFirst)" } ?? "sur ta journée"
         let words = "\(writingWords.lowerBound) à \(writingWords.upperBound) mots"
-        guard let objective = writingObjective(for: session, pack: pack) else { return "Écris \(words) \(subject)." }
-        return "Écris \(words) \(subject). Emploie ce point : « \(objective.title) »."
+        var prompt = "Écris \(words) \(subject)."
+        if let objective = writingObjective(for: session, pack: pack) {
+            prompt += " Emploie ce point : « \(objective.title) »."
+        }
+        if patterns.spellingRecurs { prompt += " Attention aux accents écrits." }
+        return prompt
     }
 
     static func wordCount(_ text: String) -> Int {

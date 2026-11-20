@@ -196,5 +196,8 @@ verdict.
        au-delà de 120. Brouillon gardé ; l'écrit est gardé (`WritingRecord`) avant la
        correction, qui se relance après un échec. Preuves `writing`, une réussite au
        plus ; la catégorie `orthographe` est lue, et un accent changé ressort à l'écrit
-       (`WordDiff`, `accents: true`). Les fautes de l'écrit ne nourrissent pas encore
-       `ErrorPatterns`.
+       (`WordDiff`, `accents: true`). Les fautes de l'écrit nourrissent `ErrorPatterns`
+       (2026-11-20, `docs/module-profil.md`, étape 2) : un écrit compte comme une
+       conversation, son récapitulatif dit les fautes qui reviennent, et la consigne
+       ajoute « Attention aux accents écrits » quand l'orthographe revient dans deux
+       productions ou plus.

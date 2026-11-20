@@ -126,7 +126,8 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
 
 ### 2 · Les fautes de conversation qui reviennent (app) — fait (PR #78)
 
-- **`ErrorPatterns`**, sans stockage, calculé depuis les `ConversationRecord` :
+- **`ErrorPatterns`**, sans stockage, calculé depuis les `ConversationRecord` (et,
+  depuis le 2026-11-20, les `WritingRecord` corrigés, voir plus bas) :
   - les corrections regroupées par `tag` replié (casse, accents, espaces), avec leur
     catégorie, le nombre de conversations où le point revient, et les trois derniers
     exemples ;
@@ -137,6 +138,23 @@ et `POST /conversation/turn` (un champ de formulaire en JSON, comme `history`) :
 - **Tests** : le regroupement (« Ser/Estar » et « ser / estar »), le compte par
   conversation et non par phrase, les anciennes corrections sans `tag`.
 - **Test sur l'iPhone** : deux conversations avec la même faute.
+
+- **Les fautes de l'écrit (2026-11-20).** Une « production » est une conversation ou
+  un écrit du bloc 4 (`WritingRecord` corrigé), avec sa date et sa nature :
+  - le compte devient deux compteurs, `conversations` et `writings` ; leur somme
+    classe les points et sert au seuil de 2. Deux fautes du même point dans une même
+    production n'en font qu'une ;
+  - `ErrorPatterns.load(in:)` lit les deux sortes de records. Les écrits déjà corrigés
+    comptent tout de suite, sans migration ;
+  - un écrit compte comme une conversation, y compris pour la faute à surveiller ;
+  - le récapitulatif de l'écrit reçoit les fautes d'avant cet écrit, et le texte dit
+    « déjà relevé dans 2 conversations et un écrit » (chaque partie omise à zéro) ;
+  - l'orthographe est comptée et affichée, mais ne devient jamais la faute à
+    surveiller : l'oral ne voit pas les accents (Whisper transcrit juste, le
+    récapitulatif oral les ignore). Quand elle revient dans deux productions ou plus,
+    quel qu'en soit le point, la consigne de l'écrit ajoute « Attention aux accents
+    écrits ». C'est composé sur l'iPhone ;
+  - le jeu de rôle (bloc 3) et la rafale (bloc 4) restent sans faute à surveiller.
 
 ### 3 · Le partenaire reçoit le profil (serveur et app) — fait (PR #79)
 
