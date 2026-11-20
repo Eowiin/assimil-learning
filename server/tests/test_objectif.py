@@ -97,6 +97,14 @@ def test_mode_rapide_des_questions_courtes_qui_appellent_l_objectif():
     assert "pocas palabras" in note_du_tour(p, 1)
 
 
+def test_mode_rapide_sans_objectif_vise_la_fluidite():
+    p = profil(mode="speed")
+    assert "Ronda rápida" in consigne(p) and "con soltura" in consigne(p)
+    assert "con soltura" not in consigne(profil(objective=OBJ_031, mode="speed"))
+    note = note_du_tour(p, 2)
+    assert "una sola pregunta directa y corta, sin ofrecer" in note
+
+
 def test_mode_rapide_ouverture_avec_sujet():
     contenu = messages_ouverture("los viajes", profil(mode="speed"))[1]["content"]
     assert "primera pregunta directa, sobre este tema: los viajes" in contenu

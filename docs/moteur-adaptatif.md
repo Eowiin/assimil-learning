@@ -181,10 +181,14 @@ verdict.
      se refait. `ConversationSetup` sert aussi au calibrage du placement.
    - **4e, Automatisation** (`SessionAutomation`, `AutomationBlockContent`, `WritingView`,
      `WritingClient`) : deux parties, cochées quand leur correction est arrivée.
-     - **La rafale** : le profil du jeu de rôle en `mode = speed` ; `words`, les mots du
-       jour puis les reconnus pas encore actifs, les plus récents d'abord (5 au plus).
-       Cinq minutes visées par un décompte, sans couper. Preuves `conversation`, une
-       réussite au plus.
+     - **La rafale** : automatiser ce qui est su, pas apprendre (réalignée le
+       2026-11-20, elle ressemblait trop au jeu de rôle). `mode = speed` sans objectif ni
+       `words` ; `allowed_lemmas` : les seuls mots connus, sans ceux du jour ; le niveau
+       de l'objectif du jour. Le sujet (`topic`) est un thème familier : celui de la
+       séance d'avant la plus récente qui diffère du jour, sinon celui du jour. Le
+       serveur, en `speed` sans objectif, pose des questions faciles pour la fluidité.
+       Cinq minutes visées par un décompte, sans couper. Pas de preuve d'objectif : les
+       lemmes produits montent seuls.
      - **L'écrit** : la consigne est composée sur l'iPhone (le thème du jour, l'objectif
        entre guillemets). L'objectif rappelé et jugé est celui à réinjecter s'il y en a
        un, sinon celui du jour (2026-11-19) : c'est le seul moment où un objectif « à

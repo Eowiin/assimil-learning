@@ -25,8 +25,8 @@ enum AutomationPart: String, CaseIterable, Identifiable, Hashable {
 }
 
 /// Le bloc 4 de la séance (`docs/moteur-adaptatif.md`, étape 4e) : cinq minutes de
-/// questions en rafale sur l'objectif du jour, puis un écrit de 80 à 120 mots qui
-/// rappelle l'objectif à réinjecter.
+/// questions en rafale sur un thème familier, avec les mots déjà sus, puis un écrit de
+/// 80 à 120 mots qui rappelle l'objectif à réinjecter.
 @MainActor
 enum SessionAutomation {
     /// La rafale vise cinq minutes, sans couper.
@@ -35,30 +35,29 @@ enum SessionAutomation {
 
     // MARK: - La rafale
 
-    /// Le profil de la rafale : comme le jeu de rôle, en `speed`, avec les mots à rendre
-    /// actifs.
+    /// Le profil de la rafale : automatiser ce qui est déjà su, pas apprendre. Ni
+    /// objectif ni mots du jour (c'est le jeu de rôle du bloc 3) ; la réplique est
+    /// mesurée sur les seuls mots connus. Le niveau reste celui de l'objectif du jour.
     static func speedProfile(for session: StudySession, pack: CurriculumPack,
-                             in context: ModelContext) -> ConversationProfile? {
-        guard var profile = SessionConversation.profile(for: session, pack: pack, in: context) else { return nil }
-        profile.mode = "speed"
+                             in context: ModelContext) -> ConversationProfile {
+        let estimate = PlacementStore.latestCompleted(language: pack.language, in: context)?.lexiconEstimate ?? 0
         let states = (try? context.fetch(FetchDescriptor<LexemeState>())) ?? []
-        profile.words = activeWords(day: SessionConversation.dayWords(of: session), states: states,
-                                    language: pack.language)
-        return profile
+        return ConversationProfile(level: session.objectiveID.flatMap(pack.objective)?.level, mode: "speed",
+                                   allowedLemmas: KnownVocabulary.lemmas(pack: pack, estimate: estimate, states: states))
     }
 
-    /// Les mots que la rafale fait dire : ceux du jour d'abord, puis les reconnus pas
-    /// encore actifs, les plus récemment reconnus d'abord. Cinq au plus.
-    static func activeWords(day: [String], states: [LexemeState], language: String) -> [String] {
-        let recognized: [String] = states
-            .filter { $0.language == language && $0.status == LexemeState.Status.recognized }
-            .sorted { first, second in
-                let a = first.recognizedAt ?? .distantPast, b = second.recognizedAt ?? .distantPast
-                return a != b ? a > b : first.lemma < second.lemma
-            }
-            .map(\.lemma)
-        var seen = Set<String>()
-        return Array((day + recognized).filter { seen.insert($0).inserted }.prefix(ConversationProfile.maxWords))
+    /// Le thème de la rafale : un thème déjà lu, celui de la séance d'avant la plus
+    /// récente qui en diffère ; à la première séance, celui du jour.
+    static func familiarTheme(for session: StudySession, pack: CurriculumPack,
+                              in context: ModelContext) -> CurriculumPack.Theme? {
+        let day = session.day
+        let language = session.language
+        let earlier = (try? context.fetch(FetchDescriptor<StudySession>(
+            predicate: #Predicate { $0.day < day && $0.language == language },
+            sortBy: [SortDescriptor(\.day, order: .reverse)]))) ?? []
+        let theme = { (id: String?) in id.flatMap { id in pack.themes.first { $0.id == id } } }
+        return earlier.lazy.filter { $0.theme != session.theme }.compactMap { theme($0.theme) }.first
+            ?? theme(session.theme)
     }
 
     // MARK: - L'écrit

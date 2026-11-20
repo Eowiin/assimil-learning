@@ -88,7 +88,8 @@ class Profil(BaseModel):
     # L'objectif du jour. Sans `mode`, il est amené comme `watch`.
     objective: Objectif | None = None
     # `roleplay` : le `prompt_ia` de l'objectif sert de scénario. `speed` : des questions
-    # directes en rafale. Absent : la conversation libre.
+    # directes en rafale, sur l'objectif s'il y en a un, sinon faciles, pour la
+    # fluidité. Absent : la conversation libre.
     mode: Mode | None = None
     # Les lemmes que l'apprenant connaît. Ils ne servent qu'à mesurer la réplique, jamais
     # dans la consigne : une liste de 800 mots noierait un modèle de 8B.
@@ -123,6 +124,11 @@ def consigne(profil: Profil | None = None) -> str:
             lignes.append("- Tus preguntas deben llevar al estudiante a usar este punto: «"
                           + _point(objectif) + "». Nunca lo nombres, nunca ofrezcas opciones y no "
                           "le corrijas.")
+        else:
+            # Sans objectif, la rafale du bloc 4 : rendre fluide ce qui est déjà su.
+            lignes.append("- Haz preguntas fáciles sobre cosas que ya sabe decir, que pueda "
+                          "contestar al momento sin buscar palabras: lo que importa es que hable "
+                          "con soltura, no aprender algo nuevo.")
     elif objectif and not _scenario(profil):
         lignes.append("- El objetivo de hoy es este punto: «" + _point(objectif) + "». De vez en "
                       "cuando, haz preguntas normales cuya respuesta lo necesite. Nunca lo nombres, "

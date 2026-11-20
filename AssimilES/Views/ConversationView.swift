@@ -15,6 +15,8 @@ struct ConversationSetup {
     var targetSeconds: Double? = nil
     /// Le titre de l'écran. Nil : « Conversation ».
     var title: String? = nil
+    /// Le sujet de l'ouverture, en espagnol. Nil : l'IA choisit.
+    var topic: String? = nil
     /// Le récapitulatif reçu, une fois par conversation (même après « Réessayer »).
     var onReview: ((ConversationReview) -> Void)? = nil
     /// La fin rend la main au lieu de fermer l'écran (« Continuer ») : le récapitulatif
@@ -108,6 +110,7 @@ struct ConversationView: View {
             if let setup {
                 session.profile = setup.profile
                 session.turnLimit = setup.turns
+                session.topic = setup.topic
             } else if session.profile == nil {
                 session.profile = Self.profile(in: context)
             }
