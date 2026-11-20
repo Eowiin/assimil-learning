@@ -294,6 +294,9 @@ final class ConversationSession {
     /// Le nombre de réponses de l'apprenant au-delà duquel le micro se tait (la
     /// conversation de calibrage du placement). Nil : sans limite.
     var turnLimit: Int?
+    /// Le sujet que l'IA propose en ouvrant (le thème familier de la rafale). Nil : elle
+    /// choisit.
+    var topic: String?
     /// Le récapitulatif tel que le serveur l'a rendu, objectif et lemmes compris.
     private(set) var lastReview: ConversationReview?
 
@@ -399,7 +402,7 @@ final class ConversationSession {
             let partner: ConversationLine
             switch what {
             case .opening:
-                let reply = try await service.start(topic: nil, profile: profile)
+                let reply = try await service.start(topic: topic, profile: profile)
                 partner = ConversationLine(speaker: .partner, text: reply.text, audio: reply.audio)
             case .turn(let audio):
                 let turn = try await service.turn(audio: audio, text: nil, history: history, profile: profile)

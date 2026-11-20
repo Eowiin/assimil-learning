@@ -34,26 +34,43 @@ struct SessionAutomationTests {
         #expect(unknown.objectiveUses == nil)
     }
 
-    @Test("La rafale : mode speed, l'objectif du jour, les mots du jour puis les reconnus les plus récents")
+    @Test("La rafale : mode speed, ni objectif ni mots du jour, mesurée sur les seuls mots connus")
     func speedProfile() throws {
         let container = try Fixture.container()
         let context = container.mainContext
         let session = AbsorptionTests.session(in: context)
         Absorption.store(try AbsorptionTests.text(), in: session)
-        for (index, lemma) in ["viejo", "nuevo", "activo"].enumerated() {
+        for lemma in ["viejo", "activo"] {
             let state = LexemeState(language: "es", lemma: lemma, rank: nil, source: "test", at: Fixture.date(day: 1))
             state.raise(to: lemma == "activo" ? LexemeState.Status.active : LexemeState.Status.recognized,
-                        at: Fixture.date(day: 1, hour: 8 + index))
+                        at: Fixture.date(day: 1, hour: 8))
             context.insert(state)
         }
-        let profile = try #require(SessionAutomation.speedProfile(for: session, pack: Self.pack, in: context))
+        let profile = SessionAutomation.speedProfile(for: session, pack: Self.pack, in: context)
         #expect(profile.mode == "speed")
-        #expect(profile.objective?.id == session.objectiveID)
-        #expect(profile.watch == nil)
-        #expect(profile.words == ["cumbre", "mochila", "madrugar", "nuevo", "viejo"])
+        #expect(profile.objective == nil && profile.watch == nil && profile.words.isEmpty)
+        #expect(profile.level == Self.pack.objectives.first?.level)
+        #expect(Set(profile.allowedLemmas) == ["viejo", "activo"])
 
         session.objectiveID = nil
-        #expect(SessionAutomation.speedProfile(for: session, pack: Self.pack, in: context) == nil)
+        #expect(SessionAutomation.speedProfile(for: session, pack: Self.pack, in: context).level == nil)
+    }
+
+    @Test("Le thème de la rafale : celui d'une séance d'avant qui diffère du jour ; à la première, celui du jour")
+    func familiarTheme() throws {
+        let container = try Fixture.container()
+        let context = container.mainContext
+        let session = AbsorptionTests.session(in: context)
+        let themes = Self.pack.themes
+        #expect(SessionAutomation.familiarTheme(for: session, pack: Self.pack, in: context)?.id == themes[0].id)
+
+        for (day, theme) in [(0, themes[1]), (1, themes[0]), (3, themes[2])] {
+            let other = StudySession(language: "es", day: Fixture.date(day: day), objectiveID: nil,
+                                     startedAt: Fixture.date(day: day), calendar: Fixture.calendar)
+            other.theme = theme.id
+            context.insert(other)
+        }
+        #expect(SessionAutomation.familiarTheme(for: session, pack: Self.pack, in: context)?.id == themes[1].id)
     }
 
     @Test("L'écrit rappelle l'objectif à réinjecter, sinon celui du jour ; la consigne dit le thème et l'objectif")

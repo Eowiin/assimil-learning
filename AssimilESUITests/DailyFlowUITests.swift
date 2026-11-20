@@ -448,7 +448,9 @@ final class DailyFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
         snapshot(app, "seance-rafale")
         tap(app.buttons["conversation-end"])
-        XCTAssertTrue(app.descendants(matching: .any)["recap-objective-use"].firstMatch.waitForExistence(timeout: 5))
+        // La rafale ne vise pas l'objectif : le récapitulatif n'en parle pas.
+        XCTAssertTrue(app.buttons["recap-close"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["recap-objective-use"].firstMatch.exists)
         tap(app.buttons["recap-close"])
 
         tap(app.buttons["automation-writing"])

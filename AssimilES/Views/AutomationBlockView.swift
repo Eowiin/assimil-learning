@@ -1,8 +1,8 @@
 import SwiftUI
 import SwiftData
 
-/// Le bloc 4, « Automatisation » : cinq minutes de questions en rafale sur l'objectif du
-/// jour, puis un écrit de 80 à 120 mots, corrigé, qui rappelle l'objectif à réinjecter.
+/// Le bloc 4, « Automatisation » : cinq minutes de questions faciles en rafale sur un
+/// thème familier, avec les mots déjà sus, puis un écrit de 80 à 120 mots, corrigé, qui rappelle l'objectif à réinjecter.
 /// Chaque partie se coche quand son récapitulatif est arrivé.
 struct AutomationBlockContent: View {
     let session: StudySession
@@ -58,9 +58,11 @@ struct AutomationBlockContent: View {
         let done = session.blocks.parts[part.key] != nil
         switch part {
         case .speed:
-            if session.objectiveID == nil { return ("Pas d'objectif aujourd'hui", false) }
             if server.conversation == nil { return ("Le PC ne répond pas : cette partie attendra", false) }
-            return (done ? "Fait · tu peux recommencer" : "5 minutes de questions courtes, réponds vite", true)
+            if done { return ("Fait · tu peux recommencer", true) }
+            let theme = SessionAutomation.familiarTheme(for: session, pack: pack, in: context)
+            return ("5 minutes de questions faciles" + (theme.map { " · \($0.fr.lowercasedFirst)" } ?? "")
+                    + ", avec les mots que tu connais : réponds vite", true)
         case .writing:
             if done { return ("Corrigé · relire la correction", true) }
             if server.writing == nil { return ("Le PC ne répond pas : cette partie attendra", false) }
@@ -70,11 +72,12 @@ struct AutomationBlockContent: View {
 
     private func open(_ part: AutomationPart) {
         if part == .speed {
-            guard let profile = SessionAutomation.speedProfile(for: session, pack: pack, in: context) else { return }
-            let intro = "Questions en rafale : réponds vite, sans chercher la phrase parfaite."
-                + (profile.words.isEmpty ? "" : " Mots à placer : " + profile.words.joined(separator: ", ") + ".")
+            let profile = SessionAutomation.speedProfile(for: session, pack: pack, in: context)
+            let theme = SessionAutomation.familiarTheme(for: session, pack: pack, in: context)
+            let intro = "Questions en rafale" + (theme.map { " · \($0.fr.lowercasedFirst)" } ?? "")
+                + " : rien de nouveau, réponds vite avec ce que tu sais déjà, sans chercher la phrase parfaite."
             speedSetup = ConversationSetup(profile: profile, intro: intro, targetSeconds: SessionAutomation.speedSeconds,
-                                           title: AutomationPart.speed.title,
+                                           title: AutomationPart.speed.title, topic: theme?.es,
                                            onReview: { review in
                 try? SessionConversation.record(review, in: session, pack: pack, part: AutomationPart.speed.key,
                                                 at: .now, in: context)
