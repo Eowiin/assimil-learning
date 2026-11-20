@@ -50,7 +50,12 @@ struct FakeWritingService: WritingService {
             corrections: [ConversationCorrection(said: "Ayer fui al mercado y compre pan.",
                                                  corrected: "Ayer fui al mercado y compré pan.",
                                                  explanation: "Le passé simple prend un accent écrit à la première personne.",
-                                                 category: .spelling, tag: "accent écrit")],
+                                                 category: .spelling, tag: "accent écrit"),
+                          // Le point du faux partenaire de conversation : le récapitulatif le dit déjà relevé.
+                          ConversationCorrection(said: "El mercado es lleno.",
+                                                 corrected: "El mercado está lleno.",
+                                                 explanation: "Un état passager se dit avec estar.",
+                                                 category: .grammar, tag: "ser/estar")],
             correctedText: text,
             objectiveUses: objective == nil ? nil : [
                 ObjectiveUse(said: "Ayer fui al mercado.", valid: true, analysis: "L'objectif est employé."),

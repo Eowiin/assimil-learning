@@ -8,8 +8,8 @@ struct ConversationRecapView: View {
     var objectiveUses: [ObjectiveUse]? = nil
     /// Un écrit : le texte entier corrigé, montré sous les phrases. Nil : une conversation.
     var correctedText: String? = nil
-    /// Les fautes des conversations d'avant : une faute qui revient le dit.
-    var earlier = ErrorPatterns(conversations: [])
+    /// Les fautes des conversations et des écrits d'avant : une faute qui revient le dit.
+    var earlier = ErrorPatterns()
     let retry: () async -> Void
 
     var body: some View {
@@ -138,12 +138,21 @@ struct ConversationRecapView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// « ser/estar — déjà relevé dans 2 conversations ». Rien pour une première
-    /// faute (décision 4 de `docs/module-profil.md`).
+    /// « ser/estar — déjà relevé dans 2 conversations et un écrit ». Chaque partie
+    /// est omise si elle vaut zéro. Rien pour une première faute (décision 4 de
+    /// `docs/module-profil.md`).
     static func recurrence(of correction: ConversationCorrection, in earlier: ErrorPatterns) -> String? {
-        guard let tag = correction.tag, let pattern = earlier.pattern(for: correction) else { return nil }
-        let count = pattern.conversations == 1 ? "une conversation" : "\(pattern.conversations) conversations"
-        return "\(tag) — déjà relevé dans \(count)"
+        guard let tag = correction.tag, let pattern = earlier.pattern(for: correction),
+              pattern.productions > 0 else { return nil }
+        let parts = [
+            count(pattern.conversations, one: "une conversation", many: "conversations"),
+            count(pattern.writings, one: "un écrit", many: "écrits"),
+        ].compactMap { $0 }
+        return "\(tag) — déjà relevé dans \(parts.joined(separator: " et "))"
+    }
+
+    private static func count(_ n: Int, one: String, many: String) -> String? {
+        n == 0 ? nil : n == 1 ? one : "\(n) \(many)"
     }
 
     private enum Mark { case removed, added }

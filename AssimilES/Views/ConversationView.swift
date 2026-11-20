@@ -46,8 +46,8 @@ struct ConversationView: View {
     @State private var finished = false
     /// La conversation gardée, complétée par les corrections quand elles arrivent.
     @State private var record: ConversationRecord?
-    /// Les fautes des conversations d'avant celle-ci, lues en terminant.
-    @State private var earlier = ErrorPatterns(conversations: [])
+    /// Les fautes des conversations et des écrits d'avant celle-ci, lues en terminant.
+    @State private var earlier = ErrorPatterns()
 
     /// Un silence de plus de deux minutes ne compte que pour deux : le téléphone
     /// posé ne fait pas du temps d'étude.
@@ -351,11 +351,10 @@ struct ConversationView: View {
 
     /// Le profil envoyé au partenaire : la faute qui revient, les mots à reprendre.
     private static func profile(in context: ModelContext) -> ConversationProfile? {
-        let records = (try? context.fetch(FetchDescriptor<ConversationRecord>())) ?? []
         let recognize = Card.Angle.recognize, recall = Card.Angle.recall
         let cards = (try? context.fetch(FetchDescriptor<Card>(
             predicate: #Predicate { $0.angle == recognize || $0.angle == recall }))) ?? []
-        return ConversationProfile.make(patterns: ErrorPatterns(records: records), cards: cards)
+        return ConversationProfile.make(patterns: ErrorPatterns.load(in: context), cards: cards)
     }
 
     // MARK: - Fin
@@ -370,7 +369,7 @@ struct ConversationView: View {
         }
         session.close()
         // Avant de garder celle-ci : elle ne compte pas parmi les précédentes.
-        earlier = ErrorPatterns(records: (try? context.fetch(FetchDescriptor<ConversationRecord>())) ?? [])
+        earlier = ErrorPatterns.load(in: context)
         save()
         recordTime()
         withAnimation { finished = true }

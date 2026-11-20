@@ -67,12 +67,13 @@ struct ConversationProfile: Codable, Equatable, Sendable {
 
     /// Nil quand il n'y a rien à dire : le partenaire garde sa consigne d'avant.
     ///
-    /// - La faute : le point le plus fréquent, s'il revient dans deux conversations
-    ///   au moins. Une faute isolée n'est pas encore « la faute qui revient ».
+    /// - La faute : le point le plus fréquent, s'il revient dans deux productions
+    ///   (conversations ou écrits) au moins, hors orthographe (`ErrorPatterns.watch`).
+    ///   Une faute isolée n'est pas encore « la faute qui revient ».
     /// - Les mots : la carte `recognize` est connue, la carte `recall` ne l'est pas
     ///   encore (ou n'existe pas). Les plus récemment révisés d'abord : ils sont frais.
     static func make(patterns: ErrorPatterns, cards: [Card], calendar: Calendar = .current) -> ConversationProfile? {
-        let watch = patterns.mostFrequent.first { $0.conversations >= 2 }?.tag
+        let watch = patterns.watch?.tag
         let byItem = Dictionary(grouping: cards.filter(\.isActive), by: \.itemID)
         let words = byItem.values
             .compactMap { cards -> (lemma: String, reviewed: Date)? in

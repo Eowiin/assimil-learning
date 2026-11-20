@@ -6,12 +6,17 @@ private func fault(_ said: String, tag: String?, category: ConversationCorrectio
     ConversationCorrection(said: said, corrected: said + " (corrigé)", explanation: "", category: category, tag: tag)
 }
 
-private func conversation(day: Double, _ corrections: [ConversationCorrection]) -> ErrorPatterns.Conversation {
-    ErrorPatterns.Conversation(endedAt: Date(timeIntervalSince1970: 1_800_000_000 + day * 86_400),
-                               corrections: corrections)
+private func conversation(day: Double, _ corrections: [ConversationCorrection]) -> ErrorPatterns.Production {
+    ErrorPatterns.Production(date: Date(timeIntervalSince1970: 1_800_000_000 + day * 86_400), kind: .conversation,
+                             corrections: corrections)
 }
 
-@Suite("Profil : les fautes de conversation qui reviennent")
+private func writing(day: Double, _ corrections: [ConversationCorrection]) -> ErrorPatterns.Production {
+    ErrorPatterns.Production(date: Date(timeIntervalSince1970: 1_800_000_000 + day * 86_400), kind: .writing,
+                             corrections: corrections)
+}
+
+@Suite("Profil : les fautes qui reviennent, à l'oral et à l'écrit")
 struct ErrorPatternsTests {
 
     @Test("Le même point, écrit autrement par l'IA, est un seul point")
@@ -25,7 +30,7 @@ struct ErrorPatternsTests {
 
     @Test("Compté par conversation, pas par phrase ; le dernier nom écrit est gardé")
     func countByConversation() {
-        let patterns = ErrorPatterns(conversations: [
+        let patterns = ErrorPatterns(productions: [
             conversation(day: 1, [fault("Yo soy cansado", tag: "Ser/Estar"), fault("Es en casa", tag: "ser / estar")]),
             conversation(day: 2, [fault("Soy contento", tag: "ser/estar"), fault("Por mí", tag: "por/para")]),
         ])
@@ -39,7 +44,7 @@ struct ErrorPatternsTests {
 
     @Test("Trois exemples au plus, le plus récent d'abord")
     func examples() {
-        let patterns = ErrorPatterns(conversations: (1...5).map { day in
+        let patterns = ErrorPatterns(productions: (1...5).map { day in
             conversation(day: Double(day), [fault("phrase \(day)", tag: "gustar")])
         }.shuffled())
         #expect(patterns.pattern(for: fault("x", tag: "gustar"))?.examples.map(\.said)
@@ -48,23 +53,44 @@ struct ErrorPatternsTests {
 
     @Test("Une correction gardée avant les étiquettes n'est comptée nulle part")
     func untagged() {
-        let patterns = ErrorPatterns(conversations: [conversation(day: 1, [fault("Yo soy cansado", tag: nil)])])
+        let patterns = ErrorPatterns(productions: [conversation(day: 1, [fault("Yo soy cansado", tag: nil)])])
         #expect(patterns.patterns.isEmpty)
         #expect(patterns.pattern(for: fault("Yo soy cansado", tag: nil)) == nil)
     }
 
-    @Test("Lu depuis les conversations gardées ; une conversation sans récapitulatif ne compte pas")
-    func fromRecords() {
+    @Test("Lu depuis les conversations et les écrits gardés ; sans correction arrivée, rien ne compte")
+    func fromRecords() throws {
         let reviewed = ConversationRecord(startedAt: .now, endedAt: .now, messages: [])
         reviewed.reviewedCorrections = [fault("Yo soy cansado", tag: "ser/estar")]
         let pending = ConversationRecord(startedAt: .now, endedAt: .now, messages: [])
-        let patterns = ErrorPatterns(records: [reviewed, pending])
-        #expect(patterns.pattern(for: fault("x", tag: "ser/estar"))?.conversations == 1)
+        let written = WritingRecord(writtenAt: .now, language: "es", objectiveID: nil, prompt: nil, text: "Es lleno.")
+        written.review = try JSONEncoder().encode(WritingReview(corrections: [fault("Es lleno", tag: "Ser/Estar")],
+                                                                correctedText: "Está lleno."))
+        let unsent = WritingRecord(writtenAt: .now, language: "es", objectiveID: nil, prompt: nil, text: "Es lleno.")
+        let patterns = ErrorPatterns(conversations: [reviewed, pending], writings: [written, unsent])
+        let serEstar = patterns.pattern(for: fault("x", tag: "ser/estar"))
+        #expect(serEstar?.conversations == 1)
+        #expect(serEstar?.writings == 1)
+        #expect(serEstar?.productions == 2)
+    }
+
+    @Test("Un même point dans une conversation et un écrit compte deux ; deux fautes d'un même écrit, une")
+    func conversationsAndWritings() {
+        let patterns = ErrorPatterns(productions: [
+            conversation(day: 1, [fault("Yo soy cansado", tag: "ser/estar")]),
+            writing(day: 2, [fault("Es lleno", tag: "ser/estar"), fault("Soy contento", tag: "ser / estar"),
+                             fault("Por mí", tag: "por/para"), fault("Para ti", tag: "por/para")]),
+        ])
+        let serEstar = patterns.pattern(for: fault("x", tag: "ser/estar"))
+        #expect(serEstar?.conversations == 1 && serEstar?.writings == 1 && serEstar?.productions == 2)
+        let porPara = patterns.pattern(for: fault("x", tag: "por/para"))
+        #expect(porPara?.conversations == 0 && porPara?.writings == 1)
+        #expect(patterns.mostFrequent.map(\.tag) == ["ser / estar", "por/para"])
     }
 
     @Test("Le récapitulatif dit qu'une faute revient, et rien pour une première faute")
     func recapLine() {
-        let earlier = ErrorPatterns(conversations: [
+        let earlier = ErrorPatterns(productions: [
             conversation(day: 1, [fault("Yo soy cansado", tag: "ser/estar")]),
             conversation(day: 2, [fault("Soy contento", tag: "ser/estar"), fault("Me gusta los perros", tag: "gustar")]),
         ])
@@ -74,6 +100,22 @@ struct ErrorPatternsTests {
                 == "gustar — déjà relevé dans une conversation")
         #expect(ConversationRecapView.recurrence(of: fault("Por mí", tag: "por/para"), in: earlier) == nil)
         #expect(ConversationRecapView.recurrence(of: fault("Por mí", tag: nil), in: earlier) == nil)
+    }
+
+    @Test("Le récapitulatif compte les conversations et les écrits, chaque partie omise si elle vaut zéro")
+    func recapLineWithWritings() {
+        let earlier = ErrorPatterns(productions: [
+            conversation(day: 1, [fault("a", tag: "ser/estar")]),
+            conversation(day: 2, [fault("b", tag: "ser/estar"), fault("c", tag: "gustar")]),
+            writing(day: 3, [fault("d", tag: "ser/estar"), fault("e", tag: "accent écrit", category: .spelling)]),
+            writing(day: 4, [fault("f", tag: "gustar"), fault("g", tag: "accent écrit", category: .spelling)]),
+        ])
+        #expect(ConversationRecapView.recurrence(of: fault("x", tag: "ser/estar"), in: earlier)
+                == "ser/estar — déjà relevé dans 2 conversations et un écrit")
+        #expect(ConversationRecapView.recurrence(of: fault("x", tag: "gustar"), in: earlier)
+                == "gustar — déjà relevé dans une conversation et un écrit")
+        #expect(ConversationRecapView.recurrence(of: fault("x", tag: "accent écrit", category: .spelling), in: earlier)
+                == "accent écrit — déjà relevé dans 2 écrits")
     }
 }
 
@@ -94,7 +136,7 @@ struct ConversationProfileTests {
         return card
     }
 
-    private let none = ErrorPatterns(conversations: [])
+    private let none = ErrorPatterns(productions: [])
 
     @Test("Les mots compris mais pas encore dits, les plus frais d'abord, cinq au plus")
     func words() {
@@ -123,13 +165,38 @@ struct ConversationProfileTests {
 
     @Test("La faute à surveiller revient dans deux conversations au moins")
     func watch() {
-        let once = ErrorPatterns(conversations: [conversation(day: 1, [fault("a", tag: "por/para")])])
+        let once = ErrorPatterns(productions: [conversation(day: 1, [fault("a", tag: "por/para")])])
         #expect(ConversationProfile.make(patterns: once, cards: [], calendar: calendar) == nil)
-        let twice = ErrorPatterns(conversations: [
+        let twice = ErrorPatterns(productions: [
             conversation(day: 1, [fault("a", tag: "por/para"), fault("b", tag: "ser/estar")]),
             conversation(day: 2, [fault("c", tag: "ser/estar")]),
         ])
         #expect(ConversationProfile.make(patterns: twice, cards: [], calendar: calendar)
                 == ConversationProfile(watch: "ser/estar", words: []))
+    }
+
+    @Test("Un écrit compte comme une conversation pour la faute à surveiller")
+    func watchWithWriting() {
+        let patterns = ErrorPatterns(productions: [
+            conversation(day: 1, [fault("a", tag: "ser/estar")]),
+            writing(day: 2, [fault("b", tag: "ser/estar")]),
+        ])
+        #expect(ConversationProfile.make(patterns: patterns, cards: [], calendar: calendar)?.watch == "ser/estar")
+    }
+
+    @Test("L'orthographe n'est jamais la faute à surveiller : l'oral ne voit pas les accents")
+    func spellingNeverWatched() {
+        let spelling = ErrorPatterns(productions: (1...3).map { day in
+            writing(day: Double(day), [fault("compre", tag: "accent écrit", category: .spelling)])
+        })
+        #expect(spelling.pattern(for: fault("x", tag: "accent écrit"))?.productions == 3)
+        #expect(spelling.watch == nil)
+        #expect(ConversationProfile.make(patterns: spelling, cards: [], calendar: calendar) == nil)
+        // Plus fréquente qu'un autre point, elle lui laisse la place.
+        let mixed = ErrorPatterns(productions: (1...3).map { day in
+            writing(day: Double(day), [fault("compre", tag: "accent écrit", category: .spelling)]
+                    + (day > 1 ? [fault("es", tag: "ser/estar")] : []))
+        })
+        #expect(mixed.watch?.tag == "ser/estar")
     }
 }

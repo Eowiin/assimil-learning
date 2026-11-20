@@ -1,15 +1,19 @@
 import Foundation
+import SwiftData
 
-/// Les fautes de conversation qui reviennent, regroupées par point (`tag`)
-/// (`docs/module-profil.md`, étape 2).
+/// Les fautes qui reviennent, regroupées par point (`tag`), dans les conversations
+/// et les écrits corrigés (`docs/module-profil.md`, étape 2).
 ///
-/// Rien n'est stocké : c'est une projection des `ConversationRecord`, recalculée à
-/// la fin d'une conversation.
+/// Rien n'est stocké : c'est une projection des `ConversationRecord` et des
+/// `WritingRecord`, recalculée quand on en a besoin.
 struct ErrorPatterns: Equatable {
 
-    /// Les corrections d'une conversation gardée.
-    struct Conversation {
-        let endedAt: Date
+    /// Les corrections d'une production gardée : une conversation ou un écrit.
+    struct Production {
+        enum Kind { case conversation, writing }
+
+        let date: Date
+        let kind: Kind
         let corrections: [ConversationCorrection]
     }
 
@@ -17,39 +21,74 @@ struct ErrorPatterns: Equatable {
         /// Le point tel que l'IA l'a écrit la dernière fois.
         var tag: String
         var category: ConversationCorrection.Category?
-        /// Le nombre de conversations où le point revient : deux fautes dans la même
-        /// conversation n'en font qu'une.
+        /// Le nombre de conversations et d'écrits où le point revient : deux fautes
+        /// dans la même production n'en font qu'une.
         var conversations: Int
+        var writings: Int
         var lastSeen: Date
         /// Les trois dernières phrases fautives, la plus récente d'abord.
         var examples: [ConversationCorrection]
+
+        /// Un écrit compte comme une conversation : c'est la somme qui classe.
+        var productions: Int { conversations + writings }
     }
 
     /// Par point replié (`key`).
     private(set) var patterns: [String: Pattern] = [:]
+    /// Le nombre de productions où l'orthographe a été reprise, quel qu'en soit le point.
+    private(set) var spellingProductions = 0
 
-    init(conversations: [Conversation]) {
-        for conversation in conversations.sorted(by: { $0.endedAt < $1.endedAt }) {
+    /// L'orthographe qui revient fait ajouter un rappel à la consigne de l'écrit.
+    static let spellingThreshold = 2
+    /// Un point devient la faute à surveiller à partir de deux productions.
+    static let watchThreshold = 2
+
+    init(productions: [Production] = []) {
+        for production in productions.sorted(by: { $0.date < $1.date }) {
             var seen = Set<String>()
-            for correction in conversation.corrections {
+            for correction in production.corrections {
                 // Une correction gardée avant les étiquettes n'a pas de point.
                 guard let tag = correction.tag, let key = Self.key(tag) else { continue }
                 var pattern = patterns[key] ?? Pattern(tag: tag, category: correction.category, conversations: 0,
-                                                       lastSeen: conversation.endedAt, examples: [])
-                if seen.insert(key).inserted { pattern.conversations += 1 }
+                                                       writings: 0, lastSeen: production.date, examples: [])
+                if seen.insert(key).inserted {
+                    switch production.kind {
+                    case .conversation: pattern.conversations += 1
+                    case .writing: pattern.writings += 1
+                    }
+                }
                 pattern.tag = tag
                 pattern.category = correction.category ?? pattern.category
-                pattern.lastSeen = conversation.endedAt
+                pattern.lastSeen = production.date
                 pattern.examples = Array(([correction] + pattern.examples).prefix(3))
                 patterns[key] = pattern
             }
+            if production.corrections.contains(where: { $0.category == .spelling }) { spellingProductions += 1 }
         }
     }
 
-    init(records: [ConversationRecord]) {
-        self.init(conversations: records.compactMap { record in
-            record.reviewedCorrections.map { Conversation(endedAt: record.endedAt, corrections: $0) }
-        })
+    /// Les conversations et les écrits corrigés ; ceux sans correction arrivée ne
+    /// comptent pas.
+    init(conversations: [ConversationRecord], writings: [WritingRecord]) {
+        self.init(productions:
+            conversations.compactMap { record in
+                record.reviewedCorrections.map { Production(date: record.endedAt, kind: .conversation, corrections: $0) }
+            } + writings.compactMap { record in
+                record.writingReview.map { Production(date: record.writtenAt, kind: .writing, corrections: $0.corrections) }
+            })
+    }
+
+    /// Lu depuis le stockage. `before` : seulement les productions d'avant cette date,
+    /// pour le récapitulatif d'un écrit relu plus tard.
+    @MainActor
+    static func load(in context: ModelContext, before date: Date? = nil) -> ErrorPatterns {
+        var conversations = (try? context.fetch(FetchDescriptor<ConversationRecord>())) ?? []
+        var writings = (try? context.fetch(FetchDescriptor<WritingRecord>())) ?? []
+        if let date {
+            conversations = conversations.filter { $0.endedAt < date }
+            writings = writings.filter { $0.writtenAt < date }
+        }
+        return ErrorPatterns(conversations: conversations, writings: writings)
     }
 
     /// Le point d'une faute, replié : l'IA écrit le même point de plusieurs façons
@@ -68,7 +107,17 @@ struct ErrorPatterns: Equatable {
     /// Les points les plus fréquents, puis les plus récents.
     var mostFrequent: [Pattern] {
         patterns.values.sorted { a, b in
-            a.conversations != b.conversations ? a.conversations > b.conversations : a.lastSeen > b.lastSeen
+            a.productions != b.productions ? a.productions > b.productions : a.lastSeen > b.lastSeen
         }
     }
+
+    /// La faute à surveiller en conversation : le point le plus fréquent, s'il revient
+    /// dans deux productions au moins. Jamais l'orthographe : l'oral ne voit pas les
+    /// accents (Whisper transcrit juste, le récapitulatif oral les ignore).
+    var watch: Pattern? {
+        mostFrequent.first { $0.productions >= Self.watchThreshold && $0.category != .spelling }
+    }
+
+    /// Les accents écrits reviennent : la consigne de l'écrit le rappelle.
+    var spellingRecurs: Bool { spellingProductions >= Self.spellingThreshold }
 }
