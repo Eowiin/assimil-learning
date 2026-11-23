@@ -66,7 +66,8 @@ struct AutomationBlockContent: View {
         case .writing:
             if done { return ("Corrigé · relire la correction", true) }
             if server.writing == nil { return ("Le PC ne répond pas : cette partie attendra", false) }
-            return (SessionAutomation.writingPrompt(for: session, pack: pack), true)
+            return (SessionAutomation.writingPrompt(for: session, pack: pack,
+                                                    patterns: ErrorPatterns.load(in: context)), true)
         }
     }
 
@@ -124,11 +125,14 @@ struct WritingView: View {
     @State private var text = ""
     @State private var phase: Phase = .editing
     @State private var record: WritingRecord?
+    /// Les fautes des conversations et des écrits d'avant celui-ci : le récapitulatif
+    /// dit celles qui reviennent, la consigne rappelle les accents.
+    @State private var earlier = ErrorPatterns()
     @State private var clock = BlockClock()
     @FocusState private var editorFocused: Bool
 
     private var objective: CurriculumPack.Objective? { SessionAutomation.writingObjective(for: session, pack: pack) }
-    private var prompt: String { SessionAutomation.writingPrompt(for: session, pack: pack) }
+    private var prompt: String { SessionAutomation.writingPrompt(for: session, pack: pack, patterns: earlier) }
     private var count: Int { SessionAutomation.wordCount(text) }
     private var draftKey: String { "writing-draft.\(session.key)" }
 
@@ -136,7 +140,7 @@ struct WritingView: View {
         Group {
             if case .reviewed(let review) = phase {
                 ConversationRecapView(review: .done(review.corrections), objectiveUses: review.objectiveUses,
-                                      correctedText: review.correctedText) {}
+                                      correctedText: review.correctedText, earlier: earlier) {}
             } else {
                 editor
             }
@@ -257,7 +261,9 @@ struct WritingView: View {
     private func load() {
         clock.resume()
         guard record == nil else { return }
-        if let existing = SessionAutomation.writing(for: session, in: context) {
+        let existing = SessionAutomation.writing(for: session, in: context)
+        earlier = ErrorPatterns.load(in: context, before: existing?.writtenAt)
+        if let existing {
             record = existing
             text = existing.text
             if let review = existing.writingReview { phase = .reviewed(review) }
@@ -288,6 +294,8 @@ struct WritingView: View {
             record = saved
         }
         try? context.save()
+        // Avant que la correction de celui-ci ne compte.
+        earlier = ErrorPatterns.load(in: context, before: saved.writtenAt)
         phase = .sending
         do {
             let review = try await service.review(text: written, level: objective?.level,

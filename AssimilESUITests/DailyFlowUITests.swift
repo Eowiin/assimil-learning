@@ -464,6 +464,10 @@ final class DailyFlowUITests: XCTestCase {
         tap(app.buttons["writing-submit"])
         XCTAssertTrue(app.staticTexts["recap-corrected-text"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["recap-objective-use"].firstMatch.exists)
+        // Le faux correcteur relève ser/estar, déjà relevé par le faux partenaire de conversation.
+        let recurring = app.descendants(matching: .any)["recap-recurring"].firstMatch
+        XCTAssertTrue(recurring.exists)
+        XCTAssertTrue(recurring.label.contains("ser/estar — déjà relevé dans"), recurring.label)
         snapshot(app, "seance-ecrit-correction")
         tap(app.buttons["writing-close"])
         XCTAssertTrue(app.buttons["automation-writing"].waitForExistence(timeout: 5))
