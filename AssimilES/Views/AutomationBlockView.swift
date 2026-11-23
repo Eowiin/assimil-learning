@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// Le bloc 4, « Automatisation » : cinq minutes de questions faciles en rafale sur un
+/// Le bloc 4, « Automatisation » : trois minutes de questions faciles en rafale sur un
 /// thème familier, avec les mots déjà sus, puis un écrit de 80 à 120 mots, corrigé, qui rappelle l'objectif à réinjecter.
 /// Chaque partie se coche quand son récapitulatif est arrivé.
 struct AutomationBlockContent: View {
@@ -61,7 +61,7 @@ struct AutomationBlockContent: View {
             if server.conversation == nil { return ("Le PC ne répond pas : cette partie attendra", false) }
             if done { return ("Fait · tu peux recommencer", true) }
             let theme = SessionAutomation.familiarTheme(for: session, pack: pack, in: context)
-            return ("5 minutes de questions faciles" + (theme.map { " · \($0.fr.lowercasedFirst)" } ?? "")
+            return ("\(Int(SessionAutomation.speedSeconds / 60)) minutes de questions faciles" + (theme.map { " · \($0.fr.lowercasedFirst)" } ?? "")
                     + ", avec les mots que tu connais : réponds vite", true)
         case .writing:
             if done { return ("Corrigé · relire la correction", true) }

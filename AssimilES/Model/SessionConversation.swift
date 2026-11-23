@@ -60,13 +60,13 @@ enum SessionConversation {
                                              source: source, at: date, in: context)
     }
 
-    /// Le bilan du jour : les emplois de l'objectif en conversation depuis le début de
-    /// la séance, réussis et tentés.
+    /// Le bilan du cycle : les emplois de l'objectif en conversation depuis le début du
+    /// cycle, réussis et tentés.
     static func tally(for session: StudySession, language: String,
                       in context: ModelContext) -> (valid: Int, total: Int) {
         guard let objectiveID = session.objectiveID else { return (0, 0) }
         let key = AdaptiveKey.make(language: language, objectiveID)
-        let since = session.day
+        let since = session.startedAt
         let source = ObjectiveEvidence.Source.conversation
         let evidences = (try? context.fetch(FetchDescriptor<ObjectiveEvidence>(
             predicate: #Predicate { $0.objectiveKey == key && $0.at >= since && $0.source == source }))) ?? []

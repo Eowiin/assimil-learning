@@ -10,6 +10,10 @@ import SwiftData
 struct VocabReviewView: View {
     let vocabulary: Vocabulary
     let lessons: Set<Int>
+    /// Le plafond de cartes de la séance (`VocabStudy.perCycle` au bloc 1), nil sinon.
+    var limit: Int? = nil
+    /// La dernière carte de la séance vient d'être notée.
+    var onFinished: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
@@ -273,7 +277,8 @@ struct VocabReviewView: View {
         let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: lessons, cards: cards,
                                       limit: VocabStudy.newRemaining(cards, now: now), lexicon: lexicon)
         var s = VocabSession(due: VocabStudy.due(cards, in: vocabulary, lexicon: lexicon, now: now), new: new,
-                             soon: VocabStudy.dueSoon(cards, in: vocabulary, lexicon: lexicon, now: now))
+                             soon: VocabStudy.dueSoon(cards, in: vocabulary, lexicon: lexicon, now: now),
+                             limit: limit)
         s.advance(now: now)
         session = s
     }
@@ -308,6 +313,7 @@ struct VocabReviewView: View {
         showAnswer = false
         session?.finishCurrent(with: card, now: now)
         shownAt = now
+        if session?.current == nil { onFinished?() }
     }
 
     private func previewDates(_ entry: VocabSession.Entry) -> [FSRS.Rating: Date] {

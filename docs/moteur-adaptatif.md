@@ -2,9 +2,10 @@
 
 **Validé le 2026-11-17.** Remplace le cadrage v3 (PR #80, parcours d'unités) : la
 progression ne suit plus des leçons ni des unités, mais 125 micro-objectifs du CECRL
-(A0 à C2), un lexique de fréquence et les sons faibles de l'apprenant. La séance du
-jour dure 60 minutes, en 4 blocs de 15. La séance Assimil reste sur l'accueil à côté,
-tant que la nouvelle n'a pas fait ses preuves.
+(A0 à C2), un lexique de fréquence et les sons faibles de l'apprenant. La séance est
+un cycle d'un quart d'heure en 4 blocs, qu'on enchaîne autant qu'on a de temps (étape
+5 ; jusque-là, une séance de 60 minutes par jour). La séance Assimil reste sur
+l'accueil à côté, tant que la nouvelle n'a pas fait ses preuves.
 
 ## Décisions
 
@@ -62,7 +63,7 @@ tant que la nouvelle n'a pas fait ses preuves.
 | `ObjectiveEvidence` | Journal jamais modifié : une production jugée (conversation, écrit, placement) |
 | `LexemeState` | Un lemme : `seen`, `recognized`, `active`. Le statut ne fait que monter |
 | `PlacementResult` | Un passage du placement : vocabulaire estimé, niveau, objectif de départ, détail en JSON ; `completedAt` nil tant qu'il n'est pas validé (on reprend où on s'était arrêté) |
-| `StudySession` | La séance d'un jour : objectif, thème, avancement des 4 blocs, texte du bloc 2 gardé |
+| `StudySession` | Un cycle de la séance (plusieurs par jour depuis l'étape 5a, `cycle`) : objectif, thème, avancement des 4 blocs, texte du bloc 2 gardé |
 | `WritingRecord` | Un écrit du bloc 4 et sa correction |
 
 Les clés sont préfixées par la langue (« es:obj_014 », « es:hablar »). Les cartes FSRS
@@ -201,3 +202,34 @@ verdict.
        conversation, son récapitulatif dit les fautes qui reviennent, et la consigne
        ajoute « Attention aux accents écrits » quand l'orthographe revient dans deux
        productions ou plus.
+
+5. **Le cycle court** (2026-11-23) : la séance de 60 minutes devient un cycle d'un quart
+   d'heure, à enchaîner selon le temps qu'on a (une personne qui a une heure en fait
+   trois ou quatre d'affilée). Trois PR : 5a les cycles et les volumes, 5b les débutants
+   (amorces de phrases en A0-A1, longueur de l'écrit selon le niveau), 5c la voix et les
+   indicateurs (frontière lexicale, réflexe de la rafale).
+   - **5a, les cycles** (`DailyPlanner.newCycle`, `StudySession.cycle`). Refaire trois
+     fois de suite le même objectif avec les mêmes mots n'apprendrait presque rien :
+     **chaque cycle a son objectif**.
+     - Le **cycle 1** est celui d'avant : il fait avancer le parcours (objectif actif,
+       déblocage souple), tire les 7 mots nouveaux du jour et rappelle l'objectif à
+       réinjecter à l'écrit. Il est créé au premier passage sur l'accueil ; sa clé ne
+       change pas (« es:2026-11-23 »).
+     - Les **cycles 2 et suivants** se lancent depuis l'accueil (« Lancer un nouveau
+       cycle »), une fois le précédent fait ou passé (clé « es:2026-11-23#2 »). Ils ne
+       font jamais avancer le parcours : sinon une heure d'affilée ouvrirait trois
+       objectifs en un jour. Leur objectif est repris : un « à réinjecter » d'abord,
+       sinon un acquis à entretenir, chaque fois celui dont la dernière preuve est la
+       plus ancienne et qui n'a pas déjà été travaillé aujourd'hui (le tour recommence
+       quand tout y est passé). Ses preuves comptent pleinement : on le travaille un
+       autre jour que celui où il était actif. Pas de mots nouveaux : le texte et le jeu
+       de rôle reprennent ceux du jour. Le thème suivant, pour un texte neuf. L'écrit
+       juge l'objectif du cycle (pas de rappel en plus).
+     - Volumes : texte du bloc 2 à 95 mots (80 à 110) ; 10 cartes au plus par cycle au
+       bloc 1 (celles en apprentissage qui reviennent, puis les dues, puis les
+       nouvelles ; la partie se coche à la dernière, ou quand rien n'est à revoir ; la
+       révision ouverte depuis l'accueil reste sans plafond) ; les sons faibles au
+       premier cycle seulement ; rafale de 3 minutes ; 5 minutes affichées par bloc.
+     - L'écrit et le bilan de conversation d'un cycle se lisent depuis son début
+       (`startedAt`), plus depuis minuit. La rafale prend le thème du cycle d'avant
+       (celui du même jour compte).

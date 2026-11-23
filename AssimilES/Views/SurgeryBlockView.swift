@@ -2,8 +2,9 @@ import SwiftUI
 import SwiftData
 
 /// Les parties du bloc 1, dans l'ordre. Une partie se coche quand elle est finie : les
-/// révisions quand la file du jour est vide, les sons quand la séance est jugée jusqu'au
-/// bout, la micro-leçon quand on la referme après l'avoir lue.
+/// révisions à la dernière carte du cycle (dix au plus) ou quand rien n'est à revoir, les
+/// sons quand la séance est jugée jusqu'au bout, la micro-leçon quand on la referme après
+/// l'avoir lue.
 enum SurgeryPart: String, CaseIterable, Identifiable, Hashable {
     case reviews, microlesson, sounds
 
@@ -28,10 +29,10 @@ enum SurgeryPart: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// Le bloc 1, « Chirurgie » : les révisions du jour, la micro-leçon de l'objectif, puis
+/// Le bloc 1, « Chirurgie » : dix révisions au plus, la micro-leçon de l'objectif, puis
 /// cinq phrases sur les sons faibles. Les révisions sont celles du vocabulaire, les mots
 /// vus dans le texte du bloc 2 compris ; les sons, la séance de prononciation centrée
-/// sur les sons les plus ratés.
+/// sur les sons les plus ratés, au premier cycle du jour seulement.
 struct SurgeryBlockContent: View {
     let session: StudySession
     let pack: CurriculumPack
@@ -52,6 +53,11 @@ struct SurgeryBlockContent: View {
     private var objective: CurriculumPack.Objective? { session.objectiveID.flatMap(pack.objective) }
     private var vocabulary: Vocabulary? { VocabularyStore.current }
 
+    /// Les sons faibles ne reviennent pas à chaque cycle : une série par jour suffit.
+    static func parts(cycle: Int) -> [SurgeryPart] {
+        cycle > 1 ? [.reviews, .microlesson] : SurgeryPart.allCases
+    }
+
     /// Les leçons dont les mots sont proposés, comme sur l'accueil.
     private var vocabLessons: Set<Int> {
         VocabStudy.availableLessons(sessions: dailySessions, anchorUnit: anchors.first?.unit,
@@ -69,16 +75,15 @@ struct SurgeryBlockContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(SurgeryPart.allCases) { part in row(part) }
+            ForEach(Self.parts(cycle: session.cycle)) { part in row(part) }
         }
         .navigationDestination(item: $openedPart) { part in destination(part) }
         .onChange(of: openedPart) { old, new in
             guard new == nil, let old else { return }
             switch old {
             case .microlesson: mark(.microlesson)
-            // Fermées à mi-chemin, les révisions restent à finir.
-            case .reviews where reviewsCleared: mark(.reviews)
-            // Les sons se cochent à la dernière phrase jugée (`onFinished`).
+            // Les révisions se cochent à la dernière carte du cycle, les sons à la
+            // dernière phrase jugée (`onFinished`) ; fermées à mi-chemin, elles restent.
             case .reviews, .sounds: break
             }
         }
@@ -137,7 +142,7 @@ struct SurgeryBlockContent: View {
             let counts = reviewCounts
             return counts.due + counts.new == 0
                 ? ("Rien à revoir aujourd'hui", false)
-                : (TodayView.vocabDetail(due: counts.due, new: counts.new), true)
+                : (Self.reviewsDetail(counts), true)
         case .microlesson:
             return (objective?.title ?? "Aucun objectif aujourd'hui", objective != nil && pack.microlessons[objective!.id] != nil)
         case .sounds:
@@ -147,11 +152,23 @@ struct SurgeryBlockContent: View {
         }
     }
 
+    /// Ce que le cycle montrera, et ce qui attend au-delà du plafond.
+    static func reviewsDetail(_ counts: (due: Int, new: Int)) -> String {
+        let shown = VocabSession.capped(due: counts.due, new: counts.new, limit: VocabStudy.perCycle)
+        let rest = counts.due + counts.new - shown.due - shown.new
+        let detail = TodayView.vocabDetail(due: shown.due, new: shown.new)
+        return rest > 0 ? "\(detail) · \(rest) pour les cycles suivants" : detail
+    }
+
     @ViewBuilder
     private func destination(_ part: SurgeryPart) -> some View {
         switch part {
         case .reviews:
-            if let vocabulary { VocabReviewView(vocabulary: vocabulary, lessons: vocabLessons) }
+            if let vocabulary {
+                VocabReviewView(vocabulary: vocabulary, lessons: vocabLessons, limit: VocabStudy.perCycle) {
+                    mark(.reviews)
+                }
+            }
         case .microlesson:
             if let objective, let lesson = pack.microlessons[objective.id] {
                 MicroLessonView(objective: objective, lesson: lesson)

@@ -428,17 +428,22 @@ struct StudyBlockProgress: Codable, Equatable {
     }
 }
 
-/// La séance adaptative d'un jour, une par jour et par langue. Le texte du bloc 2 y est
-/// gardé tel que le serveur l'a rendu : il se relit sans le PC.
+/// Un cycle de la séance adaptative : quatre blocs courts, autant de cycles par jour
+/// qu'on a de temps (étape 5a). Le texte du bloc 2 y est gardé tel que le serveur l'a
+/// rendu : il se relit sans le PC.
 @Model
 final class StudySession {
     #Unique<StudySession>([\.key])
     #Index<StudySession>([\.day])
 
-    /// « es:2026-11-17 ».
+    /// « es:2026-11-17 », puis « es:2026-11-17#2 » pour le deuxième cycle du jour.
     var key: String = ""
     var language: String = "es"
     var day: Date = Date.now
+    /// Le rang du cycle dans la journée (étape 5a) : on en enchaîne autant qu'on a de
+    /// temps. Le premier fait avancer le parcours ; les suivants reprennent un objectif
+    /// laissé de côté ou acquis.
+    var cycle: Int = 1
     var objectiveID: String?
     /// L'identifiant du thème du bloc 2 (« th_04 », `themes.json`).
     var theme: String?
@@ -453,10 +458,12 @@ final class StudySession {
     var updatedAt: Date = Date.now
     var completedAt: Date?
 
-    init(language: String, day: Date, objectiveID: String?, startedAt: Date, calendar: Calendar = .current) {
+    init(language: String, day: Date, objectiveID: String?, startedAt: Date, cycle: Int = 1,
+         calendar: Calendar = .current) {
         self.language = language
         self.day = calendar.startOfDay(for: day)
-        self.key = Self.makeKey(language: language, day: day, calendar: calendar)
+        self.cycle = cycle
+        self.key = Self.makeKey(language: language, day: day, cycle: cycle, calendar: calendar)
         self.objectiveID = objectiveID
         self.startedAt = startedAt
         self.updatedAt = startedAt
@@ -472,9 +479,11 @@ final class StudySession {
         }
     }
 
-    static func makeKey(language: String, day: Date, calendar: Calendar = .current) -> String {
+    /// Le premier cycle garde la clé d'avant l'étape 5a : ses séances et leur voix restent.
+    static func makeKey(language: String, day: Date, cycle: Int = 1, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: day)
-        return String(format: "%@:%04d-%02d-%02d", language, c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        let base = String(format: "%@:%04d-%02d-%02d", language, c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        return cycle > 1 ? "\(base)#\(cycle)" : base
     }
 }
 

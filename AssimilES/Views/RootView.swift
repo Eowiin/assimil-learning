@@ -136,39 +136,53 @@ struct TodayView: View {
     // MARK: Séance adaptative
 
     /// La séance du moteur adaptatif, à côté de celle d'Assimil, une fois le placement
-    /// validé. Elle dit l'objectif du jour et le bloc où l'on en est.
+    /// validé. Elle dit l'objectif du cycle en cours et le bloc où l'on en est ; un cycle
+    /// fait propose d'en lancer un autre.
     @ViewBuilder
     private var adaptiveCard: some View {
         if let pack = CurriculumStore.spanish,
-           let session = studySessions.first(where: {
-               $0.language == pack.language && Calendar.current.isDate($0.day, inSameDayAs: clock.today)
-           }) {
-            NavigationLink {
-                AdaptiveSessionView(session: session, pack: pack)
-            } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Séance adaptative")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(Self.adaptiveProgress(session.blocks))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+           let session = studySessions
+               .filter({ $0.language == pack.language && Calendar.current.isDate($0.day, inSameDayAs: clock.today) })
+               .max(by: { $0.cycle < $1.cycle }) {
+            VStack(spacing: 10) {
+                adaptiveLink(session, pack: pack)
+                if session.blocks.isDone {
+                    Button("Lancer un nouveau cycle") {
+                        _ = try? DailyPlanner.newCycle(pack: pack, now: DayClock.systemNow(), in: context)
                     }
-                    Text(session.objectiveID.flatMap(pack.objective)?.title ?? "Tous les objectifs sont acquis")
-                        .font(.headline)
-                        .multilineTextAlignment(.leading)
-                    ProgressView(value: Double(StudyBlock.allCases.filter(session.blocks.isSettled).count),
-                                 total: Double(StudyBlock.allCases.count))
-                        .tint(StudyStyle.accent)
+                    .buttonStyle(StudyPrimaryButtonStyle())
+                    .accessibilityIdentifier("new-cycle")
                 }
-                .studySection()
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("start-adaptive")
         }
+    }
+
+    private func adaptiveLink(_ session: StudySession, pack: CurriculumPack) -> some View {
+        NavigationLink {
+            AdaptiveSessionView(session: session, pack: pack)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(session.cycle > 1 ? "Séance adaptative · cycle \(session.cycle)" : "Séance adaptative")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(Self.adaptiveProgress(session.blocks))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text(session.objectiveID.flatMap(pack.objective)?.title ?? "Tous les objectifs sont acquis")
+                    .font(.headline)
+                    .multilineTextAlignment(.leading)
+                ProgressView(value: Double(StudyBlock.allCases.filter(session.blocks.isSettled).count),
+                             total: Double(StudyBlock.allCases.count))
+                    .tint(StudyStyle.accent)
+            }
+            .studySection()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("start-adaptive")
     }
 
     /// « Bloc 2 sur 4 · Absorption », ou « Faite ».
