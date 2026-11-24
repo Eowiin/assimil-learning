@@ -274,6 +274,16 @@ verdict.
        phrase) : une phrase n'est demandée qu'une fois, ce qui rend la voix en ligne
        presque gratuite. Changer de voix ou de vitesse sur le serveur demande de changer
        `VoiceCache.version` : le cache d'avant part au lancement suivant.
+     - **5c-2, la frontière lexicale** (`LexicalFrontier`) : sur l'accueil, sous la
+       séance adaptative, une fois le placement validé, « 1 240 mots sur 5 000 », une
+       barre, et « Environ 84 % de l'espagnol courant ». Les mots connus sont ceux de
+       `KnownVocabulary` (la frontière du placement, plus les mots reconnus ou actifs),
+       limités au lexique. La couverture est la somme de leurs occurrences dans les
+       sous-titres (`count`), rapportée à tous les mots du corpus (`total_count` de
+       `lexicon.json`, 413 millions : les 50 000 formes de FrequencyWords, noms propres
+       et formes écartées compris). Rapportée aux seuls 5 000 lemmes, les connaître tous
+       ferait 100 % ; c'est en fait 92 %. Repères : 500 lemmes couvrent 79 %, 1 000
+       en couvrent 84 %, 2 000 en couvrent 89 %. Arrondi à l'unité inférieure.
        Elle se prépare en tâche de fond dès l'écran du cycle, par paquets de 5 (les
        exemples de la micro-leçon d'abord, puis les phrases du lexique, la plus récente
        d'abord) ; une phrase pas encore prête est demandée seule à l'appui. Chaque
