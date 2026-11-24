@@ -1,8 +1,8 @@
 import SwiftUI
 import SwiftData
 
-/// La séance adaptative du jour (`docs/moteur-adaptatif.md`, étape 4) : l'objectif, le
-/// thème, et les quatre blocs dans l'ordre. On ouvre le prochain bloc ; un bloc fait ou
+/// Un cycle de la séance adaptative (`docs/moteur-adaptatif.md`, étapes 4 et 5) :
+/// l'objectif, le thème, et les quatre blocs dans l'ordre. On ouvre le prochain bloc ; un bloc fait ou
 /// passé ne revient pas. Le temps passé s'affiche, sans chronomètre qui coupe.
 struct AdaptiveSessionView: View {
     let session: StudySession
@@ -25,7 +25,8 @@ struct AdaptiveSessionView: View {
                     ForEach(StudyBlock.allCases) { block in row(block) }
                 }
                 if blocks.isDone {
-                    Label("Séance faite. À demain !", systemImage: "checkmark.seal.fill")
+                    Label("Cycle fait. Un autre t'attend sur l'accueil si tu as le temps.",
+                          systemImage: "checkmark.seal.fill")
                         .font(.headline)
                         .foregroundStyle(StudyStyle.accent)
                         .accessibilityIdentifier("adaptive-done")
@@ -36,7 +37,7 @@ struct AdaptiveSessionView: View {
             .frame(maxWidth: .infinity)
         }
         .background(StudyStyle.paper)
-        .navigationTitle("Séance du jour")
+        .navigationTitle(session.cycle > 1 ? "Cycle \(session.cycle)" : "Séance du jour")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .navigationDestination(item: $openedBlock) { block in
@@ -57,7 +58,7 @@ struct AdaptiveSessionView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let objective {
-                Text("Objectif · \(objective.level)")
+                Text((session.cycle > 1 ? "Objectif repris · " : "Objectif · ") + objective.level)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text(objective.title)
@@ -73,7 +74,9 @@ struct AdaptiveSessionView: View {
                     .foregroundStyle(.secondary)
             }
             if !session.newLemmas.isEmpty {
-                Label("\(session.newLemmas.count) mots nouveaux", systemImage: "sparkles")
+                Label(session.cycle > 1 ? "Les \(session.newLemmas.count) mots du jour, repris"
+                                        : "\(session.newLemmas.count) mots nouveaux",
+                      systemImage: "sparkles")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -145,7 +148,7 @@ extension StudyBlock {
 /// Un bloc de la séance : son contenu, le temps passé, « Bloc fait » et « Passer ».
 ///
 /// Le temps du bloc court tant qu'il est ouvert, écrans qu'il ouvre compris (la révision,
-/// la prononciation) : c'est lui qui s'affiche et qui vise 15 min. Ces écrans inscrivent
+/// la prononciation) : c'est lui qui s'affiche et qui vise quelques minutes (`DailyPlanner.minutesPerBlock`). Ces écrans inscrivent
 /// déjà leur temps d'étude ; le bloc n'inscrit que le sien propre, sans compter deux fois.
 struct StudyBlockView: View {
     let block: StudyBlock

@@ -173,8 +173,9 @@ enum AbsorptionAudio {
     }
 
     static func folder(for sessionKey: String, root: URL = defaultRoot) -> URL {
-        // « es:2026-11-18 » : pas de deux-points dans un nom de dossier.
-        root.appending(path: sessionKey.replacingOccurrences(of: ":", with: "-"), directoryHint: .isDirectory)
+        // « es:2026-11-18#2 » : ni deux-points ni dièse dans un nom de dossier.
+        root.appending(path: sessionKey.replacingOccurrences(of: ":", with: "-")
+                           .replacingOccurrences(of: "#", with: "-"), directoryHint: .isDirectory)
     }
 
     static func url(sessionKey: String, sentence: Int, root: URL = defaultRoot) -> URL {
@@ -210,8 +211,8 @@ enum AbsorptionAudio {
 
 @MainActor
 enum Absorption {
-    /// Le texte visé : 150 à 200 mots.
-    static let targetWords = 170
+    /// Le texte visé : 80 à 110 mots, pour un cycle d'un quart d'heure (étape 5a).
+    static let targetWords = 95
     /// Les phrases envoyées à la voix en une demande : la progression se voit, et un
     /// paquet raté ne fait pas tout refaire.
     static let voiceBatch = 5

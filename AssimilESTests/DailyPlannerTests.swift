@@ -101,6 +101,71 @@ struct DailyPlannerTests {
         #expect(session.objectiveID != start)
         #expect(session.objectiveID.flatMap(Self.pack.objective)?.level == "B1")
     }
+
+    // MARK: Les cycles (étape 5a)
+
+    static func finish(_ session: StudySession, at date: Date) {
+        for block in StudyBlock.allCases { StudySessionProgress.skip(block, seconds: 0, in: session, at: date) }
+    }
+
+    @Test("Un cycle de plus une fois le précédent fait : un objectif repris, les mots du jour, un autre thème")
+    func secondCycle() throws {
+        let container = try Fixture.container()
+        let context = container.mainContext
+        let (start, failedA2) = try Self.placed(in: context)
+        let first = try #require(try DailyPlanner.today(pack: Self.pack, now: Fixture.date(day: 1, hour: 10), in: context))
+        // Pas tant que le premier n'est pas fait.
+        #expect(try DailyPlanner.newCycle(pack: Self.pack, now: Fixture.date(day: 1, hour: 10, minute: 5), in: context) == nil)
+
+        Self.finish(first, at: Fixture.date(day: 1, hour: 10, minute: 20))
+        let second = try #require(try DailyPlanner.newCycle(pack: Self.pack, now: Fixture.date(day: 1, hour: 10, minute: 21),
+                                                            in: context))
+        #expect(second.cycle == 2)
+        #expect(second.key == "es:2026-09-01#2")
+        #expect(first.key == "es:2026-09-01")
+        // L'objectif laissé de côté au placement, pas celui du jour ; le parcours n'avance pas.
+        #expect(second.objectiveID == failedA2)
+        #expect(second.reinjectObjectiveID == nil)
+        #expect(try Self.status(start, in: context) == ObjectiveProgress.Status.active)
+        #expect(second.newLemmas == first.newLemmas)
+        #expect(second.theme == Self.pack.themes[1].id)
+        // L'accueil montre désormais le deuxième.
+        #expect(try DailyPlanner.today(pack: Self.pack, now: Fixture.date(day: 1, hour: 11), in: context) === second)
+        // Pas de troisième tant que le deuxième n'est pas fait.
+        #expect(try DailyPlanner.newCycle(pack: Self.pack, now: Fixture.date(day: 1, hour: 11), in: context) == nil)
+
+        // Plus rien à réinjecter de neuf : un acquis à entretenir.
+        Self.finish(second, at: Fixture.date(day: 1, hour: 10, minute: 40))
+        let third = try #require(try DailyPlanner.newCycle(pack: Self.pack, now: Fixture.date(day: 1, hour: 10, minute: 41),
+                                                           in: context))
+        let thirdID = try #require(third.objectiveID)
+        #expect(thirdID != start && thirdID != failedA2)
+        #expect(try Self.status(thirdID, in: context) == ObjectiveProgress.Status.acquired)
+        #expect(third.newLemmas == first.newLemmas)
+        #expect(try DailyPlanner.cycles(language: "es", day: Fixture.date(day: 1), in: context).map(\.cycle) == [1, 2, 3])
+
+        // Le lendemain, un premier cycle neuf, de nouveaux mots.
+        let dayTwo = try #require(try DailyPlanner.today(pack: Self.pack, now: Fixture.date(day: 2, hour: 9), in: context))
+        #expect(dayTwo.cycle == 1 && dayTwo.objectiveID == start)
+        #expect(dayTwo.key == "es:2026-09-02")
+    }
+
+    @Test("Chaque cycle ne relit que son écrit ; la rafale prend le thème du cycle d'avant")
+    func cycleScoped() throws {
+        let container = try Fixture.container()
+        let context = container.mainContext
+        _ = try Self.placed(in: context)
+        let first = try #require(try DailyPlanner.today(pack: Self.pack, now: Fixture.date(day: 1, hour: 10), in: context))
+        let writing = WritingRecord(writtenAt: Fixture.date(day: 1, hour: 10, minute: 15), language: "es",
+                                    objectiveID: first.objectiveID, prompt: nil, text: "Hola")
+        context.insert(writing)
+        Self.finish(first, at: Fixture.date(day: 1, hour: 10, minute: 20))
+        let second = try #require(try DailyPlanner.newCycle(pack: Self.pack, now: Fixture.date(day: 1, hour: 10, minute: 21),
+                                                            in: context))
+        #expect(SessionAutomation.writing(for: first, in: context) === writing)
+        #expect(SessionAutomation.writing(for: second, in: context) == nil)
+        #expect(SessionAutomation.familiarTheme(for: second, pack: Self.pack, in: context)?.id == first.theme)
+    }
 }
 
 @Suite("Séance adaptative : l'avancement des blocs")

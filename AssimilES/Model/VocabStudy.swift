@@ -16,6 +16,10 @@ enum VocabStudy {
 
     /// Au plus 20 nouvelles cartes par jour (décision du cadrage).
     static let newPerDay = 20
+    /// Au plus 10 cartes par cycle de la séance adaptative (étape 5a) : une grosse file
+    /// se répartit sur les cycles au lieu de remplir le premier. La révision ouverte
+    /// depuis l'accueil, elle, n'a pas de plafond.
+    static let perCycle = 10
     /// Une carte en apprentissage due dans moins de 20 minutes est proposée tout de
     /// suite quand il ne reste rien d'autre, comme dans Anki : sinon la séance
     /// finirait avec des cartes qui reviennent dans dix minutes.
@@ -245,9 +249,24 @@ struct VocabSession {
     private(set) var waiting: [Card] = []
     private(set) var current: Entry?
 
-    init(due: [Card], new: [VocabStudy.NewCard], soon: [Card] = []) {
-        pending = due.map(Entry.card) + new.map(Entry.new)
-        waiting = soon
+    /// `limit` borne le nombre de cartes de la séance : celles en apprentissage qui
+    /// reviennent d'abord (elles sont entamées), puis les dues, puis les nouvelles. Une
+    /// carte qui repasse dans la séance ne compte qu'une fois.
+    init(due: [Card], new: [VocabStudy.NewCard], soon: [Card] = [], limit: Int? = nil) {
+        let entries = due.map(Entry.card) + new.map(Entry.new)
+        guard let limit else {
+            pending = entries
+            waiting = soon
+            return
+        }
+        waiting = Array(soon.prefix(max(0, limit)))
+        pending = Array(entries.prefix(max(0, limit - waiting.count)))
+    }
+
+    /// Combien de cartes une séance bornée à `limit` montrera : ce que dit le bloc 1.
+    static func capped(due: Int, new: Int, limit: Int) -> (due: Int, new: Int) {
+        let shownDue = min(due, max(0, limit))
+        return (shownDue, min(new, max(0, limit - shownDue)))
     }
 
     /// Ce qui reste à voir, la carte en cours comprise.

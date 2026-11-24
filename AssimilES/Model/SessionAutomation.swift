@@ -24,13 +24,13 @@ enum AutomationPart: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// Le bloc 4 de la séance (`docs/moteur-adaptatif.md`, étape 4e) : cinq minutes de
+/// Le bloc 4 de la séance (`docs/moteur-adaptatif.md`, étape 4e) : trois minutes de
 /// questions en rafale sur un thème familier, avec les mots déjà sus, puis un écrit de
 /// 80 à 120 mots qui rappelle l'objectif à réinjecter.
 @MainActor
 enum SessionAutomation {
-    /// La rafale vise cinq minutes, sans couper.
-    static let speedSeconds: Double = 5 * 60
+    /// La rafale vise trois minutes, sans couper (cinq jusqu'à l'étape 5a).
+    static let speedSeconds: Double = 3 * 60
     static let writingWords = 80...120
 
     // MARK: - La rafale
@@ -46,15 +46,16 @@ enum SessionAutomation {
                                    allowedLemmas: KnownVocabulary.lemmas(pack: pack, estimate: estimate, states: states))
     }
 
-    /// Le thème de la rafale : un thème déjà lu, celui de la séance d'avant la plus
-    /// récente qui en diffère ; à la première séance, celui du jour.
+    /// Le thème de la rafale : un thème déjà lu, celui du cycle d'avant le plus récent
+    /// qui en diffère (le cycle précédent du même jour compte) ; au tout premier cycle,
+    /// celui du jour.
     static func familiarTheme(for session: StudySession, pack: CurriculumPack,
                               in context: ModelContext) -> CurriculumPack.Theme? {
-        let day = session.day
+        let started = session.startedAt
         let language = session.language
         let earlier = (try? context.fetch(FetchDescriptor<StudySession>(
-            predicate: #Predicate { $0.day < day && $0.language == language },
-            sortBy: [SortDescriptor(\.day, order: .reverse)]))) ?? []
+            predicate: #Predicate { $0.startedAt < started && $0.language == language },
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]))) ?? []
         let theme = { (id: String?) in id.flatMap { id in pack.themes.first { $0.id == id } } }
         return earlier.lazy.filter { $0.theme != session.theme }.compactMap { theme($0.theme) }.first
             ?? theme(session.theme)
@@ -63,7 +64,8 @@ enum SessionAutomation {
     // MARK: - L'écrit
 
     /// L'objectif que l'écrit rappelle et que le correcteur juge : celui à réinjecter
-    /// s'il y en a un (l'écrit est son seul moment), sinon celui du jour.
+    /// s'il y en a un, sinon celui du cycle. Un cycle 2 ou plus n'en a pas : son
+    /// objectif est déjà un objectif repris (`DailyPlanner.newCycle`).
     static func writingObjective(for session: StudySession, pack: CurriculumPack) -> CurriculumPack.Objective? {
         session.reinjectObjectiveID.flatMap(pack.objective) ?? session.objectiveID.flatMap(pack.objective)
     }
@@ -89,9 +91,9 @@ enum SessionAutomation {
             .count
     }
 
-    /// L'écrit de la séance, s'il a été envoyé : le dernier écrit depuis le début du jour.
+    /// L'écrit du cycle, s'il a été envoyé : le dernier écrit depuis le début du cycle.
     static func writing(for session: StudySession, in context: ModelContext) -> WritingRecord? {
-        let since = session.day
+        let since = session.startedAt
         let language = session.language
         return ((try? context.fetch(FetchDescriptor<WritingRecord>(
             predicate: #Predicate { $0.writtenAt >= since && $0.language == language },
