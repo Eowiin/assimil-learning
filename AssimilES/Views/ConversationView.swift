@@ -23,6 +23,8 @@ struct ConversationSetup {
     var title: String? = nil
     /// Le sujet de l'ouverture, en espagnol. Nil : l'IA choisit.
     var topic: String? = nil
+    /// Mesurer le temps avant chaque réponse, montrer le combo réflexe (la rafale).
+    var measuresReflex = false
     /// Le récapitulatif reçu, une fois par conversation (même après « Réessayer »).
     var onReview: ((ConversationReview) -> Void)? = nil
     /// La fin rend la main au lieu de fermer l'écran (« Continuer ») : le récapitulatif
@@ -82,7 +84,8 @@ struct ConversationView: View {
         Group {
             if finished {
                 ConversationRecapView(review: session.review, objectiveUses: session.lastReview?.objectiveUses,
-                                      earlier: earlier) { await review() }
+                                      earlier: earlier,
+                                      reflex: session.measuresReflex ? session.reflex : nil) { await review() }
             } else {
                 VStack(spacing: 0) {
                     transcript
@@ -119,6 +122,7 @@ struct ConversationView: View {
                 session.turnLimit = setup.turns
                 session.closesScene = setup.closesScene
                 session.topic = setup.topic
+                session.measuresReflex = setup.measuresReflex
             } else if session.profile == nil {
                 session.profile = Self.profile(in: context)
             }
@@ -246,6 +250,9 @@ struct ConversationView: View {
             if !session.currentHints.isEmpty {
                 hints(session.currentHints)
             }
+            if session.measuresReflex, let badge = session.reflex.badge {
+                reflexBadge(badge)
+            }
             if let target = setup?.targetSeconds {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     countdown(target, now: context.date)
@@ -354,6 +361,23 @@ struct ConversationView: View {
         }
     }
 
+    /// Le temps de la dernière réponse ; la série, dès deux réflexes d'affilée.
+    private func reflexBadge(_ text: String) -> some View {
+        let fast = session.reflex.lastWasReflex
+        return Label(text, systemImage: fast ? "bolt.fill" : "timer")
+            .font(.subheadline.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(fast ? StudyStyle.accent : .secondary)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(StudyStyle.surface, in: Capsule())
+            .contentTransition(.numericText())
+            .animation(.snappy, value: session.reflex)
+            .sensoryFeedback(.success, trigger: session.reflex.streak) { old, new in new >= 2 && new > old }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(text)
+            .accessibilityIdentifier("reflex-badge")
+    }
+
     /// Les débuts de réponse d'un débutant : de quoi se lancer, à dire au micro.
     private func hints(_ hints: [ConversationHint]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -424,6 +448,9 @@ struct ConversationView: View {
         guard record == nil, session.learnerSpoke else { return }
         let saved = ConversationRecord(startedAt: session.startedAt, endedAt: DayClock.systemNow(),
                                        messages: session.history)
+        if session.measuresReflex, !session.reflex.latencies.isEmpty {
+            saved.latencies = session.reflex.latencies
+        }
         context.insert(saved)
         try? context.save()
         record = saved

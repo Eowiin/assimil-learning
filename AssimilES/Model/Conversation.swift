@@ -267,8 +267,9 @@ struct ConversationLine: Identifiable, Equatable {
 protocol ConversationSound: AnyObject {
     func begin()
     func end()
-    /// Faux si le micro est refusé.
-    func startRecording() async -> Bool
+    /// Faux si le micro est refusé. `onVoice` : le moment où la voix arrive dans la
+    /// prise, une fois au plus (le réflexe de la rafale).
+    func startRecording(onVoice: @escaping @MainActor (Date) -> Void) async -> Bool
     func stopRecording() -> Data?
     func play(_ audio: Data, onFinish: @escaping @MainActor () -> Void)
     func stopPlayback()
@@ -321,17 +322,28 @@ final class ConversationSession {
     var topic: String?
     /// Le récapitulatif tel que le serveur l'a rendu, objectif et lemmes compris.
     private(set) var lastReview: ConversationReview?
+    /// Mesurer le temps avant chaque réponse (la rafale du bloc 4, étape 5c-3).
+    var measuresReflex = false
+    private(set) var reflex = ReflexMeter()
 
     private let service: any ConversationService
     private let sound: any ConversationSound
     /// Ce qui a échoué, à renvoyer tel quel : l'ouverture, ou l'audio d'un tour.
     private enum Pending { case opening, turn(Data) }
     private var pending: Pending?
+    /// Le top départ de la réponse : la fin de la dernière réplique de l'IA, ou l'appui
+    /// sur le micro qui la coupe. Il reste posé après une prise annulée : hésiter compte.
+    private var cue: Date?
+    /// L'arrivée de la voix dans la prise en cours.
+    private var onset: Date?
+    private let now: () -> Date
 
-    init(service: any ConversationService, sound: any ConversationSound, startedAt: Date = .now) {
+    init(service: any ConversationService, sound: any ConversationSound, startedAt: Date = .now,
+         now: @escaping () -> Date = { .now }) {
         self.service = service
         self.sound = sound
         self.startedAt = startedAt
+        self.now = now
     }
 
     /// L'historique envoyé au serveur, qui ne garde rien.
@@ -393,14 +405,19 @@ final class ConversationSession {
         switch phase {
         case .ready, .micDenied:
             guard !reachedLimit else { return }
+            if measuresReflex, cue == nil { cue = now() }
             sound.stopPlayback()
             playingLine = nil
-            phase = await sound.startRecording() ? .recording : .micDenied
+            onset = nil
+            phase = await sound.startRecording { [weak self] time in self?.voiceStarted(at: time) }
+                ? .recording : .micDenied
         case .recording:
             guard let audio = sound.stopRecording(), !audio.isEmpty else {
+                onset = nil
                 phase = .ready
                 return
             }
+            measureReflex()
             await send(.turn(audio))
         case .opening, .waiting, .failed:
             break
@@ -411,7 +428,22 @@ final class ConversationSession {
     func cancelRecording() {
         guard phase == .recording else { return }
         _ = sound.stopRecording()
+        onset = nil
         phase = .ready
+    }
+
+    private func voiceStarted(at time: Date) {
+        guard phase == .recording, onset == nil else { return }
+        onset = time
+    }
+
+    /// Le temps de la réponse qui part, compté une fois, avant le serveur : son délai
+    /// n'est pas celui de l'apprenant. Une prise où la voix n'a pas été repérée ne
+    /// compte pas, ni pour ni contre.
+    private func measureReflex() {
+        defer { cue = nil; onset = nil }
+        guard measuresReflex, let cue, let onset else { return }
+        reflex.record(max(0, onset.timeIntervalSince(cue)))
     }
 
     func retry() async {
@@ -448,7 +480,11 @@ final class ConversationSession {
             lines.append(partner)
             pending = nil
             phase = .ready
-            if let audio = partner.audio, !audio.isEmpty { play(partner, audio: audio) }
+            if let audio = partner.audio, !audio.isEmpty {
+                play(partner, audio: audio)
+            } else if measuresReflex {
+                cue = now()
+            }
         } catch {
             phase = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
@@ -459,6 +495,10 @@ final class ConversationSession {
         sound.play(audio) { [weak self] in
             guard let self, self.playingLine == line.id else { return }
             self.playingLine = nil
+            // La réplique qui attend la réponse a fini : le temps de l'apprenant commence.
+            if self.measuresReflex, self.phase == .ready, self.lines.last?.id == line.id, self.cue == nil {
+                self.cue = self.now()
+            }
         }
     }
 }
@@ -508,7 +548,11 @@ struct FakeConversationService: ConversationService {
 final class SilentSound: ConversationSound {
     func begin() {}
     func end() {}
-    func startRecording() async -> Bool { true }
+    func startRecording(onVoice: @escaping @MainActor (Date) -> Void) async -> Bool {
+        // Après le passage en écoute, comme un vrai micro.
+        Task { @MainActor in onVoice(.now) }
+        return true
+    }
     func stopRecording() -> Data? { Data("silence".utf8) }
     func play(_ audio: Data, onFinish: @escaping @MainActor () -> Void) { onFinish() }
     func stopPlayback() {}

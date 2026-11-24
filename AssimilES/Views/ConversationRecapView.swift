@@ -10,17 +10,39 @@ struct ConversationRecapView: View {
     var correctedText: String? = nil
     /// Les fautes des conversations et des écrits d'avant : une faute qui revient le dit.
     var earlier = ErrorPatterns()
+    /// Les temps de réaction d'une rafale. Nil : une autre conversation.
+    var reflex: ReflexMeter? = nil
     let retry: () async -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if let reflex, let average = reflex.averageLabel {
+                    reflexSummary(reflex, average: average)
+                }
                 content
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// La vitesse de la rafale : arrivée sans attendre l'IA, elle passe en premier.
+    private func reflexSummary(_ reflex: ReflexMeter, average: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Réflexe", systemImage: "bolt.fill")
+                .font(.headline)
+                .foregroundStyle(StudyStyle.accent)
+            Text(average)
+                .accessibilityIdentifier("reflex-average")
+            Text(reflex.bestStreakLabel)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("reflex-best")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .studySection()
     }
 
     @ViewBuilder

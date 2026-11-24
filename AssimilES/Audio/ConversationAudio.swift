@@ -28,8 +28,8 @@ final class ConversationAudio: ConversationSound {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    func startRecording() async -> Bool {
-        await recorder.startRecording(at: folder.appendingPathComponent("tour.m4a"))
+    func startRecording(onVoice: @escaping @MainActor (Date) -> Void) async -> Bool {
+        await recorder.startRecording(at: folder.appendingPathComponent("tour.m4a"), onVoice: onVoice)
         return !recorder.micDenied && recorder.isRecording
     }
 

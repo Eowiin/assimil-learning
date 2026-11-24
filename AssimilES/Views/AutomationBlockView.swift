@@ -82,6 +82,7 @@ struct AutomationBlockContent: View {
                                            playbackRate: LearnerLevel.playbackRate(profile.level),
                                            targetSeconds: SessionAutomation.speedSeconds,
                                            title: AutomationPart.speed.title, topic: theme?.es,
+                                           measuresReflex: true,
                                            onReview: { review in
                 try? SessionConversation.record(review, in: session, pack: pack, part: AutomationPart.speed.key,
                                                 at: .now, in: context)

@@ -29,6 +29,8 @@ final class VoiceRecorder: NSObject, ObservableObject {
     private var startedAt: Date?
     /// La fin d'un passage joué seul.
     private var segmentEnd: Task<Void, Never>?
+    /// L'écoute des niveaux du micro, jusqu'à l'arrivée de la voix.
+    private var metering: Task<Void, Never>?
 
     // MARK: - Fichiers
 
@@ -82,7 +84,8 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
     /// Enregistre vers un fichier choisi : une réponse d'exercice n'a pas à
     /// remplacer la prise gardée pour l'essai de prononciation.
-    func startRecording(at target: URL) async {
+    /// `onVoice` : appelé une fois, au début de la voix dans la prise (`VoiceOnsetDetector`).
+    func startRecording(at target: URL, onVoice: (@MainActor (Date) -> Void)? = nil) async {
         guard await requestPermission() else { return }
         stopPlayback()
 
@@ -99,14 +102,33 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
         guard let recorder = try? AVAudioRecorder(url: target, settings: settings) else { return }
         self.recorder = recorder
+        recorder.isMeteringEnabled = onVoice != nil
         recorder.record()
         startedAt = .now
         isRecording = true
+        if let onVoice { listen(to: recorder, onVoice: onVoice) }
+    }
+
+    private func listen(to recorder: AVAudioRecorder, onVoice: @escaping @MainActor (Date) -> Void) {
+        metering?.cancel()
+        var detector = VoiceOnsetDetector(startedAt: .now)
+        metering = Task { [weak self] in
+            while !Task.isCancelled, let self, self.recorder === recorder {
+                recorder.updateMeters()
+                if let onset = detector.feed(level: recorder.averagePower(forChannel: 0), at: .now) {
+                    onVoice(onset)
+                    return
+                }
+                try? await Task.sleep(for: VoiceOnsetDetector.interval)
+            }
+        }
     }
 
     @discardableResult
     func stopRecording() -> URL? {
         guard let recorder, isRecording else { return nil }
+        metering?.cancel()
+        metering = nil
         recorder.stop()
         isRecording = false
         lastDuration = startedAt.map { Date.now.timeIntervalSince($0) } ?? 0

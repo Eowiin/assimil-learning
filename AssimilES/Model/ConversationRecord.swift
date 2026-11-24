@@ -20,6 +20,9 @@ final class ConversationRecord {
     /// `[ConversationCorrection]` en JSON. Nil tant que le récapitulatif n'a pas
     /// été fait (serveur injoignable au moment de terminer, par exemple).
     var corrections: Data?
+    /// `[Double]` en JSON : le temps avant chaque réponse, en secondes, pour une rafale
+    /// (étape 5c-3). Nil pour les autres conversations, et celles d'avant.
+    var reactionTimes: Data?
 
     init(startedAt: Date, endedAt: Date, messages: [ConversationMessage]) {
         self.startedAt = startedAt
@@ -29,6 +32,11 @@ final class ConversationRecord {
 
     var messages: [ConversationMessage] {
         (try? JSONDecoder().decode([ConversationMessage].self, from: transcript)) ?? []
+    }
+
+    var latencies: [Double]? {
+        get { reactionTimes.flatMap { try? JSONDecoder().decode([Double].self, from: $0) } }
+        set { reactionTimes = newValue.flatMap { try? JSONEncoder().encode($0) } }
     }
 
     var reviewedCorrections: [ConversationCorrection]? {

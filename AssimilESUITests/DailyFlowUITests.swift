@@ -446,10 +446,15 @@ final class DailyFlowUITests: XCTestCase {
         tap(app.buttons["conversation-mic"])
         tap(app.buttons["conversation-mic"])
         XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        // Le faux micro entend la voix tout de suite : une réponse réflexe.
+        let reflex = app.descendants(matching: .any)["reflex-badge"].firstMatch
+        XCTAssertTrue(reflex.waitForExistence(timeout: 5))
+        XCTAssertTrue(reflex.label.hasPrefix("Réflexe"), reflex.label)
         snapshot(app, "seance-rafale")
         tap(app.buttons["conversation-end"])
-        // La rafale ne vise pas l'objectif : le récapitulatif n'en parle pas.
+        // La rafale ne vise pas l'objectif : le récapitulatif n'en parle pas. Il dit le réflexe.
         XCTAssertTrue(app.buttons["recap-close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["reflex-average"].label.hasPrefix("Tu prends la parole en"))
         XCTAssertFalse(app.descendants(matching: .any)["recap-objective-use"].firstMatch.exists)
         tap(app.buttons["recap-close"])
 
