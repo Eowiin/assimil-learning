@@ -7,10 +7,26 @@ import Observation
 // `POST /tts`, gardée pour toujours : une phrase ne change pas, et c'est ce qui rend
 // la voix en ligne (Voxtral) presque gratuite à la longue.
 
-/// Un .m4a par phrase, dans `Application Support/voix/`, nommé d'après la phrase.
+/// Un .m4a par phrase, dans `Application Support/voix/<version>/`, nommé d'après la
+/// phrase.
 enum VoiceCache {
-    static var defaultRoot: URL {
+    /// La voix du serveur dont le cache est fait. À changer quand elle change (une autre
+    /// voix, une autre vitesse) : le cache d'avant part, et les phrases se redemandent.
+    static let version = "voxtral-elena-0.9"
+
+    static var base: URL {
         URL.applicationSupportDirectory.appending(path: "voix", directoryHint: .isDirectory)
+    }
+
+    static var defaultRoot: URL { base.appending(path: version, directoryHint: .isDirectory) }
+
+    /// Retire de `base` ce qui n'est pas la version en cours : les dossiers d'une voix
+    /// d'avant, et les fichiers rangés à plat par la première version.
+    static func purgeOtherVersions(base: URL = base, keeping version: String = version) {
+        let items = (try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil)) ?? []
+        for item in items where item.lastPathComponent != version {
+            try? FileManager.default.removeItem(at: item)
+        }
     }
 
     /// La phrase telle qu'on la range : sans espaces en trop. La casse et la

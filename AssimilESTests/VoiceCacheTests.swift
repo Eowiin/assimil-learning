@@ -41,6 +41,22 @@ struct VoiceCacheTests {
         #expect(VoiceCache.missing(["Llena.", "Otra.", "Otra. ", " "], root: root) == ["Otra."])
     }
 
+    @Test("Une autre voix : le cache d'avant part, celui de la version en cours reste")
+    func versions() throws {
+        let base = AbsorptionTests.root()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let current = base.appending(path: "v2", directoryHint: .isDirectory)
+        let old = base.appending(path: "v1", directoryHint: .isDirectory)
+        try VoiceCache.write(Data("nueva".utf8), for: "Hola.", root: current)
+        try VoiceCache.write(Data("vieja".utf8), for: "Hola.", root: old)
+        try Data("à plat".utf8).write(to: base.appending(path: "ancien.m4a"))
+
+        VoiceCache.purgeOtherVersions(base: base, keeping: "v2")
+        #expect(VoiceCache.cached("Hola.", root: current) != nil)
+        #expect(VoiceCache.cached("Hola.", root: old) == nil)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: base.path) == ["v2"])
+    }
+
     @Test("Le bloc 1 : les exemples de la micro-leçon, puis les phrases du lexique, la plus récente d'abord")
     func blockOne() {
         let lesson = CurriculumPack.MicroLesson(objective: "obj_001", lines: [],

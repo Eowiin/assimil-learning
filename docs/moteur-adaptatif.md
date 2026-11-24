@@ -259,7 +259,9 @@ verdict.
      - **5c-1, la voix légère** (`VoxtralTTS`, `PocketTTS`, `TTSAvecSecours`,
        `VoiceCache`). La voix par défaut est **Voxtral**, celle de Mistral, par son API
        (Elena, `voice_483`) : une prosodie castillane naturelle, et des mots seuls
-       entiers. **Pocket TTS** (Kyutai, Lola) prend le relais en local quand Mistral
+       entiers. Elle parle vite pour un apprenant : le serveur la ralentit à 0,9, hauteur
+       gardée (`ASSIMIL_VOXTRAL_VITESSE`). **Pocket TTS** (Kyutai, Lola, le modèle
+       standard, préféré au 24 couches à l'essai) prend le relais en local quand Mistral
        échoue, tarde (10 s) ou que le PC est hors ligne ; Voxtral est alors laissé de
        côté une minute, pour que chaque phrase n'attende pas le délai. Pocket tourne sur
        le processeur, six fois plus vite que le temps réel sur le Mac ; il est connu pour
@@ -268,8 +270,10 @@ verdict.
        de sortir l'app. Comparaison à l'oreille : `essais/voix.py`.
      - **La voix du bloc 1** : la phrase d'une carte du lexique (au recto) et les trois
        exemples de la micro-leçon ont un haut-parleur. Leur voix est gardée pour
-       toujours (`Application Support/voix/`, un .m4a nommé d'après la phrase) : une
-       phrase n'est demandée qu'une fois, ce qui rend la voix en ligne presque gratuite.
+       toujours (`Application Support/voix/<version>/`, un .m4a nommé d'après la
+       phrase) : une phrase n'est demandée qu'une fois, ce qui rend la voix en ligne
+       presque gratuite. Changer de voix ou de vitesse sur le serveur demande de changer
+       `VoiceCache.version` : le cache d'avant part au lancement suivant.
        Elle se prépare en tâche de fond dès l'écran du cycle, par paquets de 5 (les
        exemples de la micro-leçon d'abord, puis les phrases du lexique, la plus récente
        d'abord) ; une phrase pas encore prête est demandée seule à l'appui. Chaque

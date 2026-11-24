@@ -98,19 +98,45 @@ class VoixIndisponible(RuntimeError):
     """Une voix en ligne ne répond pas, ou refuse la phrase."""
 
 
+def ralentir(audio: Audio, vitesse: float) -> Audio:
+    """L'audio joué à `vitesse` (0,9 : 10 % plus lent), sans changer la hauteur de la
+    voix (`atempo` de ffmpeg). Rend un WAV."""
+    if vitesse == 1:
+        return audio
+    if not 0.5 <= vitesse <= 2:
+        raise ValueError(f"Vitesse de la voix hors de 0,5 à 2 : {vitesse}")
+    with tempfile.TemporaryDirectory() as dossier:
+        entree = Path(dossier) / f"voix.{audio.format}"
+        sortie = Path(dossier) / "lent.wav"
+        entree.write_bytes(audio.donnees)
+        subprocess.run(
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", str(entree),
+             "-filter:a", f"atempo={vitesse}", str(sortie)],
+            check=True, capture_output=True,
+        )
+        return Audio(sortie.read_bytes(), "wav")
+
+
 class VoxtralTTS:
     """Voxtral, la voix de Mistral, par son API (`/v1/audio/speech`). La clé est celle
     de l'IA (`MISTRAL_API_KEY`). Elena (`voice_483`) est la voix espagnole fournie.
     Le WAV est demandé plutôt que le mp3 : l'app reçoit de l'AAC, et passer par le mp3
-    compresserait deux fois."""
+    compresserait deux fois.
+
+    Elena parle vite pour un apprenant (essai du 2026-11-24) : sa voix est ralentie à
+    `vitesse` (0,9 par défaut), hauteur gardée. Le 0,85 des débutants, joué par l'app,
+    s'y ajoute."""
 
     def __init__(self, cle: str, modele: str = "voxtral-mini-tts-3-0", voix: str = "voice_483",
-                 delai: float = 10, url: str = "https://api.mistral.ai",
+                 delai: float = 10, vitesse: float = 0.9, url: str = "https://api.mistral.ai",
                  client: httpx.Client | None = None):
         if not cle:
             raise ValueError("La voix Voxtral demande la clé de Mistral dans MISTRAL_API_KEY.")
+        if not 0.5 <= vitesse <= 2:
+            raise ValueError(f"ASSIMIL_VOXTRAL_VITESSE={vitesse} : choisir entre 0,5 et 2.")
         self.modele = modele
         self.voix = voix
+        self.vitesse = vitesse
         self.client = client or httpx.Client(base_url=url, timeout=delai)
         self.client.headers["Authorization"] = f"Bearer {cle}"
         self.nom = f"voxtral {voix}"
@@ -120,13 +146,14 @@ class VoxtralTTS:
         try:
             reponse = self.client.post("/v1/audio/speech", json=corps)
             reponse.raise_for_status()
-            return Audio(base64.b64decode(reponse.json()["audio_data"]), "wav")
+            audio = Audio(base64.b64decode(reponse.json()["audio_data"]), "wav")
         except httpx.HTTPStatusError as erreur:
             raise VoixIndisponible(f"Voxtral répond {erreur.response.status_code}.") from erreur
         except httpx.HTTPError as erreur:
             raise VoixIndisponible("Voxtral ne répond pas : le PC a-t-il accès à internet ?") from erreur
         except (KeyError, ValueError) as erreur:
             raise VoixIndisponible("Voxtral a rendu une réponse sans audio.") from erreur
+        return ralentir(audio, self.vitesse)
 
 
 def wav_16_bits(echantillons, frequence: int) -> bytes:
@@ -206,7 +233,8 @@ def choisir_tts(appareil: str = "cuda", env=os.environ, pocket=_pocket) -> TTS:
     if choix == "voxtral":
         voxtral = VoxtralTTS(cle=env.get("MISTRAL_API_KEY", ""),
                              voix=env.get("ASSIMIL_VOXTRAL_VOIX", "voice_483"),
-                             delai=float(env.get("ASSIMIL_VOXTRAL_DELAI", "10")))
+                             delai=float(env.get("ASSIMIL_VOXTRAL_DELAI", "10")),
+                             vitesse=float(env.get("ASSIMIL_VOXTRAL_VITESSE", "0.9")))
         if env.get("ASSIMIL_TTS_SECOURS", "pocket").strip().lower() == "aucun":
             return voxtral
         return TTSAvecSecours(voxtral, pocket(appareil, env))

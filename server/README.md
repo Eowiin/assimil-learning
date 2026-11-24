@@ -104,6 +104,7 @@ PC n'entre dans le dépôt public :
 | `ASSIMIL_TTS` | `voxtral` | la voix : `voxtral` (Mistral, avec Pocket en secours), `pocket` (en local seulement) ou `xtts` (la voix d'avant, sur la carte graphique) |
 | `ASSIMIL_TTS_SECOURS` | `pocket` | `aucun` : Voxtral sans secours. Après un échec, Voxtral est laissé de côté une minute |
 | `ASSIMIL_VOXTRAL_VOIX` | `voice_483` | la voix de Voxtral (Elena, espagnole) |
+| `ASSIMIL_VOXTRAL_VITESSE` | `0.9` | la vitesse d'Elena, hauteur gardée : elle parle vite pour un apprenant |
 | `ASSIMIL_VOXTRAL_DELAI` | `10` | secondes d'attente de Voxtral avant de passer au secours |
 | `ASSIMIL_POCKET_LANGUE` | `spanish` | `spanish_24l` : le modèle à 24 couches, plus fin, plus lent |
 | `ASSIMIL_POCKET_VOIX` | `lola` | la voix de Pocket (sa seule voix espagnole) |

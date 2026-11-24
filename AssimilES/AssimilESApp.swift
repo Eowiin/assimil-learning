@@ -32,6 +32,8 @@ struct AssimilESApp: App {
         // une fois. Après la copie et le retrait, qui touchent aux cartes.
         LexiconMigration.finishIfNeeded(ranks: { CurriculumPack.bundled()?.ranks ?? [:] },
                                         in: container.mainContext)
+        // La voix des phrases du bloc 1 d'une voix d'avant ne se rejoue plus (étape 5c).
+        VoiceCache.purgeOtherVersions()
     }
 
     /// Chaque entité ajoutée (`DailySession`, `CourseAnchor`, puis `Card`,

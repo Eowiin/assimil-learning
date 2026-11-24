@@ -19,6 +19,7 @@ from app.voix import (
     VoxtralTTS,
     choisir_tts,
     en_m4a,
+    ralentir,
     wav_16_bits,
 )
 
@@ -163,7 +164,7 @@ def test_voix_inconnue(ecartee):
 
 def voxtral(reponse, recus):
     client = httpx.Client(base_url="https://mistral", transport=transport(reponse, recus))
-    return VoxtralTTS(cle="cle-secrete", client=client)
+    return VoxtralTTS(cle="cle-secrete", vitesse=1, client=client)
 
 
 def test_voxtral_demande_du_wav_a_elena():
@@ -206,6 +207,30 @@ def test_le_secours_prend_le_relais_puis_rend_la_main():
     principal.panne = False
     maintenant[0] = 61
     assert tts.dire("tres").donnees == b"voxtral:tres"
+
+
+def test_la_vitesse_de_voxtral_se_regle():
+    tts = choisir_tts(env={"MISTRAL_API_KEY": "x", "ASSIMIL_TTS_SECOURS": "aucun"}, pocket=fausse_pocket)
+    assert tts.vitesse == 0.9
+    tts = choisir_tts(env={"MISTRAL_API_KEY": "x", "ASSIMIL_TTS_SECOURS": "aucun",
+                           "ASSIMIL_VOXTRAL_VITESSE": "0.8"}, pocket=fausse_pocket)
+    assert tts.vitesse == 0.8
+    with pytest.raises(ValueError, match="entre 0,5 et 2"):
+        VoxtralTTS(cle="x", vitesse=0.2)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg absent")
+def test_ralentir_allonge_l_audio(tmp_path):
+    import io
+    import subprocess
+    import wave
+    wav = tmp_path / "bip.wav"
+    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "sine=frequency=440:duration=1", str(wav)], check=True)
+    audio = Audio(wav.read_bytes(), "wav")
+    assert ralentir(audio, 1) is audio
+    with wave.open(io.BytesIO(ralentir(audio, 0.8).donnees)) as lent:
+        assert lent.getnframes() / lent.getframerate() == pytest.approx(1.25, abs=0.05)
 
 
 def test_wav_16_bits():
