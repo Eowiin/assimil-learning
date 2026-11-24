@@ -12,6 +12,8 @@ struct AssimilESApp: App {
     @State private var server = AppEnvironment.fakeServer ? ServerStatus.fakeOnline() : ServerStatus()
     /// Le texte du bloc 2 et sa voix, préparés en tâche de fond d'un écran à l'autre.
     @State private var absorption = AbsorptionPreparer()
+    /// La voix des phrases du bloc 1, gardée sur le disque (étape 5c).
+    @State private var voices = VoicePreparer()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -30,6 +32,8 @@ struct AssimilESApp: App {
         // une fois. Après la copie et le retrait, qui touchent aux cartes.
         LexiconMigration.finishIfNeeded(ranks: { CurriculumPack.bundled()?.ranks ?? [:] },
                                         in: container.mainContext)
+        // La voix des phrases du bloc 1 d'une voix d'avant ne se rejoue plus (étape 5c).
+        VoiceCache.purgeOtherVersions()
     }
 
     /// Chaque entité ajoutée (`DailySession`, `CourseAnchor`, puis `Card`,
@@ -48,6 +52,7 @@ struct AssimilESApp: App {
                 .environment(packs)
                 .environment(server)
                 .environment(absorption)
+                .environment(voices)
                 .task {
                     player.rate = Float(settings.rate)
                     // Retenu au-delà de l'initialisation : c'est lui qui porte

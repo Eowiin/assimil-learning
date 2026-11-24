@@ -1,6 +1,7 @@
 """Les protocoles LLM et TTS, et `Reels` qui les assemble, sans aucun modèle :
 les appels HTTP passent par un transport simulé."""
 
+import base64
 import json
 import shutil
 
@@ -11,7 +12,16 @@ from pydantic import BaseModel
 from app.conversation import Correction, Corrections
 from app.llm import LLMIndisponible, MistralLLM, choisir_llm
 from app.moteurs import Reels, Reglages
-from app.voix import Audio, choisir_tts, en_m4a
+from app.voix import (
+    Audio,
+    TTSAvecSecours,
+    VoixIndisponible,
+    VoxtralTTS,
+    choisir_tts,
+    en_m4a,
+    ralentir,
+    wav_16_bits,
+)
 
 
 def transport(reponse, recus: list):
@@ -104,18 +114,131 @@ def test_sans_cle_le_serveur_le_dit():
         choisir_llm({})
 
 
-@pytest.mark.parametrize("prevu", ["pocket", "phonon", "voxtral"])
-def test_les_voix_prevues_sont_annoncees_pas_encore_ecrites(prevu):
-    with pytest.raises(ValueError, match="pas encore écrit"):
-        choisir_tts(env={"ASSIMIL_TTS": prevu})
+class FausseVoix:
+    """Une voix qui rend son nom, ou échoue."""
+
+    def __init__(self, nom="faux", panne=False):
+        self.nom = nom
+        self.panne = panne
+        self.phrases = []
+
+    def dire(self, texte):
+        self.phrases.append(texte)
+        if self.panne:
+            raise VoixIndisponible("en panne")
+        return Audio(f"{self.nom}:{texte}".encode(), "wav")
 
 
-def test_voix_inconnue():
-    with pytest.raises(ValueError, match="xtts"):
-        choisir_tts(env={"ASSIMIL_TTS": "siri"})
+def fausse_pocket(appareil, env):
+    return FausseVoix("pocket")
+
+
+def test_voxtral_par_defaut_avec_pocket_en_secours():
+    tts = choisir_tts(env={"MISTRAL_API_KEY": "x"}, pocket=fausse_pocket)
+    assert isinstance(tts, TTSAvecSecours)
+    assert isinstance(tts.principal, VoxtralTTS) and tts.principal.voix == "voice_483"
+    assert tts.secours.nom == "pocket"
+
+
+def test_voxtral_sans_secours():
+    tts = choisir_tts(env={"MISTRAL_API_KEY": "x", "ASSIMIL_TTS_SECOURS": "aucun"}, pocket=fausse_pocket)
+    assert isinstance(tts, VoxtralTTS)
+
+
+def test_voxtral_sans_cle():
+    with pytest.raises(ValueError, match="MISTRAL_API_KEY"):
+        choisir_tts(env={"ASSIMIL_TTS": "voxtral"}, pocket=fausse_pocket)
+
+
+def test_pocket_seul():
+    assert choisir_tts(env={"ASSIMIL_TTS": "pocket"}, pocket=fausse_pocket).nom == "pocket"
+
+
+@pytest.mark.parametrize("ecartee", ["phonon", "siri"])
+def test_voix_inconnue(ecartee):
+    with pytest.raises(ValueError, match="voxtral, pocket, xtts"):
+        choisir_tts(env={"ASSIMIL_TTS": ecartee})
 
 
 # --- La voix -----------------------------------------------------------------------
+
+def voxtral(reponse, recus):
+    client = httpx.Client(base_url="https://mistral", transport=transport(reponse, recus))
+    return VoxtralTTS(cle="cle-secrete", vitesse=1, client=client)
+
+
+def test_voxtral_demande_du_wav_a_elena():
+    recus = []
+    tts = voxtral(lambda _: httpx.Response(200, json={"audio_data": base64.b64encode(b"RIFF").decode()}), recus)
+    assert tts.dire("¡Hola!") == Audio(b"RIFF", "wav")
+    assert recus[0].url.path == "/v1/audio/speech"
+    assert recus[0].headers["Authorization"] == "Bearer cle-secrete"
+    assert json.loads(recus[0].content) == {"model": "voxtral-mini-tts-3-0", "input": "¡Hola!",
+                                            "voice_id": "voice_483", "response_format": "wav"}
+    assert "cle-secrete" not in tts.nom
+
+
+@pytest.mark.parametrize("reponse", [
+    lambda _: httpx.Response(403, json={}),
+    lambda _: httpx.Response(200, json={"autre": 1}),
+])
+def test_voxtral_en_echec(reponse):
+    with pytest.raises(VoixIndisponible):
+        voxtral(reponse, []).dire("Hola")
+
+
+def test_voxtral_injoignable():
+    def refuser(requete):
+        raise httpx.ConnectError("pas de réseau")
+    with pytest.raises(VoixIndisponible, match="internet"):
+        voxtral(refuser, []).dire("Hola")
+
+
+def test_le_secours_prend_le_relais_puis_rend_la_main():
+    maintenant = [0.0]
+    principal, secours = FausseVoix("voxtral", panne=True), FausseVoix("pocket")
+    tts = TTSAvecSecours(principal, secours, pause=60, horloge=lambda: maintenant[0])
+    assert tts.dire("uno").donnees == b"pocket:uno"
+    # Pendant la pause, Voxtral n'est même pas essayé.
+    maintenant[0] = 30
+    assert tts.dire("dos").donnees == b"pocket:dos"
+    assert principal.phrases == ["uno"]
+    # Après, il l'est de nouveau.
+    principal.panne = False
+    maintenant[0] = 61
+    assert tts.dire("tres").donnees == b"voxtral:tres"
+
+
+def test_la_vitesse_de_voxtral_se_regle():
+    tts = choisir_tts(env={"MISTRAL_API_KEY": "x", "ASSIMIL_TTS_SECOURS": "aucun"}, pocket=fausse_pocket)
+    assert tts.vitesse == 0.9
+    tts = choisir_tts(env={"MISTRAL_API_KEY": "x", "ASSIMIL_TTS_SECOURS": "aucun",
+                           "ASSIMIL_VOXTRAL_VITESSE": "0.8"}, pocket=fausse_pocket)
+    assert tts.vitesse == 0.8
+    with pytest.raises(ValueError, match="entre 0,5 et 2"):
+        VoxtralTTS(cle="x", vitesse=0.2)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg absent")
+def test_ralentir_allonge_l_audio(tmp_path):
+    import io
+    import subprocess
+    import wave
+    wav = tmp_path / "bip.wav"
+    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "sine=frequency=440:duration=1", str(wav)], check=True)
+    audio = Audio(wav.read_bytes(), "wav")
+    assert ralentir(audio, 1) is audio
+    with wave.open(io.BytesIO(ralentir(audio, 0.8).donnees)) as lent:
+        assert lent.getnframes() / lent.getframerate() == pytest.approx(1.25, abs=0.05)
+
+
+def test_wav_16_bits():
+    import io
+    import wave
+    donnees = wav_16_bits([0.0, 0.5, -2.0], 24000)
+    with wave.open(io.BytesIO(donnees)) as wav:
+        assert (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()) == (1, 2, 24000, 3)
 
 def test_un_m4a_passe_sans_conversion():
     assert en_m4a(Audio(b"deja-en-m4a", "m4a")) == b"deja-en-m4a"

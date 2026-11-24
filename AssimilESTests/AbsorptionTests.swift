@@ -232,7 +232,9 @@ struct AbsorptionTests {
         // La voix d'une autre séance part.
         try AbsorptionAudio.write(Data(), sessionKey: "es:2026-09-01", sentence: 0, root: root)
 
-        let preparer = AbsorptionPreparer(root: root)
+        let voiceRoot = Self.root()
+        defer { try? FileManager.default.removeItem(at: voiceRoot) }
+        let preparer = AbsorptionPreparer(root: root, voiceRoot: voiceRoot)
         preparer.prepare(session, pack: Self.pack, service: service, in: context)
         await Self.wait(preparer)
         #expect(Absorption.text(of: session) == text)
@@ -249,5 +251,8 @@ struct AbsorptionTests {
         let url = try #require(preparer.audioURL(for: session, sentence: 6))
         #expect(try Data(contentsOf: url) == Data("Frase 6.".utf8))
         #expect(AbsorptionPreparer(root: root).phase(for: session) == .ready)
+        // Chaque phrase dite est aussi dans le cache du bloc 1 (étape 5c).
+        let cached = try #require(VoiceCache.cached("Frase 6.", root: voiceRoot))
+        #expect(try Data(contentsOf: cached) == Data("Frase 6.".utf8))
     }
 }

@@ -18,8 +18,9 @@ l'apprenant : tout l'état reste sur l'iPhone.
 | `POST /pronunciation` | une phrase lue (l'audio et le texte attendu) : chaque son jugé, mot par mot, avec un conseil pour chaque faute |
 
 Le plan du module est dans `docs/module-conversation.md`. Les modèles : Whisper
-large-v3-turbo et XTTS v2 sur la carte graphique, et Mistral par son API pour écrire et
-juger. Qwen3 8B, servi par Ollama sur le PC, a été retiré le 2026-11-18 : il jugeait
+large-v3-turbo sur la carte graphique, et Mistral par son API pour écrire, juger et
+parler (Voxtral, avec Pocket TTS en secours sur le processeur du PC ; XTTS v2 reste
+possible). Qwen3 8B, servi par Ollama sur le PC, a été retiré le 2026-11-18 : il jugeait
 mal (28 défis du placement sur 35, contre 32 pour Mistral) et deux fois plus lentement.
 
 La prononciation (`app/prononciation/`) reprend la méthode mesurée par
@@ -84,11 +85,10 @@ Dans WSL2 :
 ```bash
 cd assimil-learning/server
 export MISTRAL_API_KEY=…                   # la clé de l'API Mistral : l'IA qui écrit et juge
-export ASSIMIL_VOIX=~/voix/ma-voix.wav     # la voix clonée : un extrait de 6 à 15 s
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Le démarrage prend une vingtaine de secondes. Le serveur charge Whisper, XTTS et les
+Le démarrage prend une vingtaine de secondes. Le serveur charge Whisper, la voix de secours (Pocket) et les
 deux modèles de la prononciation (téléchargés au premier lancement), puis
 fait un **tour à vide** : le premier passage sur la carte graphique est lent (20 s),
 et il ne doit jamais tomber en pleine conversation. Le terminal affiche « Tour à vide
@@ -101,8 +101,15 @@ PC n'entre dans le dépôt public :
 |---|---|---|
 | `MISTRAL_API_KEY` | aucune, obligatoire | la clé de l'API Mistral ; sans elle, le serveur ne démarre pas |
 | `ASSIMIL_MISTRAL_MODELE` | `mistral-small-latest` | le modèle de Mistral |
-| `ASSIMIL_TTS` | `xtts` | la voix : `xtts` seulement pour l'instant (`pocket`, `phonon` et `voxtral` sont prévus) |
-| `ASSIMIL_VOIX` | aucune | l'extrait de la voix que XTTS imite (wav) |
+| `ASSIMIL_TTS` | `voxtral` | la voix : `voxtral` (Mistral, avec Pocket en secours), `pocket` (en local seulement) ou `xtts` (la voix d'avant, sur la carte graphique) |
+| `ASSIMIL_TTS_SECOURS` | `pocket` | `aucun` : Voxtral sans secours. Après un échec, Voxtral est laissé de côté une minute |
+| `ASSIMIL_VOXTRAL_VOIX` | `voice_483` | la voix de Voxtral (Elena, espagnole) |
+| `ASSIMIL_VOXTRAL_VITESSE` | `0.9` | la vitesse d'Elena, hauteur gardée : elle parle vite pour un apprenant |
+| `ASSIMIL_VOXTRAL_DELAI` | `10` | secondes d'attente de Voxtral avant de passer au secours |
+| `ASSIMIL_POCKET_LANGUE` | `spanish` | `spanish_24l` : le modèle à 24 couches, plus fin, plus lent |
+| `ASSIMIL_POCKET_VOIX` | `lola` | la voix de Pocket (sa seule voix espagnole) |
+| `ASSIMIL_POCKET_APPAREIL` | `cpu` | `cuda` pour essayer Pocket sur la carte graphique |
+| `ASSIMIL_VOIX` | aucune | avec `xtts` : l'extrait de la voix imitée (wav, 6 à 15 s) |
 | `ASSIMIL_LOCUTEUR` | `Ana Florence` | la voix fournie avec XTTS, sans `ASSIMIL_VOIX` |
 | `ASSIMIL_WHISPER` | `large-v3-turbo` | le modèle Whisper |
 | `ASSIMIL_APPAREIL` | `cuda` | `cpu` pour essayer sans carte graphique |

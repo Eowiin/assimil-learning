@@ -26,6 +26,8 @@ struct VocabReviewView: View {
     @State private var lexicon = LexiconWords.empty
     @State private var ranks: [String: Int] = [:]
     @State private var showAnswer = false
+    /// La voix de la phrase d'un mot du lexique (`VoiceCache`, étape 5c).
+    @State private var voicePlayer = VoicePlayer()
     @State private var shownAt = DayClock.systemNow()
     /// Secondes d'étude pas encore inscrites (`StudyTime`).
     @State private var unrecorded: Double = 0
@@ -59,6 +61,7 @@ struct VocabReviewView: View {
         .onAppear(perform: start)
         .onDisappear {
             player.pause()
+            voicePlayer.stop()
             recordTime()
         }
         .onChange(of: scenePhase) {
@@ -117,6 +120,7 @@ struct VocabReviewView: View {
                         .font(.system(.title, design: .serif))
                         .multilineTextAlignment(.center)
                         .accessibilityIdentifier("vocab-front")
+                    VoiceButton(text: word.sentence, player: voicePlayer) { player.pause() }
                     if case .new = entry {
                         Text("Nouveau · texte du jour")
                             .font(.caption.weight(.semibold))
@@ -310,6 +314,7 @@ struct VocabReviewView: View {
 
     private func next(after card: Card?, now: Date) {
         player.pause()
+        voicePlayer.stop()
         showAnswer = false
         session?.finishCurrent(with: card, now: now)
         shownAt = now
@@ -332,6 +337,7 @@ struct VocabReviewView: View {
         guard let lesson = manifest.lesson(occurrence.lesson),
               let clip = SessionBuilder.clip(for: occurrence.item, in: lesson)
         else { return }
+        voicePlayer.stop()
         player.start(.excerpt(lessonNumber: lesson.number),
                      steps: SessionBuilder.excerpt(clip, isExercise: occurrence.isExercise, in: lesson, manifest: manifest))
     }

@@ -120,6 +120,20 @@ uv run python essais/amorces.py
 uv run python essais/amorces.py --niveaux A1 A2
 ```
 
+## `voix.py` : Voxtral, Pocket TTS et XTTS côte à côte (étape 5c)
+
+Les mêmes phrases dites par chaque voix : des mots seuls (Pocket est connu pour couper
+les phrases très courtes), des phrases du bloc 2, et des phrases chargées en θ, jota,
+r et v. Pour chacune, le temps de synthèse, le facteur temps réel et la taille du .m4a.
+Les fichiers vont dans `essais/sortie/voix/<voix>/`, à écouter. Sur le Mac, Pocket
+(standard, processeur) dit une phrase du bloc 2 en 0,5 s, six fois plus vite que le
+temps réel.
+
+```bash
+uv run python essais/voix.py
+uv run python essais/voix.py --voix voxtral pocket
+```
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris
