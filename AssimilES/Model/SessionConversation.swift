@@ -8,6 +8,8 @@ import SwiftData
 enum SessionConversation {
     /// La partie du bloc cochée quand un récapitulatif est arrivé.
     nonisolated static let part = "\(StudyBlock.conversation.rawValue).roleplay"
+    /// Le jeu de rôle se conclut à la sixième réponse (étape 5b), à tous les niveaux.
+    nonisolated static let roleplayTurns = 6
 
     /// Les mots du jour compris : ceux que le texte du bloc 2 a vraiment employés, pas
     /// les sept proposés. Sans texte, aucun.
@@ -15,9 +17,9 @@ enum SessionConversation {
         Absorption.text(of: session)?.newUsed.filter { !$0.isEmpty } ?? []
     }
 
-    /// Le profil du jeu de rôle, nil sans objectif. Le niveau est celui de l'objectif,
-    /// comme pour le texte du bloc 2. Pas de faute à surveiller : la scène reste sur
-    /// l'objectif.
+    /// Le profil du jeu de rôle, nil sans objectif. Le niveau est celui de l'apprenant
+    /// (`LearnerLevel`), pas celui d'un objectif repris ; un débutant reçoit des amorces.
+    /// Pas de faute à surveiller : la scène reste sur l'objectif.
     static func profile(for session: StudySession, pack: CurriculumPack,
                         in context: ModelContext) -> ConversationProfile? {
         guard let objective = session.objectiveID.flatMap(pack.objective) else { return nil }
@@ -27,9 +29,10 @@ enum SessionConversation {
         var allowed = KnownVocabulary.lemmas(pack: pack, estimate: estimate, states: states)
         let known = Set(allowed)
         allowed += day.filter { !known.contains($0) }
+        let level = LearnerLevel.current(pack: pack, in: context) ?? objective.level
         return ConversationProfile(words: Array(day.prefix(ConversationProfile.maxWords)),
-                                   level: objective.level, objective: ConversationObjective(objective),
-                                   mode: "roleplay", allowedLemmas: allowed)
+                                   level: level, objective: ConversationObjective(objective),
+                                   mode: "roleplay", allowedLemmas: allowed, hints: LearnerLevel.isBeginner(level))
     }
 
     /// Le récapitulatif d'une conversation, à inscrire une fois : chaque emploi de

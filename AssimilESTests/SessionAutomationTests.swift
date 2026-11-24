@@ -83,9 +83,14 @@ struct SessionAutomationTests {
         #expect(SessionAutomation.writingObjective(for: session, pack: Self.pack)?.id == today.id)
         session.reinjectObjectiveID = reinject.id
         #expect(SessionAutomation.writingObjective(for: session, pack: Self.pack)?.id == reinject.id)
-        let prompt = SessionAutomation.writingPrompt(for: session, pack: Self.pack)
-        #expect(prompt.hasPrefix("Écris 80 à 120 mots sur ce thème : \(theme.fr.lowercasedFirst)."))
+        let prompt = SessionAutomation.writingPrompt(for: session, pack: Self.pack, level: "B1")
+        #expect(prompt.hasPrefix("Écris 50 à 80 mots sur ce thème : \(theme.fr.lowercasedFirst)."))
         #expect(prompt.hasSuffix("« \(reinject.title) »."))
+        // Un débutant écrit un message court (étape 5b).
+        #expect(SessionAutomation.writingPrompt(for: session, pack: Self.pack, level: "A1").hasPrefix("Écris 15 à 30 mots"))
+        #expect(SessionAutomation.writingWords(level: "A0") == 15...30)
+        #expect(SessionAutomation.writingWords(level: "C1") == 50...80)
+        #expect(SessionAutomation.writingWords(level: nil) == 50...80)
     }
 
     @Test("L'orthographe reprise dans deux productions ajoute un rappel des accents à la consigne")
@@ -98,14 +103,14 @@ struct SessionAutomationTests {
                                            category: .spelling, tag: "tilde")
         let once = ErrorPatterns(productions: [.init(date: Fixture.date(day: 1), kind: .writing,
                                                      corrections: [accent, tilde])])
-        #expect(!SessionAutomation.writingPrompt(for: session, pack: Self.pack, patterns: once)
+        #expect(!SessionAutomation.writingPrompt(for: session, pack: Self.pack, level: "B1", patterns: once)
             .contains("Attention aux accents écrits."))
         // Deux points différents, mais deux productions : l'orthographe revient.
         let twice = ErrorPatterns(productions: [
             .init(date: Fixture.date(day: 1), kind: .writing, corrections: [accent]),
             .init(date: Fixture.date(day: 2), kind: .conversation, corrections: [tilde]),
         ])
-        #expect(SessionAutomation.writingPrompt(for: session, pack: Self.pack, patterns: twice)
+        #expect(SessionAutomation.writingPrompt(for: session, pack: Self.pack, level: "B1", patterns: twice)
             .hasSuffix("». Attention aux accents écrits."))
     }
 

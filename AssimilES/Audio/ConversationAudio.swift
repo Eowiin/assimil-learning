@@ -8,8 +8,14 @@ import Foundation
 final class ConversationAudio: ConversationSound {
 
     private let recorder = VoiceRecorder()
+    /// La vitesse des répliques de l'IA : 0,85 pour un débutant (`LearnerLevel`).
+    private let rate: Float
     private let folder = FileManager.default.temporaryDirectory
         .appendingPathComponent("conversation", isDirectory: true)
+
+    init(rate: Float = 1) {
+        self.rate = rate
+    }
 
     func begin() {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -35,7 +41,7 @@ final class ConversationAudio: ConversationSound {
         let url = folder.appendingPathComponent("replique-\(UUID().uuidString).m4a")
         guard (try? audio.write(to: url)) != nil else { return onFinish() }
         recorder.onPlaybackFinished = onFinish
-        recorder.play(url, as: .native)
+        recorder.play(url, as: .native, rate: rate)
     }
 
     func stopPlayback() {

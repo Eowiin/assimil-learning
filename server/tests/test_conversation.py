@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.conversation import (CONSIGNE, CONSIGNE_CORRECTION, Correction, Corrections, Profil, consigne,
-                              note_du_tour)
+from app.conversation import (CONSIGNE, CONSIGNE_CORRECTION, FIN_DE_SCENE, Amorce, Amorces, Correction,
+                              Corrections, Profil, amorces_propres, consigne, note_du_tour)
 from app.llm import LLMIndisponible
 from app.moteurs import Reglages
 
@@ -26,6 +26,12 @@ class Faux:
         # Ce que rend `structurer` ; None : les corrections d'un récapitulatif simple.
         self.recap = None
         self.modele = None
+        # Ce que rendent les amorces ; une exception : l'IA n'a pas pu les écrire.
+        self.amorces: Amorces | Exception = Amorces(amorces=[
+            Amorce(es="Quiero", fr="Je veux"), Amorce(es="Me gusta…", fr="J'aime…"),
+            Amorce(es="quiero", fr="je veux"), Amorce(es="No sé si…", fr="Je ne sais pas si…"),
+            Amorce(es="Prefiero…", fr="Je préfère…")])
+        self.demandes_amorces: list[list[dict]] = []
 
     def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
         assert audio == b"audio-du-tour"
@@ -45,6 +51,11 @@ class Faux:
         return "¡Qué rico! ¿Lo comes con pan?"
 
     def structurer(self, messages, modele):
+        if modele is Amorces:
+            self.demandes_amorces.append(messages)
+            if isinstance(self.amorces, Exception):
+                raise self.amorces
+            return self.amorces
         self.messages = messages
         self.modele = modele
         if self.recap is not None:
@@ -283,3 +294,55 @@ def test_review_sans_phrase_de_l_eleve(client, faux):
 def test_sans_modeles_la_conversation_est_indisponible():
     client = TestClient(main.create_app(moteurs=None, charger=False))
     assert client.post("/conversation/start").status_code == 503
+
+
+# --- Étape 5b : les amorces et la fin de scène ----------------------------------------
+
+DEBUTANT = {"level": "A1", "hints": True}
+
+
+def test_amorces_propres_trois_sans_doublon_finies_par_points():
+    propres = amorces_propres(Amorces(amorces=[
+        Amorce(es="Quiero.", fr="Je veux"), Amorce(es=" ", fr="vide"), Amorce(es="quiero…", fr="je veux"),
+        Amorce(es="Me gusta", fr="J'aime"), Amorce(es="Prefiero", fr="Je préfère"), Amorce(es="Creo", fr="Je crois")]))
+    assert [a.es for a in propres] == ["Quiero…", "Me gusta…", "Prefiero…"]
+    assert all(a.fr.endswith("…") for a in propres)
+
+
+def test_start_avec_amorces(client, faux):
+    corps = client.post("/conversation/start", json={"profile": DEBUTANT}).json()
+    assert [h["es"] for h in corps["hints"]] == ["Quiero…", "Me gusta…", "No sé si…"]
+    assert corps["hints"][0]["fr"] == "Je veux…"
+    # Les amorces répondent à la réplique que l'IA vient d'écrire.
+    assert faux.demandes_amorces[0][-1]["content"].endswith("Compañero: ¡Qué rico! ¿Lo comes con pan?")
+    assert "A1" in faux.demandes_amorces[0][0]["content"]
+
+
+def test_sans_demande_pas_d_amorces(client, faux):
+    corps = client.post("/conversation/start", json={"profile": {"level": "A1"}}).json()
+    assert corps["hints"] is None
+    assert faux.demandes_amorces == []
+
+
+def test_amorces_ratees_la_replique_arrive_quand_meme(client, faux):
+    faux.amorces = RuntimeError("Mistral ne répond pas")
+    corps = client.post("/conversation/turn", data={"text": "Hola", "profile": json.dumps(DEBUTANT)}).json()
+    assert corps["reply"] == "¡Qué rico! ¿Lo comes con pan?"
+    assert corps["hints"] is None
+
+
+def test_turn_amorces_voient_la_phrase_de_l_apprenant(client, faux):
+    historique = [{"role": "assistant", "content": "¿Qué quieres comer?"}]
+    client.post("/conversation/turn", data={"text": "Jamón", "history": json.dumps(historique),
+                                            "profile": json.dumps(DEBUTANT)})
+    assert faux.demandes_amorces[0][-1]["content"] == (
+        "Compañero: ¿Qué quieres comer?\nEstudiante: Jamón\nCompañero: ¡Qué rico! ¿Lo comes con pan?")
+
+
+def test_derniere_reponse_l_ia_conclut_sans_amorces(client, faux):
+    corps = client.post("/conversation/turn", data={"text": "Adiós", "closing": "true",
+                                                    "profile": json.dumps(DEBUTANT)}).json()
+    assert faux.messages[-1]["content"] == "Adiós\n\n" + FIN_DE_SCENE
+    assert corps["hints"] is None
+    assert faux.demandes_amorces == []
+

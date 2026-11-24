@@ -94,6 +94,9 @@ class Profil(BaseModel):
     # Les lemmes que l'apprenant connaît. Ils ne servent qu'à mesurer la réplique, jamais
     # dans la consigne : une liste de 800 mots noierait un modèle de 8B.
     allowed_lemmas: list[str] = Field(default_factory=list)
+    # Des débuts de réponse sous chaque réplique (étape 5b) : l'app les demande pour un
+    # apprenant A0 ou A1, contre la page blanche.
+    hints: bool = False
 
 
 # Une consigne courte garde l'IA rapide et concentrée.
@@ -255,12 +258,68 @@ def messages_ouverture(sujet: str | None, profil: Profil | None = None) -> list[
     return [{"role": "system", "content": consigne(profil)}, {"role": "user", "content": ouverture}]
 
 
-def messages_tour(historique: list[Message], phrase: str, profil: Profil | None = None) -> list[dict]:
+# La dernière réplique d'un jeu de rôle borné (étape 5b) : l'app la demande à la
+# dernière réponse permise. Elle remplace la note du tour : plus rien à amener.
+FIN_DE_SCENE = ("(Nota para ti, no la menciones: es tu última réplica. Responde a lo que acaba "
+                "de decir y cierra la escena de forma natural, en tu papel, con una despedida. "
+                "No hagas ninguna pregunta.)")
+
+
+def messages_tour(historique: list[Message], phrase: str, profil: Profil | None = None,
+                  fin: bool = False) -> list[dict]:
     rang = sum(m.role == "assistant" for m in historique)
-    note = note_du_tour(profil, rang)
+    note = FIN_DE_SCENE if fin else note_du_tour(profil, rang)
     return ([{"role": "system", "content": consigne(profil)}]
             + [m.model_dump() for m in historique]
             + [{"role": "user", "content": phrase + ("\n\n" + note if note else "")}])
+
+
+# --- Les amorces (étape 5b) ------------------------------------------------------------
+
+AMORCES_AU_PLUS = 3
+
+CONSIGNE_AMORCES = """Ayudas a un estudiante francés de español (nivel {niveau}) que no sabe \
+cómo empezar su respuesta. Lee la última réplica de su compañero y propón {n} comienzos de \
+respuesta distintos, en español de España: cada uno de 2 a 5 palabras muy corrientes, que el \
+estudiante pueda terminar con sus propias palabras, y que acabe en «…». Que respondan de \
+verdad a la réplica y que no se parezcan entre sí. Da también la traducción francesa de \
+cada comienzo, igual de corta."""
+
+
+class Amorce(BaseModel):
+    """Un début de réponse, et sa traduction."""
+    es: str
+    fr: str
+
+
+class Amorces(BaseModel):
+    amorces: list[Amorce] = Field(default_factory=list)
+
+
+def messages_amorces(historique: list[Message], replique: str, profil: Profil | None) -> list[dict]:
+    """Les débuts de réponse à la réplique que l'IA vient d'écrire. Les deux dernières
+    répliques suffisent : la scène, sans le reste."""
+    niveau = (profil.level if profil else None) or NIVEAU_PAR_DEFAUT
+    contexte = [f"{'Estudiante' if m.role == 'user' else 'Compañero'}: {m.content}" for m in historique[-2:]]
+    return [{"role": "system", "content": CONSIGNE_AMORCES.format(niveau=niveau, n=AMORCES_AU_PLUS)},
+            {"role": "user", "content": "\n".join(contexte + [f"Compañero: {replique}"])}]
+
+
+def amorces_propres(amorces: Amorces) -> list[Amorce]:
+    """Trois au plus, sans vide ni doublon, chacune finie par « … »."""
+    vues, propres = set(), []
+    for amorce in amorces.amorces:
+        es, fr = amorce.es.strip(), amorce.fr.strip()
+        if not es or not fr:
+            continue
+        es = es.rstrip(".…").rstrip() + "…"
+        fr = fr.rstrip(".…").rstrip() + "…"
+        cle = es.casefold()
+        if cle in vues:
+            continue
+        vues.add(cle)
+        propres.append(Amorce(es=es, fr=fr))
+    return propres[:AMORCES_AU_PLUS]
 
 
 def derniere_replique(historique: list[Message]) -> str | None:

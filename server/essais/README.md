@@ -108,6 +108,18 @@ uv run python essais/texte.py -n 1500 --mots 250
 uv run python essais/texte.py --tts essais/sortie/texte   # et les m4a (XTTS)
 ```
 
+## `amorces.py` : les amorces des débutants et la fin de scène (étape 5b)
+
+Charge l'IA seule. Pour le premier objectif A0 et le premier A1 du paquet, en jeu de
+rôle : l'ouverture et ses trois amorces (début de réponse et traduction), un tour et ses
+amorces, puis la dernière réponse (`closing`), où l'IA doit conclure sans question. À
+regarder : les amorces répondent-elles à la réplique, et sont-elles assez simples ?
+
+```bash
+uv run python essais/amorces.py
+uv run python essais/amorces.py --niveaux A1 A2
+```
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris

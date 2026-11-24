@@ -10,6 +10,12 @@ struct ConversationSetup {
     var turns: Int? = nil
     /// La ligne au-dessus des bulles. Nil : le résumé du profil, s'il en a un.
     var intro: String? = nil
+    /// À la dernière réponse permise, l'IA conclut la scène (le jeu de rôle, étape 5b).
+    var closesScene = false
+    /// Ce que dit l'écran une fois les réponses épuisées. Nil : le message du calibrage.
+    var limitHint: String? = nil
+    /// La vitesse de la voix de l'IA (`LearnerLevel.playbackRate`).
+    var playbackRate: Float = 1
     /// La durée visée (la rafale du bloc 4) : un décompte, puis une invitation à
     /// terminer. Rien ne coupe. Nil : pas de durée.
     var targetSeconds: Double? = nil
@@ -61,14 +67,15 @@ struct ConversationView: View {
 
     init(service: any ConversationService, setup: ConversationSetup? = nil) {
         self.setup = setup
-        _session = State(initialValue: ConversationSession(service: service, sound: Self.sound()))
+        _session = State(initialValue: ConversationSession(service: service,
+                                                           sound: Self.sound(rate: setup?.playbackRate ?? 1)))
     }
 
-    private static func sound() -> any ConversationSound {
+    private static func sound(rate: Float) -> any ConversationSound {
         #if DEBUG
         if AppEnvironment.fakeServer { return SilentSound() }
         #endif
-        return ConversationAudio()
+        return ConversationAudio(rate: rate)
     }
 
     var body: some View {
@@ -110,6 +117,7 @@ struct ConversationView: View {
             if let setup {
                 session.profile = setup.profile
                 session.turnLimit = setup.turns
+                session.closesScene = setup.closesScene
                 session.topic = setup.topic
             } else if session.profile == nil {
                 session.profile = Self.profile(in: context)
@@ -235,6 +243,9 @@ struct ConversationView: View {
 
     private var controls: some View {
         VStack(spacing: 10) {
+            if !session.currentHints.isEmpty {
+                hints(session.currentHints)
+            }
             if let target = setup?.targetSeconds {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     countdown(target, now: context.date)
@@ -294,7 +305,7 @@ struct ConversationView: View {
     private var status: some View {
         switch session.phase {
         case .ready where session.reachedLimit:
-            hint("C'est assez pour situer ton niveau : touche Terminer")
+            hint(setup?.limitHint ?? "C'est assez pour situer ton niveau : touche Terminer")
         case .ready:
             if let limit = session.turnLimit {
                 hint("Touche le micro pour répondre (\(session.learnerTurns + 1) sur \(limit))")
@@ -341,6 +352,27 @@ struct ConversationView: View {
                 status
             }
         }
+    }
+
+    /// Les débuts de réponse d'un débutant : de quoi se lancer, à dire au micro.
+    private func hints(_ hints: [ConversationHint]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Pour commencer ta réponse")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(Array(hints.enumerated()), id: \.offset) { _, hint in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(hint.es).font(.system(.body, design: .serif).weight(.semibold))
+                    Text(hint.fr).font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("conversation-hints")
     }
 
     private func hint(_ text: String) -> some View {

@@ -13,17 +13,19 @@ import shutil
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from .conversation import (Correction, CorrectionEcrite, Corrections, CorrectionsEcrit,
+from .conversation import (Amorce, Amorces, Correction, CorrectionEcrite, Corrections, CorrectionsEcrit,
                            CorrectionsEcritObjectif, CorrectionsObjectif, Message, Moteurs, Niveau,
-                           Objectif, Profil, UsageObjectif, connus_du_tour, derniere_replique,
-                           lemmes_produits, messages_correction, messages_ecrit, messages_ouverture,
-                           messages_tour, mesurer, vraies_corrections)
+                           Objectif, Profil, UsageObjectif, amorces_propres, connus_du_tour,
+                           derniere_replique, lemmes_produits, messages_amorces, messages_correction,
+                           messages_ecrit, messages_ouverture, messages_tour, mesurer,
+                           vraies_corrections)
 from .langue import Langue
 from .llm import LLMIndisponible
 from .placement import JugementDefi, PlacementRequest, evaluer
@@ -67,6 +69,9 @@ class Reply(BaseModel):
     timings: Timings
     coverage: float | None = None
     attempts: int | None = None
+    # Des débuts de réponse (étape 5b), quand le profil les demande ; null sinon, ou si
+    # l'IA n'a pas pu les écrire.
+    hints: list[Amorce] | None = None
 
 
 class Turn(Reply):
@@ -265,8 +270,10 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
             raise HTTPException(503, f"L'IA ne répond pas : {erreur}") from erreur
 
     def repliquer(request: Request, messages: list[dict], profil: Profil | None,
-                  phrase: str | None = None, ecoute: float | None = None) -> Reply:
-        """La réplique de l'IA, mesurée si l'app donne les mots connus, puis dite."""
+                  phrase: str | None = None, ecoute: float | None = None,
+                  historique: list[Message] | None = None, fin: bool = False) -> Reply:
+        """La réplique de l'IA, mesurée si l'app donne les mots connus, puis dite. Les
+        amorces, quand le profil les demande, s'écrivent pendant que la voix se fait."""
         m = request.app.state.moteurs
         langue: Langue | None = request.app.state.langue
         debut = time.perf_counter()
@@ -280,10 +287,25 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
                 journal.info("Réplique réécrite (%d versions), couverture %.0f %%.",
                              essais, couverture * 100)
         ia = round(time.perf_counter() - debut, 2)
-        audio, voix = chrono(m.dire, reponse)
+        if profil and profil.hints and not fin:
+            with ThreadPoolExecutor(max_workers=1) as fond:
+                en_cours = fond.submit(amorcer, m, historique or [], reponse, profil)
+                audio, voix = chrono(m.dire, reponse)
+                amorces = en_cours.result()
+        else:
+            audio, voix = chrono(m.dire, reponse)
+            amorces = None
         return Reply(reply=reponse, audio=base64.b64encode(audio).decode(),
                      timings=Timings(listen=ecoute, think=ia, speak=voix),
-                     coverage=couverture, attempts=essais)
+                     coverage=couverture, attempts=essais, hints=amorces)
+
+    def amorcer(m: Moteurs, historique: list[Message], reponse: str, profil: Profil) -> list[Amorce] | None:
+        """Les amorces, ou rien : elles aident, la réplique ne les attend pas."""
+        try:
+            return amorces_propres(m.structurer(messages_amorces(historique, reponse, profil), Amorces)) or None
+        except Exception as erreur:  # noqa: BLE001 — une aide qui manque ne fait pas échouer le tour
+            journal.warning("Amorces impossibles : %s", erreur)
+            return None
 
     def lemmes(request: Request, phrases: list[str]) -> list[str] | None:
         langue: Langue | None = request.app.state.langue
@@ -319,7 +341,8 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
              history: str = Form("[]", description="les répliques précédentes, en JSON"),
              audio: UploadFile | None = File(None),
              text: str | None = Form(None),
-             profile: str | None = Form(None, description="le profil de l'apprenant, en JSON")) -> Turn:
+             profile: str | None = Form(None, description="le profil de l'apprenant, en JSON"),
+             closing: bool = Form(False, description="la dernière réponse permise : l'IA conclut")) -> Turn:
         """Un tour : ce que l'apprenant a dit (audio, ou texte), et la réponse."""
         m = prets(request)
         try:
@@ -339,8 +362,9 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
                 compris, ecoute = text.strip(), None
             if not compris:
                 raise HTTPException(422, "Je n'ai rien entendu.")
-            replique = repliquer(request, messages_tour(historique, compris, profil), profil,
-                                 compris, ecoute)
+            replique = repliquer(request, messages_tour(historique, compris, profil, fin=closing), profil,
+                                 compris, ecoute, historique=historique + [Message(role="user", content=compris)],
+                                 fin=closing)
         return Turn(heard=compris, **replique.model_dump())
 
     @app.post("/conversation/review")

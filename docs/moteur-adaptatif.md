@@ -81,7 +81,7 @@ conversation ou à l'écrit deux jours différents.
 | `POST /placement/evaluate` | `level`, `items[{objective_id, instruction, prompt, expected, also_correct, check, answer}]` (`instruction` optionnel) | `[{objective_id, verdict, analyse_courte}]`, `verdict` : `shown`, `correct_not_shown`, `wrong` |
 | `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]` (places des phrases, ou null), `attempts`, `new_occurrences[{lemma, sentence, form}]` (étape 4c) |
 | `POST /tts` | `sentences[]` (40 au plus) | `audios[{text, audio}]` : un m4a par phrase, en base64 ; `seconds` |
-| `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]` | + `coverage`, `attempts` (null sans `allowed_lemmas`) |
+| `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]`, `hints` (5b) ; `/turn` : `closing` (5b) | + `coverage`, `attempts` (null sans `allowed_lemmas`), `hints[{es, fr}]` (null sans demande) |
 | `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]` |
 | `POST /writing/review` | `text`, `level`, `objective` | `corrections[]` (catégorie `orthographe` en plus), `corrected_text`, `objective_uses[]`, `lemmas_produced[]` |
 
@@ -233,3 +233,24 @@ verdict.
      - L'écrit et le bilan de conversation d'un cycle se lisent depuis son début
        (`startedAt`), plus depuis minuit. La rafale prend le thème du cycle d'avant
        (celui du même jour compte).
+   - **5b, les débutants** (`LearnerLevel`, amorces, fin de scène), 2026-11-24. Le
+     crosstalk (répondre en français en A0) est reporté : Whisper ne garde qu'une
+     langue par prise, et un passage en français serait traduit ou écorché sans
+     prévenir, puis jugé comme une production. À reprendre avec un essai sur des prises
+     mélangées (Whisper `multilingual`, Voxtral, Azure ou Deepgram), ou un bouton « Je
+     ne sais pas le dire » qui envoie une prise en français imposé.
+     - **Le niveau de l'apprenant** (`LearnerLevel`) : celui de l'objectif actif, sinon
+       celui du placement. Le texte du bloc 2, le jeu de rôle, la rafale, l'écrit et sa
+       correction se règlent sur lui, pas sur l'objectif repris d'un cycle 2 : un
+       apprenant B1 qui revoit un point A1 ne redevient pas débutant.
+     - **Les amorces** (A0, A1) : le profil porte `hints` ; après chaque réplique, un
+       second appel à l'IA (`structurer`, la scène en deux répliques) propose trois
+       débuts de réponse de 2 à 5 mots, finis par « … », avec leur traduction. Il tourne
+       pendant que la voix se fait ; s'il échoue, la réplique arrive sans amorces. Elles
+       s'affichent au-dessus du micro tant que c'est à l'apprenant ; on répond toujours
+       à la voix. La voix de l'IA est jouée à 0,85 (hauteur gardée), au bloc 3 et à la
+       rafale.
+     - **La fin de scène** (tous niveaux) : le jeu de rôle se tait après 6 réponses ; la
+       sixième part avec `closing`, et l'IA conclut en son rôle, sans question. Le
+       calibrage du placement garde sa limite sans conclusion.
+     - **L'écrit** : 15 à 30 mots en A0-A1, 50 à 80 au-delà (80 à 120 avant).
