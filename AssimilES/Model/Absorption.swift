@@ -301,9 +301,14 @@ final class AbsorptionPreparer {
     private(set) var phases: [String: Phase] = [:]
     private var tasks: [String: Task<Void, Never>] = [:]
     private let root: URL
+    /// Le cache des phrases du bloc 1 (`VoiceCache`) : chaque phrase dite y est copiée,
+    /// pour que la carte d'un mot du texte ait sa voix après que la séance a effacé
+    /// son dossier, sans la redemander.
+    private let voiceRoot: URL
 
-    init(root: URL = AbsorptionAudio.defaultRoot) {
+    init(root: URL = AbsorptionAudio.defaultRoot, voiceRoot: URL = VoiceCache.defaultRoot) {
         self.root = root
+        self.voiceRoot = voiceRoot
     }
 
     func phase(for session: StudySession) -> Phase {
@@ -365,6 +370,7 @@ final class AbsorptionPreparer {
                 let audios = try await service.speak(batch.map { text.sentences[$0].es })
                 for (index, audio) in zip(batch, audios) {
                     try AbsorptionAudio.write(audio, sessionKey: key, sentence: index, root: root)
+                    try? VoiceCache.write(audio, for: text.sentences[index].es, root: voiceRoot)
                 }
                 done += batch.count
             } catch {

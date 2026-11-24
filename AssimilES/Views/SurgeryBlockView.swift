@@ -191,6 +191,8 @@ struct MicroLessonView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var revealed: Set<Int> = []
+    /// La voix des exemples (`VoiceCache`, étape 5c).
+    @State private var voicePlayer = VoicePlayer()
 
     var body: some View {
         ScrollView {
@@ -214,26 +216,29 @@ struct MicroLessonView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Exemples").font(.headline)
                     ForEach(Array(lesson.examples.enumerated()), id: \.offset) { index, example in
-                        Button {
-                            revealed.insert(index)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(example.es)
-                                    .font(.system(.title3, design: .serif))
-                                    .foregroundStyle(.primary)
-                                if revealed.contains(index) {
-                                    Text(example.fr).foregroundStyle(.secondary)
-                                } else {
-                                    Label("Traduction", systemImage: "eye")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                        HStack(alignment: .top, spacing: 4) {
+                            Button {
+                                revealed.insert(index)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(example.es)
+                                        .font(.system(.title3, design: .serif))
+                                        .foregroundStyle(.primary)
+                                    if revealed.contains(index) {
+                                        Text(example.fr).foregroundStyle(.secondary)
+                                    } else {
+                                        Label("Traduction", systemImage: "eye")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                            .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 14))
+                            .buttonStyle(.plain)
+                            VoiceButton(text: example.es, player: voicePlayer)
                         }
-                        .buttonStyle(.plain)
+                        .padding(14)
+                        .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 14))
                     }
                 }
                 Button("Compris") { dismiss() }
@@ -245,6 +250,7 @@ struct MicroLessonView: View {
             .frame(maxWidth: .infinity)
         }
         .background(StudyStyle.paper)
+        .onDisappear { voicePlayer.stop() }
         .navigationTitle("Micro-leçon")
         .navigationBarTitleDisplayMode(.inline)
     }

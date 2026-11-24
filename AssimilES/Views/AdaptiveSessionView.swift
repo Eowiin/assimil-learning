@@ -12,6 +12,7 @@ struct AdaptiveSessionView: View {
     @Environment(\.modelContext) private var context
     @Environment(ServerStatus.self) private var server
     @Environment(AbsorptionPreparer.self) private var absorption
+    @Environment(VoicePreparer.self) private var voices
 
     private var objective: CurriculumPack.Objective? { session.objectiveID.flatMap(pack.objective) }
     private var theme: CurriculumPack.Theme? { pack.themes.first { $0.id == session.theme } }
@@ -45,8 +46,18 @@ struct AdaptiveSessionView: View {
         }
         // Le texte du bloc 2 et sa voix prennent une minute : ils se préparent pendant
         // le bloc 1. Un appel à l'IA même si le bloc 2 est passé ensuite.
-        .onAppear(perform: prepareAbsorption)
-        .onChange(of: server.isOnline) { prepareAbsorption() }
+        // La voix des phrases du bloc 1 (micro-leçon, cartes du lexique) se garde pour
+        // toujours : seules celles qui manquent partent.
+        .onAppear { prepareAbsorption(); prepareVoices() }
+        .onChange(of: server.isOnline) { prepareAbsorption(); prepareVoices() }
+    }
+
+    private func prepareVoices() {
+        guard let service = server.absorption else { return }
+        let lexicon = LexiconWords(states: (try? context.fetch(FetchDescriptor<LexemeState>())) ?? [],
+                                   language: pack.language)
+        let microlesson = session.objectiveID.flatMap { pack.microlessons[$0] }
+        voices.prepare(VoiceCache.blockOneTexts(microlesson: microlesson, lexicon: lexicon), service: service)
     }
 
     private func prepareAbsorption() {

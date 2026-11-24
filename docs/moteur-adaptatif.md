@@ -29,7 +29,8 @@ l'accueil à côté, tant que la nouvelle n'a pas fait ses preuves.
    un défi, sans compter de lacune), faux. Le type du défi (`complete`, `translate`,
    `rewrite`) ne change rien au correcteur, à tous les niveaux.
 8. **Le LLM et la voix passent derrière des protocoles** (`LLM` : Mistral depuis la
-   décision 10 ; `TTS` : XTTS v2 isolé, prêt pour une voix en ligne).
+   décision 10 ; `TTS` : Voxtral, avec Pocket TTS en secours, depuis l'étape 5c ;
+   XTTS v2 reste possible).
 9. **Les jugements vont à Mistral** (2026-11-18), par `ASSIMIL_LLM_JUGE=mistral` :
    récapitulatif, écrit, puis placement. La conversation reste sur Qwen3, en local. À
    l'essai sur obj_031, Qwen3 8B corrigeait des phrases justes et jugeait l'objectif
@@ -254,3 +255,24 @@ verdict.
        sixième part avec `closing`, et l'IA conclut en son rôle, sans question. Le
        calibrage du placement garde sa limite sans conclusion.
      - **L'écrit** : 15 à 30 mots en A0-A1, 50 à 80 au-delà (80 à 120 avant).
+   - **5c, la voix et les indicateurs** (2026-11-24), en trois PR.
+     - **5c-1, la voix légère** (`VoxtralTTS`, `PocketTTS`, `TTSAvecSecours`,
+       `VoiceCache`). La voix par défaut est **Voxtral**, celle de Mistral, par son API
+       (Elena, `voice_483`) : une prosodie castillane naturelle, et des mots seuls
+       entiers. **Pocket TTS** (Kyutai, Lola) prend le relais en local quand Mistral
+       échoue, tarde (10 s) ou que le PC est hors ligne ; Voxtral est alors laissé de
+       côté une minute, pour que chaque phrase n'attende pas le délai. Pocket tourne sur
+       le processeur, six fois plus vite que le temps réel sur le Mac ; il est connu pour
+       couper les phrases très courtes. `ASSIMIL_TTS=pocket` le force seul, `xtts` rend
+       la voix d'avant. Phonon (Gradium) est écarté : sa licence (CC BY-NC) interdirait
+       de sortir l'app. Comparaison à l'oreille : `essais/voix.py`.
+     - **La voix du bloc 1** : la phrase d'une carte du lexique (au recto) et les trois
+       exemples de la micro-leçon ont un haut-parleur. Leur voix est gardée pour
+       toujours (`Application Support/voix/`, un .m4a nommé d'après la phrase) : une
+       phrase n'est demandée qu'une fois, ce qui rend la voix en ligne presque gratuite.
+       Elle se prépare en tâche de fond dès l'écran du cycle, par paquets de 5 (les
+       exemples de la micro-leçon d'abord, puis les phrases du lexique, la plus récente
+       d'abord) ; une phrase pas encore prête est demandée seule à l'appui. Chaque
+       phrase du texte du bloc 2 y est aussi copiée quand sa voix arrive : la carte d'un
+       mot du texte a sa voix sans rien redemander, même après que la séance a effacé
+       son dossier.

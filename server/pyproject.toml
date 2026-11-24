@@ -13,6 +13,8 @@ dependencies = [
     "coqui-tts[codec]>=0.26",
     "soundfile>=0.12",
     "six",  # importé par coqui-tts sans être déclaré
+    # La voix de secours (étape 5c) : Pocket TTS, sur le processeur.
+    "pocket-tts>=1.0",
     "torch>=2.7",
     "torchaudio>=2.7",
     # La prononciation : le wav2vec2 phonétique, et ZIPA en ONNX sur le processeur.

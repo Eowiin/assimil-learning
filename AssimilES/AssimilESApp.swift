@@ -12,6 +12,8 @@ struct AssimilESApp: App {
     @State private var server = AppEnvironment.fakeServer ? ServerStatus.fakeOnline() : ServerStatus()
     /// Le texte du bloc 2 et sa voix, préparés en tâche de fond d'un écran à l'autre.
     @State private var absorption = AbsorptionPreparer()
+    /// La voix des phrases du bloc 1, gardée sur le disque (étape 5c).
+    @State private var voices = VoicePreparer()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -48,6 +50,7 @@ struct AssimilESApp: App {
                 .environment(packs)
                 .environment(server)
                 .environment(absorption)
+                .environment(voices)
                 .task {
                     player.rate = Float(settings.rate)
                     // Retenu au-delà de l'initialisation : c'est lui qui porte
