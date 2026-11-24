@@ -18,11 +18,19 @@ struct ConversationTimings: Decodable, Equatable, Sendable {
     let speak: Double
 }
 
+/// Un début de réponse proposé à un débutant (étape 5b), et sa traduction.
+struct ConversationHint: Codable, Equatable, Sendable {
+    let es: String
+    let fr: String
+}
+
 /// Une réplique de l'IA : le texte, et sa voix en AAC.
 struct PartnerReply: Equatable, Sendable {
     let text: String
     let audio: Data
     let timings: ConversationTimings
+    /// Les débuts de réponse, quand le profil les demande (A0, A1).
+    var hints: [ConversationHint] = []
 }
 
 /// Un tour : ce que le serveur a compris, et la réponse.
@@ -129,9 +137,10 @@ struct ConversationReview: Decodable, Equatable, Sendable {
 protocol ConversationService: Sendable {
     /// `profile` : ce que le partenaire sait de l'apprenant, nil sans profil.
     func start(topic: String?, profile: ConversationProfile?) async throws -> PartnerReply
-    /// `audio` : l'enregistrement du tour. `text` le remplace, pour les tests.
+    /// `audio` : l'enregistrement du tour. `text` le remplace, pour les tests. `closing` :
+    /// la dernière réponse permise, l'IA conclut la scène.
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?) async throws -> TurnReply
+              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply
     /// `objective` : l'objectif à juger dans les phrases de l'apprenant. `level` : son niveau.
     func review(history: [ConversationMessage], objective: ConversationObjective?,
                 level: String?) async throws -> ConversationReview
@@ -147,7 +156,12 @@ extension ConversationService {
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply {
-        try await turn(audio: audio, text: text, history: history, profile: nil)
+        try await turn(audio: audio, text: text, history: history, profile: nil, closing: false)
+    }
+
+    func turn(audio: Data?, text: String?, history: [ConversationMessage],
+              profile: ConversationProfile?) async throws -> TurnReply {
+        try await turn(audio: audio, text: text, history: history, profile: profile, closing: false)
     }
 }
 
@@ -166,12 +180,13 @@ struct ConversationClient: ConversationService {
         let audio: String
         let timings: ConversationTimings
         let heard: String?
+        let hints: [ConversationHint]?
 
         func partner() throws -> PartnerReply {
             guard let data = Data(base64Encoded: audio) else {
                 throw ServerError.server("Audio illisible dans la réponse du serveur")
             }
-            return PartnerReply(text: reply, audio: data, timings: timings)
+            return PartnerReply(text: reply, audio: data, timings: timings, hints: hints ?? [])
         }
     }
 
@@ -193,8 +208,8 @@ struct ConversationClient: ConversationService {
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?) async throws -> TurnReply {
-        let form = Self.form(audio: audio, text: text, history: history, profile: profile)
+              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply {
+        let form = Self.form(audio: audio, text: text, history: history, profile: profile, closing: closing)
         let body = try await post("conversation/turn", body: form.body, contentType: form.contentType,
                                   as: ReplyBody.self)
         return TurnReply(heard: body.heard ?? "", reply: try body.partner())
@@ -209,6 +224,7 @@ struct ConversationClient: ConversationService {
 
     /// Le formulaire d'un tour : l'historique en JSON, puis l'audio ou le texte.
     static func form(audio: Data?, text: String?, history: [ConversationMessage], profile: ConversationProfile? = nil,
+                     closing: Bool = false,
                      boundary: String = "assimil-\(UUID().uuidString)") -> (body: Data, contentType: String) {
         var form = MultipartForm(boundary: boundary)
         // Clés triées : le même historique donne toujours le même texte.
@@ -220,6 +236,7 @@ struct ConversationClient: ConversationService {
             form.field("profile", json)
         }
         if let text { form.field("text", text) }
+        if closing { form.field("closing", "true") }
         if let audio { form.audio("audio", filename: "tour.m4a", audio) }
         return form.finished()
     }
@@ -240,6 +257,8 @@ struct ConversationLine: Identifiable, Equatable {
     let text: String
     /// La voix de l'IA, pour la réécouter. Nil pour l'apprenant.
     var audio: Data?
+    /// Les débuts de réponse proposés sous cette réplique (A0, A1).
+    var hints: [ConversationHint] = []
 }
 
 /// Ce que l'écran demande à l'audio : enregistrer un tour, jouer une réplique.
@@ -291,9 +310,12 @@ final class ConversationSession {
     /// Ce que le partenaire sait de l'apprenant, fixé avant l'ouverture et envoyé à
     /// chaque requête. Nil : la consigne d'avant le profil.
     var profile: ConversationProfile?
-    /// Le nombre de réponses de l'apprenant au-delà duquel le micro se tait (la
-    /// conversation de calibrage du placement). Nil : sans limite.
+    /// Le nombre de réponses de l'apprenant au-delà duquel le micro se tait (le
+    /// calibrage du placement, le jeu de rôle). Nil : sans limite.
     var turnLimit: Int?
+    /// À la dernière réponse permise, l'IA conclut la scène au lieu de relancer (le jeu
+    /// de rôle, étape 5b).
+    var closesScene = false
     /// Le sujet que l'IA propose en ouvrant (le thème familier de la rafale). Nil : elle
     /// choisit.
     var topic: String?
@@ -320,6 +342,18 @@ final class ConversationSession {
     var learnerSpoke: Bool { lines.contains { $0.speaker == .learner } }
     var learnerTurns: Int { lines.filter { $0.speaker == .learner }.count }
     var reachedLimit: Bool { turnLimit.map { learnerTurns >= $0 } ?? false }
+
+    /// Les débuts de réponse à montrer : ceux de la dernière réplique, quand c'est à
+    /// l'apprenant de parler.
+    var currentHints: [ConversationHint] {
+        guard phase == .ready, !reachedLimit, let last = lines.last, last.speaker == .partner else { return [] }
+        return last.hints
+    }
+
+    /// Le tour qui part est le dernier permis.
+    private var isLastTurn: Bool {
+        closesScene && turnLimit.map { learnerTurns + 1 >= $0 } == true
+    }
 
     func open() async {
         sound.begin()
@@ -403,11 +437,13 @@ final class ConversationSession {
             switch what {
             case .opening:
                 let reply = try await service.start(topic: topic, profile: profile)
-                partner = ConversationLine(speaker: .partner, text: reply.text, audio: reply.audio)
+                partner = ConversationLine(speaker: .partner, text: reply.text, audio: reply.audio, hints: reply.hints)
             case .turn(let audio):
-                let turn = try await service.turn(audio: audio, text: nil, history: history, profile: profile)
+                let turn = try await service.turn(audio: audio, text: nil, history: history, profile: profile,
+                                                  closing: isLastTurn)
                 lines.append(ConversationLine(speaker: .learner, text: turn.heard))
-                partner = ConversationLine(speaker: .partner, text: turn.reply.text, audio: turn.reply.audio)
+                partner = ConversationLine(speaker: .partner, text: turn.reply.text, audio: turn.reply.audio,
+                                           hints: turn.reply.hints)
             }
             lines.append(partner)
             pending = nil
@@ -432,14 +468,22 @@ final class ConversationSession {
 struct FakeConversationService: ConversationService {
     func start(topic: String?, profile: ConversationProfile?) async throws -> PartnerReply {
         PartnerReply(text: "¡Hola! ¿Qué has hecho hoy?", audio: Data(),
-                     timings: ConversationTimings(listen: nil, think: 0, speak: 0))
+                     timings: ConversationTimings(listen: nil, think: 0, speak: 0),
+                     hints: Self.hints(profile))
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?) async throws -> TurnReply {
+              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply {
         TurnReply(heard: text ?? "Hoy yo soy cansado.",
-                  reply: PartnerReply(text: "¡Vaya! ¿Has dormido mal?", audio: Data(),
-                                      timings: ConversationTimings(listen: 0, think: 0, speak: 0)))
+                  reply: PartnerReply(text: closing ? "¡Que descanses! Hasta pronto." : "¡Vaya! ¿Has dormido mal?",
+                                      audio: Data(), timings: ConversationTimings(listen: 0, think: 0, speak: 0),
+                                      hints: closing ? [] : Self.hints(profile)))
+    }
+
+    private static func hints(_ profile: ConversationProfile?) -> [ConversationHint] {
+        profile?.hints == true
+            ? [ConversationHint(es: "Hoy he…", fr: "Aujourd'hui j'ai…"), ConversationHint(es: "Estoy…", fr: "Je suis…")]
+            : []
     }
 
     func review(history: [ConversationMessage], objective: ConversationObjective?,

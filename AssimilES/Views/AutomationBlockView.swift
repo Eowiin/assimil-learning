@@ -67,6 +67,7 @@ struct AutomationBlockContent: View {
             if done { return ("Corrigé · relire la correction", true) }
             if server.writing == nil { return ("Le PC ne répond pas : cette partie attendra", false) }
             return (SessionAutomation.writingPrompt(for: session, pack: pack,
+                                                    level: LearnerLevel.current(pack: pack, in: context),
                                                     patterns: ErrorPatterns.load(in: context)), true)
         }
     }
@@ -77,7 +78,9 @@ struct AutomationBlockContent: View {
             let theme = SessionAutomation.familiarTheme(for: session, pack: pack, in: context)
             let intro = "Questions en rafale" + (theme.map { " · \($0.fr.lowercasedFirst)" } ?? "")
                 + " : rien de nouveau, réponds vite avec ce que tu sais déjà, sans chercher la phrase parfaite."
-            speedSetup = ConversationSetup(profile: profile, intro: intro, targetSeconds: SessionAutomation.speedSeconds,
+            speedSetup = ConversationSetup(profile: profile, intro: intro,
+                                           playbackRate: LearnerLevel.playbackRate(profile.level),
+                                           targetSeconds: SessionAutomation.speedSeconds,
                                            title: AutomationPart.speed.title, topic: theme?.es,
                                            onReview: { review in
                 try? SessionConversation.record(review, in: session, pack: pack, part: AutomationPart.speed.key,
@@ -129,10 +132,13 @@ struct WritingView: View {
     /// dit celles qui reviennent, la consigne rappelle les accents.
     @State private var earlier = ErrorPatterns()
     @State private var clock = BlockClock()
+    /// Le niveau de l'apprenant, lu à l'ouverture : la longueur visée, et le correcteur.
+    @State private var level: String?
     @FocusState private var editorFocused: Bool
 
     private var objective: CurriculumPack.Objective? { SessionAutomation.writingObjective(for: session, pack: pack) }
-    private var prompt: String { SessionAutomation.writingPrompt(for: session, pack: pack, patterns: earlier) }
+    private var prompt: String { SessionAutomation.writingPrompt(for: session, pack: pack, level: level, patterns: earlier) }
+    private var range: ClosedRange<Int> { SessionAutomation.writingWords(level: level) }
     private var count: Int { SessionAutomation.wordCount(text) }
     private var draftKey: String { "writing-draft.\(session.key)" }
 
@@ -154,7 +160,7 @@ struct WritingView: View {
         .toolbar {
             // Le clavier cache le bas de l'écran : le compteur reste en vue au-dessus.
             ToolbarItemGroup(placement: .keyboard) {
-                Text("\(count) / \(SessionAutomation.writingWords.upperBound)")
+                Text("\(count) / \(range.upperBound)")
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
                     .fixedSize()
@@ -231,9 +237,8 @@ struct WritingView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    /// « 87 mots · vise 80 à 120 » ; au-delà, un avertissement, rien de bloqué.
+    /// « 57 mots · vise 50 à 80 » ; au-delà, un avertissement, rien de bloqué.
     private var counter: some View {
-        let range = SessionAutomation.writingWords
         let tooLong = count > range.upperBound
         return Text(tooLong ? "\(count) mots · un peu long, vise \(range.upperBound) au plus"
                             : "\(count) mot\(count > 1 ? "s" : "") · vise \(range.lowerBound) à \(range.upperBound)")
@@ -243,16 +248,15 @@ struct WritingView: View {
             .accessibilityIdentifier("writing-count")
     }
 
-    /// Gris sous 80 mots, la couleur de l'app de 80 à 120, orange au-delà.
+    /// Gris sous la borne basse, la couleur de l'app dans la fourchette, orange au-delà.
     private var countColor: Color {
-        let range = SessionAutomation.writingWords
-        return count > range.upperBound ? .orange : count >= range.lowerBound ? StudyStyle.accent : .secondary
+        count > range.upperBound ? .orange : count >= range.lowerBound ? StudyStyle.accent : .secondary
     }
 
     private func send(label: String) -> some View {
         Button(label) { Task { await submit() } }
             .buttonStyle(StudyPrimaryButtonStyle())
-            .disabled(count < SessionAutomation.writingWords.lowerBound || service == nil)
+            .disabled(count < range.lowerBound || service == nil)
             .accessibilityIdentifier("writing-submit")
     }
 
@@ -261,6 +265,7 @@ struct WritingView: View {
     private func load() {
         clock.resume()
         guard record == nil else { return }
+        level = LearnerLevel.current(pack: pack, in: context) ?? objective?.level
         let existing = SessionAutomation.writing(for: session, in: context)
         earlier = ErrorPatterns.load(in: context, before: existing?.writtenAt)
         if let existing {
@@ -298,7 +303,7 @@ struct WritingView: View {
         earlier = ErrorPatterns.load(in: context, before: saved.writtenAt)
         phase = .sending
         do {
-            let review = try await service.review(text: written, level: objective?.level,
+            let review = try await service.review(text: written, level: level ?? objective?.level,
                                                   objective: objective.map(ConversationObjective.init))
             try SessionAutomation.recordWriting(review, on: saved, in: session, pack: pack, at: .now, in: context)
             try? context.save()

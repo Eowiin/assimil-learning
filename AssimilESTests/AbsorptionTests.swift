@@ -62,7 +62,7 @@ struct AbsorptionTests {
         #expect(bold.runs.contains { $0.inlinePresentationIntent == .stronglyEmphasized })
     }
 
-    @Test("La requête : niveau de l'objectif, thème en espagnol, lemmes connus, mots du jour")
+    @Test("La requête : niveau de l'apprenant, thème en espagnol, lemmes connus, mots du jour")
     func request() throws {
         let container = try Fixture.container()
         let context = container.mainContext
@@ -70,7 +70,8 @@ struct AbsorptionTests {
         let session = Self.session(in: context)
         let request = try Absorption.request(for: session, pack: Self.pack, in: context).get()
         let objective = try #require(Self.pack.objectives.first)
-        #expect(request.level == objective.level)
+        // L'objectif de la séance est A0, l'apprenant B1 : le texte est à son niveau (5b).
+        #expect(request.level == "B1" && objective.level == "A0")
         #expect(request.theme == Self.pack.themes.first?.es)
         #expect(request.objective.id == objective.id)
         #expect(request.newLemmas == ["cumbre", "mochila", "madrugar"])

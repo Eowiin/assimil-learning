@@ -167,14 +167,20 @@ private final class ScriptedService: ConversationService, @unchecked Sendable {
                             timings: ConversationTimings(listen: nil, think: 0, speak: 0))
     }
 
+    var closings: [Bool] = []
+    /// Les débuts de réponse que le serveur joint à chaque réplique.
+    var hints: [ConversationHint] = []
+
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?) async throws -> TurnReply {
+              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply {
         histories.append(history)
         profiles.append(profile)
+        closings.append(closing)
         if let error = failNext { failNext = nil; throw error }
         return TurnReply(heard: "He ido al mercado.",
                          reply: PartnerReply(text: "¿Qué has comprado?", audio: Data("voix-1".utf8),
-                                             timings: ConversationTimings(listen: 0, think: 0, speak: 0)))
+                                             timings: ConversationTimings(listen: 0, think: 0, speak: 0),
+                                             hints: hints))
     }
 
     var corrections: [ConversationCorrection] = []
@@ -466,5 +472,61 @@ struct ConversationAPI2Tests {
         await session.requestReview()
         #expect(service.reviewedObjectives == [Self.objective])
         #expect(session.lastReview?.lemmasProduced == ["ir", "mercado"])
+    }
+
+    @Test("Le jeu de rôle (étape 5b) : la dernière réponse permise demande à l'IA de conclure ; pas le calibrage")
+    func closesScene() async {
+        let service = ScriptedService()
+        let session = ConversationSession(service: service, sound: FakeSound())
+        session.turnLimit = 2
+        session.closesScene = true
+        await session.open()
+        for _ in 0..<2 {
+            await session.toggleMic()
+            await session.toggleMic()
+        }
+        #expect(service.closings == [false, true])
+        #expect(session.reachedLimit)
+
+        let calibration = ScriptedService()
+        let other = ConversationSession(service: calibration, sound: FakeSound())
+        other.turnLimit = 1
+        await other.open()
+        await other.toggleMic()
+        await other.toggleMic()
+        #expect(calibration.closings == [false])
+    }
+
+    @Test("Les amorces de la dernière réplique s'affichent quand c'est à l'apprenant, plus une fois la limite atteinte")
+    func hints() async {
+        let service = ScriptedService()
+        let hints = [ConversationHint(es: "He comprado…", fr: "J'ai acheté…")]
+        service.hints = hints
+        let session = ConversationSession(service: service, sound: FakeSound())
+        session.turnLimit = 2
+        await session.open()
+        // L'ouverture du faux n'en a pas.
+        #expect(session.currentHints.isEmpty)
+        await session.toggleMic()
+        #expect(session.phase == .recording && session.currentHints.isEmpty)
+        await session.toggleMic()
+        #expect(session.currentHints == hints)
+        await session.toggleMic()
+        await session.toggleMic()
+        #expect(session.reachedLimit && session.currentHints.isEmpty)
+    }
+
+    @Test("Le profil ne demande les amorces que s'il le faut ; le tour porte closing")
+    func hintsWire() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let plain = String(decoding: try encoder.encode(ConversationProfile(level: "B1")), as: UTF8.self)
+        #expect(!plain.contains("hints"))
+        let beginner = String(decoding: try encoder.encode(ConversationProfile(level: "A1", hints: true)), as: UTF8.self)
+        #expect(beginner.contains("\"hints\":true"))
+        let form = ConversationClient.form(audio: nil, text: "Hola", history: [], closing: true, boundary: "b")
+        #expect(String(decoding: form.body, as: UTF8.self).contains("name=\"closing\"\r\n\r\ntrue"))
+        let open = ConversationClient.form(audio: nil, text: "Hola", history: [], boundary: "b")
+        #expect(!String(decoding: open.body, as: UTF8.self).contains("closing"))
     }
 }

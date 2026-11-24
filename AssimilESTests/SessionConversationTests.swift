@@ -20,7 +20,7 @@ struct SessionConversationTests {
                                       at: Fixture.date(day: 2), in: context)
     }
 
-    @Test("Le profil : jeu de rôle, niveau et objectif du jour, mots connus et mots du texte, sans faute à surveiller")
+    @Test("Le profil : jeu de rôle, niveau de l'apprenant, objectif du jour, mots connus et mots du texte, sans faute à surveiller")
     func profile() throws {
         let container = try Fixture.container()
         let context = container.mainContext
@@ -31,7 +31,9 @@ struct SessionConversationTests {
         // Sans texte, pas de mots du jour.
         let before = try #require(SessionConversation.profile(for: session, pack: Self.pack, in: context))
         #expect(before.mode == "roleplay")
-        #expect(before.level == objective.level)
+        // L'apprenant est B1, l'objectif A0 : le niveau est le sien (5b), sans amorces.
+        #expect(before.level == "B1" && objective.level == "A0")
+        #expect(!before.hints)
         #expect(before.objective?.id == objective.id)
         #expect(before.watch == nil)
         #expect(before.words.isEmpty)

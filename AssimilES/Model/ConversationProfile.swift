@@ -18,19 +18,22 @@ struct ConversationProfile: Codable, Equatable, Sendable {
     /// Les lemmes que l'apprenant connaît : le serveur mesure chaque réplique, et la
     /// réécrit plus simple si elle en sort trop. Jamais dans la consigne.
     var allowedLemmas: [String] = []
+    /// Des débuts de réponse sous chaque réplique, pour un débutant (étape 5b).
+    var hints = false
 
     init(watch: String? = nil, words: [String] = [], level: String? = nil, objective: ConversationObjective? = nil,
-         mode: String? = nil, allowedLemmas: [String] = []) {
+         mode: String? = nil, allowedLemmas: [String] = [], hints: Bool = false) {
         self.watch = watch
         self.words = words
         self.level = level
         self.objective = objective
         self.mode = mode
         self.allowedLemmas = allowedLemmas
+        self.hints = hints
     }
 
     private enum CodingKeys: String, CodingKey {
-        case watch, words, level, objective, mode, allowedLemmas = "allowed_lemmas"
+        case watch, words, level, objective, mode, allowedLemmas = "allowed_lemmas", hints
     }
 
     init(from decoder: Decoder) throws {
@@ -41,6 +44,7 @@ struct ConversationProfile: Codable, Equatable, Sendable {
         objective = try c.decodeIfPresent(ConversationObjective.self, forKey: .objective)
         mode = try c.decodeIfPresent(String.self, forKey: .mode)
         allowedLemmas = try c.decodeIfPresent([String].self, forKey: .allowedLemmas) ?? []
+        hints = try c.decodeIfPresent(Bool.self, forKey: .hints) ?? false
     }
 
     /// Ce qui est vide ne part pas : le profil d'avant le moteur reste identique.
@@ -52,6 +56,7 @@ struct ConversationProfile: Codable, Equatable, Sendable {
         try c.encodeIfPresent(objective, forKey: .objective)
         try c.encodeIfPresent(mode, forKey: .mode)
         if !allowedLemmas.isEmpty { try c.encode(allowedLemmas, forKey: .allowedLemmas) }
+        if hints { try c.encode(hints, forKey: .hints) }
     }
 
     /// Une consigne courte garde l'IA rapide et concentrée.

@@ -116,8 +116,9 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
     // MARK: - Écoute
 
-    /// `range` : un passage seulement, en secondes (un mot de la prise).
-    func play(_ url: URL, as kind: Playing, range: ClosedRange<Double>? = nil) {
+    /// `range` : un passage seulement, en secondes (un mot de la prise). `rate` : la
+    /// vitesse, hauteur gardée (la voix ralentie d'un débutant) ; pas avec `range`.
+    func play(_ url: URL, as kind: Playing, range: ClosedRange<Double>? = nil, rate: Float = 1) {
         stopPlayback()
         guard let player = try? AVAudioPlayer(contentsOf: url) else {
             onPlaybackFinished?()
@@ -125,6 +126,10 @@ final class VoiceRecorder: NSObject, ObservableObject {
         }
         self.player = player
         player.delegate = self
+        if rate != 1, range == nil {
+            player.enableRate = true
+            player.rate = rate
+        }
         if let range {
             player.currentTime = max(0, range.lowerBound)
             let length = range.upperBound - range.lowerBound

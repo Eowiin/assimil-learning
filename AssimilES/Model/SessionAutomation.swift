@@ -25,24 +25,31 @@ enum AutomationPart: String, CaseIterable, Identifiable, Hashable {
 }
 
 /// Le bloc 4 de la séance (`docs/moteur-adaptatif.md`, étape 4e) : trois minutes de
-/// questions en rafale sur un thème familier, avec les mots déjà sus, puis un écrit de
-/// 80 à 120 mots qui rappelle l'objectif à réinjecter.
+/// questions en rafale sur un thème familier, avec les mots déjà sus, puis un court écrit
+/// (sa longueur selon le niveau, étape 5b) qui rappelle l'objectif à réinjecter.
 @MainActor
 enum SessionAutomation {
     /// La rafale vise trois minutes, sans couper (cinq jusqu'à l'étape 5a).
     static let speedSeconds: Double = 3 * 60
-    static let writingWords = 80...120
+
+    /// La longueur de l'écrit (étape 5b) : un message court pour un débutant (A0, A1), un
+    /// paragraphe au-delà. « Faire corriger » à la borne basse, avertissement au-delà de
+    /// la haute.
+    nonisolated static func writingWords(level: String?) -> ClosedRange<Int> {
+        LearnerLevel.isBeginner(level) ? 15...30 : 50...80
+    }
 
     // MARK: - La rafale
 
     /// Le profil de la rafale : automatiser ce qui est déjà su, pas apprendre. Ni
     /// objectif ni mots du jour (c'est le jeu de rôle du bloc 3) ; la réplique est
-    /// mesurée sur les seuls mots connus. Le niveau reste celui de l'objectif du jour.
+    /// mesurée sur les seuls mots connus. Le niveau est celui de l'apprenant (`LearnerLevel`).
     static func speedProfile(for session: StudySession, pack: CurriculumPack,
                              in context: ModelContext) -> ConversationProfile {
         let estimate = PlacementStore.latestCompleted(language: pack.language, in: context)?.lexiconEstimate ?? 0
         let states = (try? context.fetch(FetchDescriptor<LexemeState>())) ?? []
-        return ConversationProfile(level: session.objectiveID.flatMap(pack.objective)?.level, mode: "speed",
+        let level = LearnerLevel.current(pack: pack, in: context) ?? session.objectiveID.flatMap(pack.objective)?.level
+        return ConversationProfile(level: level, mode: "speed",
                                    allowedLemmas: KnownVocabulary.lemmas(pack: pack, estimate: estimate, states: states))
     }
 
@@ -72,11 +79,12 @@ enum SessionAutomation {
 
     /// La consigne, composée sans l'IA : le thème du jour, l'objectif à employer et,
     /// si l'orthographe revient dans les fautes d'avant (`patterns`), un rappel des accents.
-    static func writingPrompt(for session: StudySession, pack: CurriculumPack,
+    static func writingPrompt(for session: StudySession, pack: CurriculumPack, level: String?,
                               patterns: ErrorPatterns = ErrorPatterns()) -> String {
         let theme = pack.themes.first { $0.id == session.theme }
         let subject = theme.map { "sur ce thème : \($0.fr.lowercasedFirst)" } ?? "sur ta journée"
-        let words = "\(writingWords.lowerBound) à \(writingWords.upperBound) mots"
+        let range = writingWords(level: level)
+        let words = "\(range.lowerBound) à \(range.upperBound) mots"
         var prompt = "Écris \(words) \(subject)."
         if let objective = writingObjective(for: session, pack: pack) {
             prompt += " Emploie ce point : « \(objective.title) »."

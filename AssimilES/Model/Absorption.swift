@@ -239,8 +239,9 @@ enum Absorption {
         }
         let estimate = PlacementStore.latestCompleted(language: pack.language, in: context)?.lexiconEstimate ?? 0
         let states = (try? context.fetch(FetchDescriptor<LexemeState>())) ?? []
+        // Le niveau de l'apprenant, pas celui d'un objectif repris (étape 5b).
         return .success(AbsorptionRequest(
-            level: objective.level, theme: theme.es, objective: ConversationObjective(objective),
+            level: LearnerLevel.current(pack: pack, in: context) ?? objective.level, theme: theme.es, objective: ConversationObjective(objective),
             knownLemmas: KnownVocabulary.lemmas(pack: pack, estimate: estimate, states: states),
             newLemmas: session.newLemmas, targetWords: targetWords))
     }
