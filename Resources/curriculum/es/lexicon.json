@@ -2,6 +2,7 @@
   "version": 1,
   "language": "es",
   "source": "OpenSubtitles 2018 (FrequencyWords), lemmes en contexte Tatoeba (es_core_news_lg), filtrés par Hunspell es_ES ; API castillane (server/app/prononciation/coach/g2p.py)",
+  "total_count": 413264052,
   "lemmas": [
     {"rank": 1, "lemma": "el", "pos": "DET", "ipa": "el", "level": "A1", "count": 21204074},
     {"rank": 2, "lemma": "de", "pos": "ADP", "ipa": "de", "level": "A1", "count": 14459838},

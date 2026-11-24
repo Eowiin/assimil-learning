@@ -106,6 +106,7 @@ struct TodayView: View {
                     weeklyActivity
                     dailyCard
                     adaptiveCard
+                    frontierGauge
                     reviews
                 }
                 .padding(.horizontal, 20)
@@ -183,6 +184,40 @@ struct TodayView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("start-adaptive")
+    }
+
+    /// La frontière lexicale (étape 5c) : les lemmes connus sur 5 000, et la part de
+    /// l'espagnol courant qu'ils couvrent. Une fois le placement validé.
+    @ViewBuilder
+    private var frontierGauge: some View {
+        if let pack = CurriculumStore.spanish,
+           let placement = placements.first(where: { $0.isCompleted && $0.language == pack.language }) {
+            let frontier = LexicalFrontier.measure(
+                pack: pack, known: KnownVocabulary.lemmas(pack: pack, estimate: placement.lexiconEstimate,
+                                                          states: lexemes))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Vocabulaire")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(frontier.wordsLabel)
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                        .accessibilityIdentifier("frontier-words")
+                }
+                ProgressView(value: Double(frontier.known), total: Double(max(1, frontier.size)))
+                    .tint(StudyStyle.accent)
+                if let coverage = frontier.coverageLabel {
+                    Text(coverage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("frontier-coverage")
+                }
+            }
+            .studySection()
+            .accessibilityElement(children: .combine)
+        }
     }
 
     /// « Bloc 2 sur 4 · Absorption », ou « Faite ».

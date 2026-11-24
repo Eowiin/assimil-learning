@@ -8,7 +8,8 @@ import Foundation
 /// - `microlessons.json` : la micro-leçon de chaque objectif (5 lignes au plus), écrite
 ///   une fois et relue ;
 /// - `placement_challenges.json` : un défi de placement par objectif ;
-/// - `lexicon.json` : les 5 000 lemmes les plus fréquents, avec l'API castillane
+/// - `lexicon.json` : les 5 000 lemmes les plus fréquents, avec l'API castillane et leur
+///   nombre d'occurrences, plus le nombre de mots du corpus (`total_count`)
 ///   (`server/scripts/build_lexicon.py`) ;
 /// - `pseudowords.json` : des non-mots pour le test de vocabulaire ;
 /// - `phonemes.json` : les sons et règles de prosodie, avec leur priorité pour un francophone ;
@@ -29,6 +30,9 @@ struct CurriculumPack: Equatable {
     var soundSentences: [String] = []
     /// Les thèmes du bloc 2. Vide sans le fichier.
     var themes: [Theme] = []
+    /// Le nombre de mots du corpus d'où vient le lexique (`total_count`), pour la
+    /// couverture de la frontière lexicale (étape 5c). 0 s'il manque.
+    var lexiconTotal: Int = 0
 
     /// Un thème du texte du bloc 2 : `es` part dans la consigne du serveur, `fr` s'affiche.
     struct Theme: Decodable, Equatable, Identifiable {
@@ -109,6 +113,8 @@ struct CurriculumPack: Equatable {
         let pos: String
         let ipa: String
         let level: String
+        /// Ses occurrences dans le corpus (`count`), nil dans un paquet plus ancien.
+        var count: Int? = nil
     }
 
     struct Phoneme: Decodable, Equatable, Identifiable {
@@ -169,11 +175,15 @@ extension CurriculumPack {
         // Ajouté à l'étape 4a, facultatif lui aussi.
         let themes: [Theme] = try readIfPresent("themes.json", key: "themes", in: directory, language: language)
 
+        // Ajouté à l'étape 5c : le total du corpus, à côté des lemmes.
+        let total = (try? Data(contentsOf: directory.appendingPathComponent("lexicon.json")))
+            .flatMap { try? JSONDecoder().decode(LexiconHeader.self, from: $0) }?.totalCount ?? 0
+
         let pack = CurriculumPack(
             language: language, objectives: objectives,
             microlessons: Dictionary(lessons.map { ($0.objective, $0) }, uniquingKeysWith: { first, _ in first }),
             challenges: challenges, lexicon: lexicon, pseudowords: pseudowords, phonemes: phonemes,
-            soundSentences: sounds, themes: themes)
+            soundSentences: sounds, themes: themes, lexiconTotal: total)
         try pack.validate()
         return pack
     }
@@ -192,6 +202,11 @@ extension CurriculumPack {
         guard lexicon.enumerated().allSatisfy({ $0.offset + 1 == $0.element.rank }) else {
             throw LoadError.inconsistent("rangs du lexique")
         }
+    }
+
+    private struct LexiconHeader: Decodable {
+        let totalCount: Int?
+        private enum CodingKeys: String, CodingKey { case totalCount = "total_count" }
     }
 
     private struct Envelope<Item: Decodable>: Decodable {

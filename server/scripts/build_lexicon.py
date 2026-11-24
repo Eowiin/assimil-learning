@@ -99,6 +99,19 @@ def telecharger() -> None:
                 cible.write_bytes(reponse.read())
 
 
+def total_du_corpus() -> int:
+    """Le nombre de mots du corpus, toutes les formes de `es_50k.txt` comprises (noms
+    propres, mots étrangers, formes écartées). C'est le dénominateur de la couverture
+    affichée sur l'accueil : rapportée à la seule somme des 5 000 lemmes, les connaître
+    tous ferait 100 %, quand c'est environ 92 % de ce qui se dit."""
+    total = 0
+    for ligne in (CACHE / "es_50k.txt").read_text(encoding="utf-8").splitlines():
+        parts = ligne.split()
+        if len(parts) == 2:
+            total += int(parts[1])
+    return total
+
+
 def formes_frequentes() -> dict[str, int]:
     formes: dict[str, int] = {}
     for ligne in (CACHE / "es_50k.txt").read_text(encoding="utf-8").splitlines():
@@ -276,6 +289,7 @@ def main() -> None:
         "version": 1, "language": "es",
         "source": "OpenSubtitles 2018 (FrequencyWords), lemmes en contexte Tatoeba (es_core_news_lg), "
                   "filtrés par Hunspell es_ES ; API castillane (server/app/prononciation/coach/g2p.py)",
+        "total_count": total_du_corpus(),
         "lemmas": lexique,
     })
     # Les non-mots ont été relus : ils ne changent que sur demande. Leur tirage dépend
