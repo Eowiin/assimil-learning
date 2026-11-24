@@ -274,6 +274,12 @@ verdict.
        phrase) : une phrase n'est demandée qu'une fois, ce qui rend la voix en ligne
        presque gratuite. Changer de voix ou de vitesse sur le serveur demande de changer
        `VoiceCache.version` : le cache d'avant part au lancement suivant.
+       Elle se prépare en tâche de fond dès l'écran du cycle, par paquets de 5 (les
+       exemples de la micro-leçon d'abord, puis les phrases du lexique, la plus récente
+       d'abord) ; une phrase pas encore prête est demandée seule à l'appui. Chaque
+       phrase du texte du bloc 2 y est aussi copiée quand sa voix arrive : la carte d'un
+       mot du texte a sa voix sans rien redemander, même après que la séance a effacé
+       son dossier.
      - **5c-2, la frontière lexicale** (`LexicalFrontier`) : sur l'accueil, sous la
        séance adaptative, une fois le placement validé, « 1 240 mots sur 5 000 », une
        barre, et « Environ 84 % de l'espagnol courant ». Les mots connus sont ceux de
@@ -284,9 +290,16 @@ verdict.
        et formes écartées compris). Rapportée aux seuls 5 000 lemmes, les connaître tous
        ferait 100 % ; c'est en fait 92 %. Repères : 500 lemmes couvrent 79 %, 1 000
        en couvrent 84 %, 2 000 en couvrent 89 %. Arrondi à l'unité inférieure.
-       Elle se prépare en tâche de fond dès l'écran du cycle, par paquets de 5 (les
-       exemples de la micro-leçon d'abord, puis les phrases du lexique, la plus récente
-       d'abord) ; une phrase pas encore prête est demandée seule à l'appui. Chaque
-       phrase du texte du bloc 2 y est aussi copiée quand sa voix arrive : la carte d'un
-       mot du texte a sa voix sans rien redemander, même après que la séance a effacé
-       son dossier.
+     - **5c-3, le réflexe de la rafale** (`ReflexMeter`, `VoiceOnsetDetector`) : en
+       rafale seulement, l'app mesure le temps entre la fin de la réplique de l'IA (ou
+       l'appui sur le micro qui la coupe) et l'arrivée de la voix dans la prise. C'est la
+       voix qui compte, pas l'appui : toucher vite puis chercher ses mots n'est pas un
+       réflexe. Le micro relève son niveau toutes les 50 ms ; les 150 premières ms après
+       l'appui sont ignorées, et il faut deux relevés de suite au-dessus de −35 dB. Une
+       réponse commencée en moins de 4,5 s est un réflexe : au-dessus du micro, « Réflexe
+       ×3 · 2,1 s » à partir de deux d'affilée, et une réponse lente remet la série à
+       zéro. Une prise annulée n'arrête pas le temps ; une prise où la voix n'est pas
+       repérée ne compte ni pour ni contre. Le récapitulatif dit la moyenne (« tu prends
+       la parole en 3,2 s ») et la meilleure série. Les temps sont gardés dans le
+       `ConversationRecord` de la rafale (`reactionTimes`), pour suivre le réflexe d'un
+       jour à l'autre ; rien ne les affiche encore.

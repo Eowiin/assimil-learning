@@ -205,7 +205,12 @@ private final class FakeSound: ConversationSound {
 
     func begin() { began = true }
     func end() { began = false }
-    func startRecording() async -> Bool { micAllowed }
+    /// Le micro qui entend la voix arriver, pour le réflexe.
+    var voice: (@MainActor (Date) -> Void)?
+    func startRecording(onVoice: @escaping @MainActor (Date) -> Void) async -> Bool {
+        voice = onVoice
+        return micAllowed
+    }
     func stopRecording() -> Data? { Data("prise".utf8) }
     func play(_ audio: Data, onFinish: @escaping @MainActor () -> Void) {
         played.append(audio)
@@ -528,5 +533,154 @@ struct ConversationAPI2Tests {
         #expect(String(decoding: form.body, as: UTF8.self).contains("name=\"closing\"\r\n\r\ntrue"))
         let open = ConversationClient.form(audio: nil, text: "Hola", history: [], boundary: "b")
         #expect(!String(decoding: open.body, as: UTF8.self).contains("closing"))
+    }
+}
+
+// MARK: - Le réflexe de la rafale (étape 5c-3)
+
+/// Une horloge qu'on avance à la main.
+private final class Clock {
+    var time = Date(timeIntervalSince1970: 1_000)
+    func advance(_ seconds: TimeInterval) { time += seconds }
+}
+
+@Suite("Rafale : le réflexe")
+@MainActor
+struct ReflexTests {
+
+    private func session(_ sound: FakeSound, clock: Clock, measures: Bool = true) -> ConversationSession {
+        let session = ConversationSession(service: ScriptedService(), sound: sound, now: { clock.time })
+        session.measuresReflex = measures
+        return session
+    }
+
+    /// Une réponse : la voix arrive `after` secondes après la fin de la réplique.
+    private func answer(_ session: ConversationSession, _ sound: FakeSound, clock: Clock, after: TimeInterval) async {
+        sound.finish?()
+        clock.advance(after)
+        await session.toggleMic()
+        sound.voice?(clock.time)
+        clock.advance(2)
+        await session.toggleMic()
+    }
+
+    @Test("Le temps court de la fin de la réplique à l'arrivée de la voix, pas à l'appui")
+    func fromEndOfReplyToVoice() async {
+        let sound = FakeSound(), clock = Clock()
+        let session = session(sound, clock: clock)
+        await session.open()
+        clock.advance(3)
+        sound.finish?()
+        clock.advance(1)
+        await session.toggleMic()
+        // L'appui est à 1 s, la voix à 2,5 s : on cherchait ses mots.
+        clock.advance(1.5)
+        sound.voice?(clock.time)
+        clock.advance(2)
+        await session.toggleMic()
+        #expect(session.reflex.latencies == [2.5])
+    }
+
+    @Test("Couper l'IA en touchant le micro : le temps part de l'appui")
+    func interruptingStartsAtTap() async {
+        let sound = FakeSound(), clock = Clock()
+        let session = session(sound, clock: clock)
+        await session.open()
+        clock.advance(1)
+        await session.toggleMic()
+        clock.advance(0.8)
+        sound.voice?(clock.time)
+        await session.toggleMic()
+        #expect(session.reflex.latencies.count == 1)
+        #expect(abs(session.reflex.latencies[0] - 0.8) < 0.001)
+    }
+
+    @Test("Le combo monte sous 4,5 s et retombe sur une réponse lente")
+    func combo() async {
+        let sound = FakeSound(), clock = Clock()
+        let session = session(sound, clock: clock)
+        await session.open()
+        for delay in [2.0, 3.0, 1.5, 6.0, 2.0] {
+            await answer(session, sound, clock: clock, after: delay)
+        }
+        #expect(session.reflex.latencies == [2, 3, 1.5, 6, 2])
+        #expect(session.reflex.streak == 1)
+        #expect(session.reflex.bestStreak == 3)
+        #expect(session.reflex.average == 2.9)
+    }
+
+    @Test("Une prise annulée n'arrête pas le temps ; une prise sans voix repérée ne compte pas")
+    func cancelAndSilence() async {
+        let sound = FakeSound(), clock = Clock()
+        let session = session(sound, clock: clock)
+        await session.open()
+        sound.finish?()
+        clock.advance(2)
+        await session.toggleMic()
+        sound.voice?(clock.time)
+        session.cancelRecording()
+        clock.advance(3)
+        await session.toggleMic()
+        sound.voice?(clock.time)
+        await session.toggleMic()
+        #expect(session.reflex.latencies == [5])
+        // La voix n'est jamais repérée : rien n'est compté.
+        sound.finish?()
+        await session.toggleMic()
+        await session.toggleMic()
+        #expect(session.reflex.latencies == [5])
+    }
+
+    @Test("Hors rafale, rien n'est mesuré")
+    func onlyInSpeedMode() async {
+        let sound = FakeSound(), clock = Clock()
+        let session = session(sound, clock: clock, measures: false)
+        await session.open()
+        await answer(session, sound, clock: clock, after: 1)
+        #expect(session.reflex.latencies.isEmpty)
+    }
+}
+
+@Suite("Rafale : repérer la voix et compter le combo")
+struct ReflexMeterTests {
+
+    @Test("La voix : deux relevés forts de suite, après le bruit de l'appui")
+    func onset() {
+        let start = Date(timeIntervalSince1970: 0)
+        var detector = VoiceOnsetDetector(startedAt: start)
+        func at(_ t: Double) -> Date { start + t }
+        // Le toucher : fort, mais ignoré.
+        #expect(detector.feed(level: -10, at: at(0.05)) == nil)
+        #expect(detector.feed(level: -10, at: at(0.10)) == nil)
+        // Un claquement isolé, puis le silence.
+        #expect(detector.feed(level: -20, at: at(0.50)) == nil)
+        #expect(detector.feed(level: -50, at: at(0.55)) == nil)
+        // La voix : le début est le premier relevé fort.
+        #expect(detector.feed(level: -25, at: at(1.20)) == nil)
+        #expect(detector.feed(level: -22, at: at(1.25)) == at(1.20))
+    }
+
+    @Test("Les libellés, en français")
+    func labels() {
+        var meter = ReflexMeter()
+        #expect(meter.badge == nil)
+        #expect(meter.averageLabel == nil)
+        meter.record(5.24)
+        #expect(meter.badge == "Lancé en 5,2 s")
+        #expect(meter.bestStreakLabel == "Aucune réponse sous 4,5 s cette fois")
+        meter.record(2)
+        #expect(meter.badge == "Réflexe · 2,0 s")
+        meter.record(3.1)
+        #expect(meter.badge == "Réflexe ×2 · 3,1 s")
+        #expect(meter.bestStreakLabel == "Meilleure série : 2 réponses réflexes d'affilée")
+        #expect(meter.averageLabel == "Tu prends la parole en 3,4 s en moyenne")
+    }
+
+    @Test("Une rafale garde ses temps")
+    func record() {
+        let record = ConversationRecord(startedAt: .now, endedAt: .now, messages: [])
+        #expect(record.latencies == nil)
+        record.latencies = [2.5, 6]
+        #expect(record.latencies == [2.5, 6])
     }
 }
