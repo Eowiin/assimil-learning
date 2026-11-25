@@ -14,6 +14,10 @@ final class AppSettings: ObservableObject {
     /// Répétitions de chaque phrase à l'étape Répétition de la séance du jour. Un
     /// repère pratique, réglable — pas une règle Assimil.
     @AppStorage("repetitionsPerSentence") var repetitionsPerSentence: Int = 3
+    /// L'adresse du PC de la maison dans Tailscale (`HomeServer`). Vide : pas de serveur.
+    @AppStorage("serverAddress") var serverAddress: String = ""
+    /// Le texte des répliques de l'IA. Masqué, on travaille l'oreille : un appui le montre.
+    @AppStorage("conversationShowsText") var conversationShowsText: Bool = true
 
     var session: SessionSettings {
         SessionSettings(pauseFactor: pauseFactor)

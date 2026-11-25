@@ -50,13 +50,18 @@ struct RootView: View {
 struct TodayView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var clock: DayClock
+    @Environment(ServerStatus.self) private var server
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
     /// Toutes les cartes, inactives comprises : un mot retiré ne doit pas revenir
     /// parmi les nouveaux.
     @Query private var cards: [Card]
+    /// Les mots du texte du bloc 2 ont leurs cartes dans la même file.
+    @Query private var lexemes: [LexemeState]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
+    @Query(sort: \PlacementResult.takenAt, order: .reverse) private var placements: [PlacementResult]
+    @Query(sort: \StudySession.day, order: .reverse) private var studySessions: [StudySession]
     @State private var openedSession: DailySession?
 
     private var store: DailyCourseStore { DailyCourseStore(context: context, manifest: manifest) }
@@ -85,9 +90,10 @@ struct TodayView: View {
         guard let vocabulary else { return (0, 0) }
         _ = clock.today
         let now = DayClock.systemNow()
+        let lexicon = LexiconWords(states: lexemes)
         let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: vocabLessons, cards: cards,
-                                      limit: VocabStudy.newRemaining(cards, now: now)).count
-        return (VocabStudy.due(cards, in: vocabulary, now: now).count, new)
+                                      limit: VocabStudy.newRemaining(cards, now: now), lexicon: lexicon).count
+        return (VocabStudy.due(cards, in: vocabulary, lexicon: lexicon, now: now).count, new)
     }
 
     var body: some View {
@@ -99,6 +105,8 @@ struct TodayView: View {
                     header
                     weeklyActivity
                     dailyCard
+                    adaptiveCard
+                    frontierGauge
                     reviews
                 }
                 .padding(.horizontal, 20)
@@ -117,7 +125,105 @@ struct TodayView: View {
             .navigationDestination(item: $openedSession) { session in
                 DailySessionView(session: session)
             }
+            // La séance adaptative du jour se prépare une fois par jour, dès l'accueil, et
+            // dès qu'un placement est validé (sinon la carte attendrait le lendemain).
+            .task(id: "\(clock.today.timeIntervalSince1970)-\(placements.filter(\.isCompleted).count)") {
+                guard let pack = CurriculumStore.spanish else { return }
+                _ = try? DailyPlanner.today(pack: pack, now: DayClock.systemNow(), in: context)
+            }
         }
+    }
+
+    // MARK: Séance adaptative
+
+    /// La séance du moteur adaptatif, à côté de celle d'Assimil, une fois le placement
+    /// validé. Elle dit l'objectif du cycle en cours et le bloc où l'on en est ; un cycle
+    /// fait propose d'en lancer un autre.
+    @ViewBuilder
+    private var adaptiveCard: some View {
+        if let pack = CurriculumStore.spanish,
+           let session = studySessions
+               .filter({ $0.language == pack.language && Calendar.current.isDate($0.day, inSameDayAs: clock.today) })
+               .max(by: { $0.cycle < $1.cycle }) {
+            VStack(spacing: 10) {
+                adaptiveLink(session, pack: pack)
+                if session.blocks.isDone {
+                    Button("Lancer un nouveau cycle") {
+                        _ = try? DailyPlanner.newCycle(pack: pack, now: DayClock.systemNow(), in: context)
+                    }
+                    .buttonStyle(StudyPrimaryButtonStyle())
+                    .accessibilityIdentifier("new-cycle")
+                }
+            }
+        }
+    }
+
+    private func adaptiveLink(_ session: StudySession, pack: CurriculumPack) -> some View {
+        NavigationLink {
+            AdaptiveSessionView(session: session, pack: pack)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(session.cycle > 1 ? "Séance adaptative · cycle \(session.cycle)" : "Séance adaptative")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(Self.adaptiveProgress(session.blocks))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text(session.objectiveID.flatMap(pack.objective)?.title ?? "Tous les objectifs sont acquis")
+                    .font(.headline)
+                    .multilineTextAlignment(.leading)
+                ProgressView(value: Double(StudyBlock.allCases.filter(session.blocks.isSettled).count),
+                             total: Double(StudyBlock.allCases.count))
+                    .tint(StudyStyle.accent)
+            }
+            .studySection()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("start-adaptive")
+    }
+
+    /// La frontière lexicale (étape 5c) : les lemmes connus sur 5 000, et la part de
+    /// l'espagnol courant qu'ils couvrent. Une fois le placement validé.
+    @ViewBuilder
+    private var frontierGauge: some View {
+        if let pack = CurriculumStore.spanish,
+           let placement = placements.first(where: { $0.isCompleted && $0.language == pack.language }) {
+            let frontier = LexicalFrontier.measure(
+                pack: pack, known: KnownVocabulary.lemmas(pack: pack, estimate: placement.lexiconEstimate,
+                                                          states: lexemes))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Vocabulaire")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(frontier.wordsLabel)
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                        .accessibilityIdentifier("frontier-words")
+                }
+                ProgressView(value: Double(frontier.known), total: Double(max(1, frontier.size)))
+                    .tint(StudyStyle.accent)
+                if let coverage = frontier.coverageLabel {
+                    Text(coverage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("frontier-coverage")
+                }
+            }
+            .studySection()
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// « Bloc 2 sur 4 · Absorption », ou « Faite ».
+    static func adaptiveProgress(_ blocks: StudyBlockProgress) -> String {
+        guard let next = blocks.next, let index = StudyBlock.allCases.firstIndex(of: next) else { return "Faite" }
+        return "Bloc \(index + 1) sur \(StudyBlock.allCases.count) · \(next.title)"
     }
 
     /// Les séances validées, pas le temps écouté : un jour coché est un jour où la
@@ -356,6 +462,85 @@ struct TodayView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("start-vocab")
             }
+        }
+        placementRow
+        conversationRow
+        pronunciationRow
+    }
+
+    /// Le test de niveau du moteur adaptatif, tant qu'aucun passage n'est validé. Le
+    /// test de vocabulaire se fait sans le PC : la ligne ne dépend pas du serveur.
+    @ViewBuilder
+    private var placementRow: some View {
+        if let pack = CurriculumStore.spanish,
+           !placements.contains(where: { $0.language == pack.language && $0.isCompleted }) {
+            NavigationLink {
+                PlacementView(pack: pack)
+            } label: {
+                HStack(spacing: 14) {
+                    reviewsRow(title: "Test de niveau", detail: placementDetail(language: pack.language),
+                               symbol: "chart.bar.xaxis.ascending")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-placement")
+        }
+    }
+
+    private func placementDetail(language: String) -> String {
+        guard let vocabulary = placements.first(where: { $0.language == language && !$0.isCompleted })?
+            .placementDetails.vocabulary
+        else { return "Ton vocabulaire, pour situer ton niveau" }
+        return "Vocabulaire : environ \(VocabularyTest.rounded(vocabulary.estimate).formatted()) mots (\(vocabulary.level))"
+    }
+
+    /// La prononciation, quand le PC de la maison l'a chargée. Sinon rien, comme la
+    /// conversation.
+    @ViewBuilder
+    private var pronunciationRow: some View {
+        if let service = server.pronunciation {
+            NavigationLink {
+                PronunciationEntry(service: service, lessons: PronunciationDrill.lessons(available: vocabLessons))
+            } label: {
+                HStack(spacing: 14) {
+                    reviewsRow(title: "Prononciation",
+                               detail: "Cinq phrases, tes sons corrigés",
+                               symbol: "mouth")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-pronunciation")
+        }
+    }
+
+    /// La conversation, quand le PC de la maison répond et l'a chargée. Sinon rien :
+    /// pas de ligne grisée pour une fonction qu'on ne peut pas utiliser.
+    @ViewBuilder
+    private var conversationRow: some View {
+        if let service = server.conversation {
+            NavigationLink {
+                ConversationView(service: service)
+            } label: {
+                HStack(spacing: 14) {
+                    reviewsRow(title: "Conversation",
+                               detail: "Parler en espagnol avec l'IA",
+                               symbol: "bubble.left.and.text.bubble.right")
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("start-conversation")
         }
     }
 

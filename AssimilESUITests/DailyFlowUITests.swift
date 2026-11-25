@@ -12,8 +12,9 @@ final class DailyFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launch(store: URL, lesson: Int, dayOffset: Int = 0) -> XCUIApplication {
+    private func launch(store: URL, lesson: Int, dayOffset: Int = 0, fakeServer: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
+        if fakeServer { app.launchEnvironment["ASSIMIL_FAKE_SERVER"] = "1" }
         app.launchEnvironment["ASSIMIL_STORE"] = store.path
         app.launchEnvironment["ASSIMIL_TEXT_DIR"] = fixtures.path
         app.launchEnvironment["ASSIMIL_DAY_OFFSET"] = String(dayOffset)
@@ -222,6 +223,270 @@ final class DailyFlowUITests: XCTestCase {
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.staticTexts["Vocabulaire à jour"].waitForExistence(timeout: 5))
+    }
+
+    /// La conversation n'apparaît que si le serveur l'offre. Le micro n'est pas
+    /// touché : le simulateur demanderait l'autorisation.
+    func testConversationOnlyWithServer() throws {
+        var app = launch(store: newStore(), lesson: 1)
+        XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["start-conversation"].exists)
+        app.terminate()
+
+        app = launch(store: newStore(), lesson: 1, fakeServer: true)
+        tap(app.buttons["start-conversation"])
+        XCTAssertTrue(app.staticTexts["¡Hola! ¿Qué has hecho hoy?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["conversation-mic"].isEnabled)
+        snapshot(app, "conversation-ouverture")
+
+        // Le faux serveur « entend » une phrase fautive, sans micro.
+        tap(app.buttons["conversation-mic"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        snapshot(app, "conversation-tour")
+
+        tap(app.buttons["conversation-end"])
+        XCTAssertTrue(app.staticTexts["recap-count"].waitForExistence(timeout: 5))
+        snapshot(app, "conversation-recapitulatif")
+
+        tap(app.buttons["recap-close"])
+        XCTAssertTrue(app.buttons["start-conversation"].waitForExistence(timeout: 5))
+    }
+
+    /// La prononciation n'apparaît que si le serveur l'offre. Le faux serveur juge
+    /// fautif le premier mot qui a un r.
+    func testPronunciationOnlyWithServer() throws {
+        var app = launch(store: newStore(), lesson: 1)
+        XCTAssertTrue(app.buttons["start-session"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["start-pronunciation"].exists)
+        app.terminate()
+
+        app = launch(store: newStore(), lesson: 1, fakeServer: true)
+        tap(app.buttons["start-pronunciation"])
+        XCTAssertTrue(app.staticTexts["pronunciation-progress"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["pronunciation-progress"].label.hasPrefix("Phrase 1 sur"))
+        XCTAssertFalse(app.buttons["pronunciation-next"].exists)
+        snapshot(app, "prononciation-phrase")
+
+        // Une faute : la phrase se retente avant de passer.
+        tap(app.buttons["pronunciation-mic"])
+        tap(app.buttons["pronunciation-mic"])
+        XCTAssertTrue(app.staticTexts["pronunciation-correction"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["word-fault"].exists)
+        XCTAssertFalse(app.buttons["pronunciation-next"].exists)
+        snapshot(app, "prononciation-faute")
+
+        tap(app.buttons["pronunciation-mic"])
+        tap(app.buttons["pronunciation-mic"])
+        tap(app.buttons["pronunciation-next"])
+        XCTAssertTrue(app.staticTexts["pronunciation-progress"].label.hasPrefix("Phrase 2 sur"))
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["start-pronunciation"].waitForExistence(timeout: 5))
+    }
+
+    /// Le test de vocabulaire du placement, sans serveur : on connaît les mots
+    /// courants, puis plus rien, et le test s'arrête avant la fin. Le résultat reste
+    /// quand on revient.
+    func testPlacementVocabulary() throws {
+        let app = launch(store: newStore(), lesson: 1)
+        tap(app.buttons["start-placement"])
+        tap(app.buttons["placement-start"])
+        let word = app.staticTexts["vocab-test-word"]
+        XCTAssertTrue(word.waitForExistence(timeout: 5))
+        snapshot(app, "placement-vocabulaire")
+
+        let known = app.buttons["vocab-test-known"], unknown = app.buttons["vocab-test-unknown"]
+        var answered = 0
+        while known.exists, answered < 80 {
+            (answered < 16 ? known : unknown).tap()
+            answered += 1
+        }
+        XCTAssertTrue(app.staticTexts["vocab-test-estimate"].waitForExistence(timeout: 5))
+        XCTAssertLessThan(answered, 80, "le test aurait dû s'arrêter avant la fin")
+        snapshot(app, "placement-vocabulaire-resultat")
+
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let row = app.buttons["start-placement"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Vocabulaire : environ"), row.label)
+        tap(row)
+        XCTAssertTrue(app.staticTexts["vocab-test-estimate"].waitForExistence(timeout: 5))
+    }
+
+    /// Le placement entier avec le faux serveur : le vocabulaire, des défis (le premier
+    /// tapé, avec un accent, les autres « Je ne sais pas »), la conversation de
+    /// calibrage, les sons, le résultat, la validation.
+    /// Tout raté : on descend jusqu'en A0. Validé, le test quitte l'accueil et reste
+    /// dans les Réglages.
+    func testPlacementChallenges() throws {
+        let app = launch(store: newStore(), lesson: 1, fakeServer: true)
+        tap(app.buttons["start-placement"])
+        tap(app.buttons["placement-start"])
+        let unknown = app.buttons["vocab-test-unknown"]
+        XCTAssertTrue(unknown.waitForExistence(timeout: 5))
+        while unknown.exists { unknown.tap() }
+        tap(app.buttons["placement-challenges"])
+
+        let field = app.textViews["challenge-answer"].exists ? app.textViews["challenge-answer"]
+                                                              : app.textFields["challenge-answer"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("est")
+        app.buttons["accent-á"].tap()
+        XCTAssertTrue(app.buttons["challenge-submit"].isEnabled)
+        snapshot(app, "placement-defi")
+        app.buttons["challenge-submit"].tap()
+
+        let calibration = app.buttons["calibration-start"]
+        var skipped = 0
+        while !calibration.exists, skipped < 40 {
+            let skip = app.buttons["challenge-skip"]
+            if skip.waitForExistence(timeout: 5) { skip.tap() }
+            skipped += 1
+        }
+        XCTAssertTrue(calibration.waitForExistence(timeout: 5))
+        snapshot(app, "placement-calibrage-intro")
+
+        // La conversation de calibrage : une réponse, puis Terminer et Continuer.
+        calibration.tap()
+        XCTAssertTrue(app.staticTexts["conversation-intro"].waitForExistence(timeout: 5))
+        tap(app.buttons["conversation-mic"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        snapshot(app, "placement-calibrage")
+        tap(app.buttons["conversation-end"])
+        tap(app.buttons["calibration-continue"])
+
+        // Les sons : six phrases lues, le faux juge rate le premier r de chacune.
+        tap(app.buttons["sounds-start"])
+        XCTAssertTrue(app.staticTexts["sounds-sentence"].waitForExistence(timeout: 5))
+        snapshot(app, "placement-sons")
+        let mic = app.buttons["sounds-mic"]
+        var read = 0
+        while mic.exists, read < 6 {
+            mic.tap()
+            mic.tap()
+            read += 1
+        }
+
+        let proposed = app.staticTexts["placement-proposed"]
+        XCTAssertTrue(proposed.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["placement-calibration"].exists)
+        XCTAssertTrue(app.staticTexts["placement-sounds"].exists)
+        XCTAssertEqual(proposed.label, "Niveau A0")
+        snapshot(app, "placement-resultat")
+
+        tap(app.buttons["placement-validate"])
+        XCTAssertTrue(app.staticTexts["placement-completed"].waitForExistence(timeout: 5))
+        snapshot(app, "placement-valide")
+        tap(app.buttons["placement-close"])
+        XCTAssertTrue(app.buttons["start-conversation"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["start-placement"].exists)
+
+        // Le placement validé, la séance adaptative du jour apparaît sur l'accueil.
+        tap(app.buttons["start-adaptive"])
+        XCTAssertTrue(app.staticTexts["adaptive-objective"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["block-absorption"].isEnabled, "l'ordre est fixe")
+        snapshot(app, "seance-adaptative")
+        tap(app.buttons["block-surgery"])
+        // Le bloc 1 : la micro-leçon de l'objectif, puis les sons (faux serveur).
+        tap(app.buttons["surgery-microlesson"])
+        XCTAssertTrue(app.staticTexts["Exemples"].waitForExistence(timeout: 5))
+        snapshot(app, "seance-micro-lecon")
+        tap(app.buttons["microlesson-done"])
+        tap(app.buttons["surgery-sounds"])
+        XCTAssertTrue(app.staticTexts["pronunciation-progress"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["surgery-microlesson"].waitForExistence(timeout: 5))
+        snapshot(app, "seance-chirurgie")
+        tap(app.buttons["block-complete"])
+        XCTAssertTrue(app.buttons["block-absorption"].waitForExistence(timeout: 5))
+        waitEnabled(app.buttons["block-absorption"])
+        tap(app.buttons["block-absorption"])
+        // Le texte imaginaire, préparé dès l'écran de la séance : la traduction à la
+        // demande, les mots nouveaux annoncés.
+        XCTAssertTrue(app.staticTexts["absorption-sentence-0"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["absorption-fr-1"].exists)
+        tap(app.buttons["absorption-reveal-1"])
+        XCTAssertTrue(app.staticTexts["absorption-fr-1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["absorption-new-words"].exists)
+        XCTAssertTrue(app.buttons["absorption-play-all"].exists)
+        snapshot(app, "seance-absorption")
+        tap(app.buttons["block-skip"])
+        waitEnabled(app.buttons["block-conversation"])
+        XCTAssertTrue(app.buttons["block-absorption"].label.contains("Passé"), app.buttons["block-absorption"].label)
+        snapshot(app, "seance-adaptative-avancee")
+        // Le bloc 3 : le jeu de rôle, une réponse, puis le récapitulatif et l'objectif jugé.
+        tap(app.buttons["block-conversation"])
+        tap(app.buttons["roleplay-start"])
+        XCTAssertTrue(app.staticTexts["conversation-intro"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["conversation-intro"].label.hasPrefix("Jeu de rôle"))
+        tap(app.buttons["conversation-mic"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        tap(app.buttons["conversation-end"])
+        XCTAssertTrue(app.descendants(matching: .any)["recap-objective-use"].firstMatch.waitForExistence(timeout: 5))
+        snapshot(app, "seance-conversation-recap")
+        tap(app.buttons["recap-close"])
+        let tally = app.descendants(matching: .any)["roleplay-tally"]
+        XCTAssertTrue(tally.waitForExistence(timeout: 5))
+        XCTAssertTrue(tally.label.contains("1 emploi réussi sur 2"), tally.label)
+        snapshot(app, "seance-conversation")
+        tap(app.buttons["block-complete"])
+        waitEnabled(app.buttons["block-automation"])
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["start-adaptive"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["start-adaptive"].label.contains("Bloc 4 sur 4"), app.buttons["start-adaptive"].label)
+
+        // Le bloc 4 : la rafale (décompte, une réponse, récapitulatif), puis l'écrit.
+        tap(app.buttons["start-adaptive"])
+        tap(app.buttons["block-automation"])
+        tap(app.buttons["automation-speed"])
+        XCTAssertTrue(app.staticTexts["conversation-countdown"].waitForExistence(timeout: 5))
+        tap(app.buttons["conversation-mic"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        // Le faux micro entend la voix tout de suite : une réponse réflexe.
+        let reflex = app.descendants(matching: .any)["reflex-badge"].firstMatch
+        XCTAssertTrue(reflex.waitForExistence(timeout: 5))
+        XCTAssertTrue(reflex.label.hasPrefix("Réflexe"), reflex.label)
+        snapshot(app, "seance-rafale")
+        tap(app.buttons["conversation-end"])
+        // La rafale ne vise pas l'objectif : le récapitulatif n'en parle pas. Il dit le réflexe.
+        XCTAssertTrue(app.buttons["recap-close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["reflex-average"].label.hasPrefix("Tu prends la parole en"))
+        XCTAssertFalse(app.descendants(matching: .any)["recap-objective-use"].firstMatch.exists)
+        tap(app.buttons["recap-close"])
+
+        tap(app.buttons["automation-writing"])
+        let writing = app.textViews["writing-text"]
+        XCTAssertTrue(writing.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["writing-submit"].isEnabled, "moins de 80 mots")
+        writing.tap()
+        writing.typeText(Array(repeating: "Ayer fui al mercado y compre pan.", count: 12).joined(separator: " "))
+        XCTAssertTrue(app.staticTexts["writing-count"].label.hasPrefix("84 mots"), app.staticTexts["writing-count"].label)
+        snapshot(app, "seance-ecrit")
+        tap(app.buttons["writing-submit"])
+        XCTAssertTrue(app.staticTexts["recap-corrected-text"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["recap-objective-use"].firstMatch.exists)
+        // Le faux correcteur relève ser/estar, déjà relevé par le faux partenaire de conversation.
+        let recurring = app.descendants(matching: .any)["recap-recurring"].firstMatch
+        XCTAssertTrue(recurring.exists)
+        XCTAssertTrue(recurring.label.contains("ser/estar — déjà relevé dans"), recurring.label)
+        snapshot(app, "seance-ecrit-correction")
+        tap(app.buttons["writing-close"])
+        XCTAssertTrue(app.buttons["automation-writing"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["automation-writing"].label.contains("Corrigé"), app.buttons["automation-writing"].label)
+        snapshot(app, "seance-automatisation")
+        tap(app.buttons["block-complete"])
+        XCTAssertTrue(app.staticTexts["adaptive-done"].waitForExistence(timeout: 5))
+        snapshot(app, "seance-faite")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["start-adaptive"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["Réglages"].tap()
+        XCTAssertTrue(app.buttons["settings-placement"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settings-placement"].label.contains("Niveau A0"))
     }
 
     func testWeeklyReviewWithoutExercises() throws {

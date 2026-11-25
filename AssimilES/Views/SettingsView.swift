@@ -7,9 +7,11 @@ struct SettingsView: View {
     @EnvironmentObject private var clock: DayClock
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
+    @Environment(ServerStatus.self) private var server
     @Query private var events: [StudyEvent]
     @Query private var sessions: [DailySession]
     @Query private var anchors: [CourseAnchor]
+    @Query(sort: \PlacementResult.takenAt, order: .reverse) private var placements: [PlacementResult]
     @State private var showPosition = false
     @State private var backupFolder: URL?
     @State private var showBackupMover = false
@@ -72,6 +74,46 @@ struct SettingsView: View {
                         Text("\(streak) \(streak > 1 ? "jours" : "jour")")
                     }
                     LabeledContent("Temps total") { Text(totalLabel) }
+                    if let pack = CurriculumStore.spanish {
+                        // Une fois le test validé, l'accueil ne le propose plus : on le refait d'ici.
+                        NavigationLink {
+                            PlacementView(pack: pack)
+                        } label: {
+                            LabeledContent("Test de niveau") {
+                                Text(placements.first { $0.language == pack.language && $0.isCompleted }
+                                    .map { "Niveau \($0.level)" } ?? "Pas encore passé")
+                            }
+                        }
+                        .accessibilityIdentifier("settings-placement")
+                    }
+                }
+
+                Section {
+                    TextField("nom-du-pc.reseau.ts.net", text: $settings.serverAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .submitLabel(.done)
+                        .onSubmit { checkServer() }
+                        .accessibilityLabel("Adresse du serveur")
+                    LabeledContent("État") { serverState }
+                    Button("Tester la connexion", systemImage: "arrow.clockwise") { checkServer() }
+                        .disabled(settings.serverAddress.trimmingCharacters(in: .whitespaces).isEmpty
+                                  || server.state == .checking)
+                } header: {
+                    Text("Serveur")
+                } footer: {
+                    Text("Le PC de la maison, joint par Tailscale, à la maison comme dehors. "
+                         + "Sans lui, l'app marche comme avant : seuls les modules qui en ont besoin "
+                         + "disparaissent de l'accueil.")
+                }
+
+                Section {
+                    Toggle("Afficher le texte de l'IA", isOn: $settings.conversationShowsText)
+                } header: {
+                    Text("Conversation")
+                } footer: {
+                    Text("Sinon, on écoute d'abord : un appui sur une réplique montre son texte.")
                 }
 
                 Section {
@@ -105,6 +147,30 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private var serverState: some View {
+        switch server.state {
+        case .unset:
+            Text("Aucun").foregroundStyle(.secondary)
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Vérification…")
+            }
+            .foregroundStyle(.secondary)
+        case .online(let health):
+            Label(health.gpu.map { "En ligne · \($0)" } ?? "En ligne", systemImage: "circle.fill")
+                .labelStyle(StatusLabelStyle(color: .green))
+        case .offline(let reason):
+            Label(reason, systemImage: "circle.fill")
+                .labelStyle(StatusLabelStyle(color: .red))
+        }
+    }
+
+    private func checkServer() {
+        Task { await server.check(address: settings.serverAddress) }
+    }
+
     /// Le dossier est déplacé, pas copié, vers l'emplacement choisi : rien ne
     /// reste en double dans l'app.
     private func exportBackup() {
@@ -124,5 +190,21 @@ struct SettingsView: View {
     private func durationLabel(_ seconds: Double) -> String {
         let total = Int(seconds.rounded())
         return total >= 3600 ? "\(total / 3600) h \((total % 3600) / 60) min" : "\(total / 60) min"
+    }
+}
+
+/// Une pastille de couleur devant le texte : le voyant du serveur.
+private struct StatusLabelStyle: LabelStyle {
+    let color: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+                .font(.system(size: 8))
+                .foregroundStyle(color)
+                .accessibilityHidden(true)
+            configuration.title
+                .multilineTextAlignment(.trailing)
+        }
     }
 }

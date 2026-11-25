@@ -175,6 +175,29 @@ struct VocabStudyTests {
 
     // MARK: - La file d'une séance
 
+    @Test("Séance bornée (bloc 1, étape 5a) : les cartes entamées, puis les dues, puis les nouvelles")
+    func sessionLimit() throws {
+        let container = try Fixture.container()
+        let context = container.mainContext
+        let due = try ["uno", "dos", "tres", "cuatro"].map { try card($0, created: Fixture.date(day: 1), in: context) }
+        let soon = try card("revient", created: Fixture.date(day: 1), in: context)
+        let new = try ["a", "b", "c"].map {
+            VocabStudy.NewCard(item: try #require(VocabItem(lemma: $0)), angle: Card.Angle.recognize)
+        }
+        #expect(VocabSession(due: due, new: new, soon: [soon], limit: 3).remaining == 3)
+        #expect(VocabSession(due: due, new: new, soon: [soon], limit: 10).remaining == 8)
+        #expect(VocabSession(due: due, new: new, soon: [soon]).remaining == 8)
+        let capped = VocabSession(due: due, new: new, soon: [soon], limit: 6)
+        #expect(capped.waiting.count == 1 && capped.pending.count == 5)
+        guard case .new = capped.pending.last else { Issue.record("la dernière est une nouvelle"); return }
+
+        #expect(VocabSession.capped(due: 14, new: 5, limit: 10) == (10, 0))
+        #expect(VocabSession.capped(due: 4, new: 20, limit: 10) == (4, 6))
+        #expect(SurgeryBlockContent.reviewsDetail((14, 5)) == "10 à revoir · 9 pour les cycles suivants")
+        #expect(SurgeryBlockContent.reviewsDetail((2, 1)) == "2 à revoir · 1 nouveau")
+        #expect(SurgeryBlockContent.parts(cycle: 2) == [.reviews, .microlesson])
+    }
+
     @Test("Séance : les dues puis les nouvelles ; une carte ratée revient dans la séance")
     func sessionQueue() throws {
         let container = try Fixture.container()

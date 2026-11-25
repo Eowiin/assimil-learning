@@ -178,6 +178,10 @@ final class StudyEvent {
         static let review = "review"
         static let assimilListen = "assimil.listen"
         static let vocab = "vocab"
+        static let conversation = "conversation"
+        static let pronunciation = "pronunciation"
+        /// La séance adaptative du moteur (`StudySession`), tous blocs confondus.
+        static let adaptive = "adaptive"
         /// Le total d'un jour de l'ancien `StudyDay`, sans détail d'activité.
         static let assimilLegacy = "assimil.legacy"
     }
@@ -196,6 +200,13 @@ struct StudyActivity: Equatable {
     /// Les mots viennent des leçons d'Assimil : le cours est le leur.
     static let vocab = StudyActivity(name: StudyEvent.Activity.vocab,
                                      courseID: PackStore.assimilSpanishID)
+    /// La conversation ne dépend d'aucun cours.
+    static let conversation = StudyActivity(name: StudyEvent.Activity.conversation, courseID: nil)
+    /// Les phrases viennent d'Assimil, mais c'est la prononciation qu'on travaille,
+    /// pas le cours : aucun cours, comme la conversation.
+    static let pronunciation = StudyActivity(name: StudyEvent.Activity.pronunciation, courseID: nil)
+    /// La séance adaptative ne dépend d'aucun cours.
+    static let adaptive = StudyActivity(name: StudyEvent.Activity.adaptive, courseID: nil)
 }
 
 enum StudyTime {

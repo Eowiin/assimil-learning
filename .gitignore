@@ -29,3 +29,10 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+
+# Serveur
+server/.venv/
+server/.pytest_cache/
+
+# Les sources téléchargées par server/scripts/build_lexicon.py
+server/scripts/.cache/

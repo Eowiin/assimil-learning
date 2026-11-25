@@ -77,7 +77,7 @@ enum SpanishMatch {
         fold(a).folded == fold(b).folded
     }
 
-    private static func words(in text: String) -> [Range<String.Index>] {
+    static func words(in text: String) -> [Range<String.Index>] {
         var ranges: [Range<String.Index>] = []
         var start: String.Index?
         var i = text.startIndex

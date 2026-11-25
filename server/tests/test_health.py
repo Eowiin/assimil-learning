@@ -1,0 +1,50 @@
+from fastapi.testclient import TestClient
+
+from app import main
+
+
+def client(monkeypatch, gpu, moteurs=None, langue=None):
+    monkeypatch.setattr(main, "gpu_name", lambda: gpu)
+    return TestClient(main.create_app(moteurs=moteurs, charger=False, langue=langue))
+
+
+def test_health_repond_ok(monkeypatch):
+    body = client(monkeypatch, "NVIDIA GeForce RTX 5070 Ti").get("/health").json()
+    assert body["status"] == "ok"
+    assert body["api"] == main.API_VERSION
+    assert body["gpu"] == "NVIDIA GeForce RTX 5070 Ti"
+
+
+def test_health_sans_carte_graphique(monkeypatch):
+    body = client(monkeypatch, None).get("/health").json()
+    assert body["status"] == "ok"
+    assert body["gpu"] is None
+
+
+def test_health_annonce_la_conversation_si_chargee(monkeypatch):
+    assert client(monkeypatch, None).get("/health").json()["modules"] == []
+    assert client(monkeypatch, None, moteurs=object()).get("/health").json()["modules"] == [
+        "conversation", "placement", "tts"]
+
+
+def test_health_annonce_la_langue_si_chargee(monkeypatch):
+    from app.langue import Langue, Mot
+
+    class Faux(Langue):
+        nom = "faux"
+
+        def mots(self, texte):
+            return [Mot(f, f) for f in texte.split()]
+
+    modules = client(monkeypatch, None, moteurs=object(), langue=Faux()).get("/health").json()["modules"]
+    assert modules == ["conversation", "placement", "session_input", "tts", "language"]
+    # La langue seule ne suffit pas au texte du bloc 2 : il faut aussi l'IA.
+    seule = client(monkeypatch, None, langue=Faux()).get("/health").json()["modules"]
+    assert seule == ["language"]
+
+
+def test_gpu_name_sans_nvidia_smi(monkeypatch):
+    main.gpu_name.cache_clear()
+    monkeypatch.setattr(main.shutil, "which", lambda _: None)
+    assert main.gpu_name() is None
+    main.gpu_name.cache_clear()

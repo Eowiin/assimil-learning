@@ -1,0 +1,194 @@
+"""Converser avec le serveur comme le fera l'app : ouverture, tours, récapitulatif.
+
+    uv run python essais/appel.py                          # au clavier
+    uv run python essais/appel.py tour1.m4a tour2.m4a      # des enregistrements, puis au clavier
+    uv run python essais/appel.py --serveur https://nom-du-pc.reseau.ts.net
+    uv run python essais/appel.py --surveiller "ser/estar" --mots aprovechar "quedar con"
+    uv run python essais/appel.py --calibrage B1 --vocabulaire 2300    # comme le placement de l'app
+    uv run python essais/appel.py --calibrage A2 --objectif obj_031    # un autre objectif que le premier
+
+`--calibrage` envoie le profil de la conversation de calibrage du placement : le
+niveau, l'objectif (par défaut le premier du niveau), les lemmes connus (les
+`--vocabulaire` premiers du lexique). Chaque réplique affiche sa couverture, et le
+récapitulatif l'objectif jugé, les lemmes produits et le niveau que l'app proposerait.
+
+Les répliques parlées de l'IA vont dans essais/sortie/appel-NN.m4a. Le serveur ne
+garde rien : c'est ce script qui tient l'historique, comme l'app.
+
+Les tours enregistrés sont notés dans essais/sortie/corpus-whisper.json, avec la
+réplique de l'IA qui les précédait : il suffit d'y écrire ce que tu as vraiment
+dit (« attendu ») pour le donner à essais/whisper_contexte.py.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import sys
+import time
+from pathlib import Path
+
+import httpx
+
+
+def enregistrer(reponse: dict, dossier: Path, numero: int) -> Path:
+    fichier = dossier / f"appel-{numero:02d}.m4a"
+    fichier.write_bytes(base64.b64decode(reponse["audio"]))
+    return fichier
+
+
+def temps(t: dict, aller_retour: float) -> str:
+    etapes = [f"{nom} {t[cle]:.2f} s" for cle, nom in
+              (("listen", "écoute"), ("think", "IA"), ("speak", "voix")) if t.get(cle) is not None]
+    return " · ".join(etapes) + f" → aller-retour {aller_retour:.2f} s"
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("audio", nargs="*", type=Path, help="des tours enregistrés (wav, m4a, mp3)")
+    p.add_argument("--serveur", default="http://localhost:8000")
+    p.add_argument("--sujet", help="le sujet proposé à l'IA pour ouvrir")
+    p.add_argument("--surveiller", help="le profil : la faute qui revient (« ser/estar »)")
+    p.add_argument("--mots", nargs="*", default=[], help="le profil : des mots à faire reprendre")
+    p.add_argument("--calibrage", metavar="NIVEAU", help="la conversation de calibrage, à ce niveau")
+    p.add_argument("--objectif", help="avec --calibrage : l'objectif (obj_031) ; défaut : le premier du niveau")
+    p.add_argument("--vocabulaire", type=int, default=1500,
+                   help="avec --calibrage : les lemmes connus, en rang du lexique (défaut 1500)")
+    p.add_argument("--sortie", type=Path, default=Path("essais/sortie"))
+    args = p.parse_args()
+    args.sortie.mkdir(parents=True, exist_ok=True)
+
+    # Le récapitulatif relit toute la conversation : on lui laisse le temps. Se
+    # connecter, en revanche, est immédiat quand le serveur tourne.
+    client = httpx.Client(base_url=args.serveur, timeout=httpx.Timeout(300, connect=10))
+    historique: list[dict] = []
+
+    def appeler(route: str, **kwargs) -> dict | None:
+        debut = time.perf_counter()
+        try:
+            reponse = client.post(route, **kwargs)
+        except httpx.HTTPError as erreur:
+            print(f"!! {route} : {type(erreur).__name__} après {time.perf_counter() - debut:.0f} s "
+                  f"({erreur or 'pas de détail'})")
+            return None
+        duree = time.perf_counter() - debut
+        if reponse.status_code != 200:
+            try:
+                detail = reponse.json().get("detail", reponse.text)
+            except ValueError:
+                detail = reponse.text
+            print(f"!! {route} : {reponse.status_code} après {duree:.0f} s : {detail}")
+            return None
+        corps = reponse.json()
+        corps["_aller_retour"] = duree
+        return corps
+
+    # Le profil, comme l'app l'envoie : à l'ouverture et à chaque tour.
+    profil = ({"watch": args.surveiller, "words": args.mots}
+              if args.surveiller or args.mots else None)
+    objectif = None
+    if args.calibrage:
+        objectif = objectif_du_paquet(args.calibrage, args.objectif)
+        profil = {"level": args.calibrage, "objective": objectif,
+                  "allowed_lemmas": lemmes_connus(args.vocabulaire)}
+        print(f"Calibrage : niveau {args.calibrage}, objectif {objectif['id']} ({objectif['titre']}), "
+              f"{len(profil['allowed_lemmas'])} lemmes connus")
+    ouverture = appeler("/conversation/start", json={"topic": args.sujet, "profile": profil})
+    if ouverture is None:
+        return 1
+    historique.append({"role": "assistant", "content": ouverture["reply"]})
+    print(f"IA       : {ouverture['reply']}")
+    print(f"Temps    : {temps(ouverture['timings'], ouverture['_aller_retour'])}")
+    print(f"Écouter  : {enregistrer(ouverture, args.sortie, 0)}")
+
+    def tours():
+        yield from args.audio
+        while True:
+            try:
+                ligne = input("\nTon tour (phrase, ou chemin d'un audio ; vide pour finir) : ").strip()
+            except EOFError:
+                return
+            if not ligne:
+                return
+            chemin = Path(ligne.strip("'\""))
+            yield chemin if chemin.suffix and chemin.exists() else ligne
+
+    corpus_fichier = args.sortie / "corpus-whisper.json"
+    corpus = json.loads(corpus_fichier.read_text()) if corpus_fichier.exists() else []
+
+    for numero, tour in enumerate(tours(), start=1):
+        contexte = historique[-1]["content"]
+        donnees = {"history": json.dumps(historique, ensure_ascii=False)}
+        if profil:
+            donnees["profile"] = json.dumps(profil, ensure_ascii=False)
+        if isinstance(tour, Path):
+            corps = appeler("/conversation/turn", data=donnees,
+                            files={"audio": (tour.name, tour.read_bytes())})
+        else:
+            corps = appeler("/conversation/turn", data={**donnees, "text": tour})
+        if corps is None:
+            continue
+        historique += [{"role": "user", "content": corps["heard"]},
+                       {"role": "assistant", "content": corps["reply"]}]
+        if isinstance(tour, Path):
+            corpus.append({"audio": str(tour.resolve()), "contexte": contexte,
+                           "entendu": corps["heard"], "attendu": ""})
+            corpus_fichier.write_text(json.dumps(corpus, ensure_ascii=False, indent=2))
+        print(f"Toi      : {corps['heard']}")
+        print(f"IA       : {corps['reply']}")
+        if corps.get("coverage") is not None:
+            print(f"Mesure   : {corps['coverage']:.0%} de mots connus, {corps['attempts']} version(s)")
+        print(f"Temps    : {temps(corps['timings'], corps['_aller_retour'])}")
+        print(f"Écouter  : {enregistrer(corps, args.sortie, numero)}")
+
+    print("\n— Récapitulatif " + "—" * 47)
+    demande = {"history": historique}
+    if args.calibrage:
+        demande |= {"objective": objectif, "level": args.calibrage}
+    bilan = appeler("/conversation/review", json=demande)
+    if bilan is None:
+        return 1
+    if not bilan["corrections"]:
+        print("Aucune faute relevée.")
+    for c in bilan["corrections"]:
+        print(f"\n  Tu as dit : {c['said']}\n  Correct   : {c['corrected']}\n  Pourquoi  : {c['explanation']}")
+    for u in bilan.get("objective_uses") or []:
+        print(f"\n  Objectif  : {'oui' if u['valide'] else 'non'} — {u['said']}\n  Analyse   : {u['analyse_courte']}")
+    if bilan.get("lemmas_produced") is not None:
+        print(f"\n  Lemmes produits : {', '.join(bilan['lemmas_produced']) or 'aucun'}")
+    if args.calibrage:
+        print("\n  " + proposition(args.calibrage, len(bilan["corrections"]),
+                                   sum(1 for m in historique if m["role"] == "user")))
+    print(f"\n({bilan['_aller_retour']:.1f} s)")
+    return 0
+
+
+PAQUET = Path(__file__).resolve().parents[2] / "Resources/curriculum/es"
+NIVEAUX = ["A0", "A1", "A2", "B1", "B2", "C1", "C2"]
+
+
+def objectif_du_paquet(niveau: str, identifiant: str | None) -> dict:
+    """L'objectif tel que l'app l'envoie (`ConversationObjective`)."""
+    objectifs = json.loads((PAQUET / "objectives.json").read_text(encoding="utf-8"))["objectives"]
+    choisi = next(o for o in objectifs if (o["id"] == identifiant if identifiant else o["niveau"] == niveau))
+    return {k: choisi[k] for k in ("id", "titre", "regle", "prompt_ia", "validation")}
+
+
+def lemmes_connus(rang: int) -> list[str]:
+    lexique = json.loads((PAQUET / "lexicon.json").read_text(encoding="utf-8"))["lemmas"]
+    return [e["lemma"] for e in lexique[:rang]]
+
+
+def proposition(niveau: str, corrigees: int, phrases: int) -> str:
+    """La règle de l'app (`CalibrationOutcome`) : plus de la moitié des phrases corrigées,
+    sur 3 au moins, propose un cran plus bas. Les corrections qui ne changent aucun mot,
+    que l'app écarte, sont comptées ici : le serveur les écarte déjà presque toutes."""
+    trop = phrases >= 3 and corrigees > phrases / 2
+    i = NIVEAUX.index(niveau)
+    propose = NIVEAUX[i - 1] if trop and i > 0 else niveau
+    return f"L'app proposerait : {propose} ({corrigees} phrase(s) corrigée(s) sur {phrases})"
+
+
+if __name__ == "__main__":
+    sys.exit(main())

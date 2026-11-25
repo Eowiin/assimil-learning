@@ -1,5 +1,7 @@
 # Cadrage : vers une app d'apprentissage complète
 
+> **Suite : `cadrage-v2.md`** (2026-11-12) — l'app d'espagnol complète, avec le PC de la maison comme serveur.
+
 **Validé le 2026-11-07** (décisions plus bas). Rien n'est codé. Ce document décide
 quels modules on ajoute, dans quel ordre, et comment ils se branchent sur l'app.
 Chaque module aura son propre plan, comme `refonte-modele-donnees.md`.

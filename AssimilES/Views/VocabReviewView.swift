@@ -4,9 +4,16 @@ import SwiftData
 /// La révision des mots, à la Anki : le recto, « Voir la réponse », le verso (sens,
 /// phrase de la leçon et son audio), puis une note parmi quatre. La règle vit dans
 /// `VocabStudy` et `CardReview.grade` ; l'écran affiche et transmet.
+///
+/// Les mots vus dans le texte du bloc 2 sont dans la même file : au recto leur
+/// phrase, le mot en gras ; au verso la traduction de la phrase.
 struct VocabReviewView: View {
     let vocabulary: Vocabulary
     let lessons: Set<Int>
+    /// Le plafond de cartes de la séance (`VocabStudy.perCycle` au bloc 1), nil sinon.
+    var limit: Int? = nil
+    /// La dernière carte de la séance vient d'être notée.
+    var onFinished: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
     @Environment(\.manifest) private var manifest
@@ -15,7 +22,12 @@ struct VocabReviewView: View {
     @Query private var cards: [Card]
 
     @State private var session: VocabSession?
+    /// Les mots du texte du bloc 2 qui ont leur phrase.
+    @State private var lexicon = LexiconWords.empty
+    @State private var ranks: [String: Int] = [:]
     @State private var showAnswer = false
+    /// La voix de la phrase d'un mot du lexique (`VoiceCache`, étape 5c).
+    @State private var voicePlayer = VoicePlayer()
     @State private var shownAt = DayClock.systemNow()
     /// Secondes d'étude pas encore inscrites (`StudyTime`).
     @State private var unrecorded: Double = 0
@@ -26,7 +38,10 @@ struct VocabReviewView: View {
 
     var body: some View {
         Group {
-            if let session, let entry = session.current, let item = entry.item, let word = vocabulary.word(item) {
+            if let session, let entry = session.current, let item = entry.item, entry.isLexicon,
+               let word = lexicon.word(item.lemma) {
+                lexiconCard(entry, word: word)
+            } else if let session, let entry = session.current, let item = entry.item, let word = vocabulary.word(item) {
                 card(entry, word: word, remaining: session.remaining)
             } else if session != nil {
                 done
@@ -46,6 +61,7 @@ struct VocabReviewView: View {
         .onAppear(perform: start)
         .onDisappear {
             player.pause()
+            voicePlayer.stop()
             recordTime()
         }
         .onChange(of: scenePhase) {
@@ -78,6 +94,52 @@ struct VocabReviewView: View {
                     if showAnswer {
                         Divider().padding(.horizontal, 40)
                         answer(word, recall: recall)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
+            }
+            controls(entry)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+        }
+        .animation(.default, value: showAnswer)
+    }
+
+    /// Un mot du texte du bloc 2 : sa phrase au recto, le mot en gras ; au verso, la
+    /// traduction de la phrase et le mot sous sa forme de dictionnaire.
+    private func lexiconCard(_ entry: VocabSession.Entry, word: LexiconWords.Word) -> some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 22) {
+                    Text("Que veut dire… ?")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 28)
+                    Text(AbsorptionBlockContent.highlighted(word.sentence, forms: [word.form ?? word.lemma]))
+                        .font(.system(.title, design: .serif))
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("vocab-front")
+                    VoiceButton(text: word.sentence, player: voicePlayer) { player.pause() }
+                    if case .new = entry {
+                        Text("Nouveau · texte du jour")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(StudyStyle.surface, in: Capsule())
+                    }
+                    if showAnswer {
+                        Divider().padding(.horizontal, 40)
+                        VStack(spacing: 10) {
+                            Text(word.translation)
+                                .font(.title3)
+                                .multilineTextAlignment(.center)
+                                .accessibilityIdentifier("vocab-back")
+                            if let form = word.form, form != word.lemma {
+                                Text("\(form) → \(word.lemma)")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -214,10 +276,13 @@ struct VocabReviewView: View {
         guard session == nil else { return }
         let now = DayClock.systemNow()
         VocabStudy.applyRenames(vocabulary.renamed, cards: cards, in: context)
+        lexicon = LexiconWords(states: (try? context.fetch(FetchDescriptor<LexemeState>())) ?? [])
+        ranks = CurriculumStore.spanish?.ranks ?? [:]
         let new = VocabStudy.newCards(vocabulary: vocabulary, lessons: lessons, cards: cards,
-                                      limit: VocabStudy.newRemaining(cards, now: now))
-        var s = VocabSession(due: VocabStudy.due(cards, in: vocabulary, now: now), new: new,
-                             soon: VocabStudy.dueSoon(cards, in: vocabulary, now: now))
+                                      limit: VocabStudy.newRemaining(cards, now: now), lexicon: lexicon)
+        var s = VocabSession(due: VocabStudy.due(cards, in: vocabulary, lexicon: lexicon, now: now), new: new,
+                             soon: VocabStudy.dueSoon(cards, in: vocabulary, lexicon: lexicon, now: now),
+                             limit: limit)
         s.advance(now: now)
         session = s
     }
@@ -231,25 +296,29 @@ struct VocabReviewView: View {
         case .new(let new): card = VocabStudy.introduce(new, at: now, in: context)
         }
         CardReview.grade(card, rating, at: now, durationMs: Int(seconds * 1000), in: context)
+        VocabStudy.noteKnowledge(of: card, ranks: ranks, at: now, in: context)
         try? context.save()
         unrecorded += seconds
         next(after: card, now: now)
     }
 
     private func retireCurrent() {
-        guard let item = session?.current?.item else { return }
+        guard let entry = session?.current, let item = entry.item else { return }
+        let pack = entry.pack ?? PackStore.assimilSpanishID
         let now = DayClock.systemNow()
-        VocabStudy.retire(item, cards: cards, at: now, in: context)
+        VocabStudy.retire(item, pack: pack, cards: cards, at: now, in: context)
         try? context.save()
-        session?.drop(item)
+        session?.drop(item, pack: pack)
         next(after: nil, now: now)
     }
 
     private func next(after card: Card?, now: Date) {
         player.pause()
+        voicePlayer.stop()
         showAnswer = false
         session?.finishCurrent(with: card, now: now)
         shownAt = now
+        if session?.current == nil { onFinished?() }
     }
 
     private func previewDates(_ entry: VocabSession.Entry) -> [FSRS.Rating: Date] {
@@ -268,6 +337,7 @@ struct VocabReviewView: View {
         guard let lesson = manifest.lesson(occurrence.lesson),
               let clip = SessionBuilder.clip(for: occurrence.item, in: lesson)
         else { return }
+        voicePlayer.stop()
         player.start(.excerpt(lessonNumber: lesson.number),
                      steps: SessionBuilder.excerpt(clip, isExercise: occurrence.isExercise, in: lesson, manifest: manifest))
     }
