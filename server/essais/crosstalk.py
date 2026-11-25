@@ -148,6 +148,32 @@ class Voxtral:
         return corps.get("text", "").strip(), corps.get("language") or "?"
 
 
+def verifier_whisper(whisper) -> None:
+    """Une seconde de bruit, sans filtre de silence : si la carte graphique ne charge
+    pas (`libcublas`, `libcudnn`), on le sait avant la première prise, au lieu de
+    compter vingt erreurs comme des transcriptions vides."""
+    import numpy
+    bruit = numpy.random.default_rng(0).normal(0, 0.01, 16000).astype(numpy.float32)
+    try:
+        segments, _ = whisper.transcribe(bruit, language="es", vad_filter=False)
+        list(segments)
+    except Exception as erreur:
+        sys.exit(f"Whisper ne tourne pas : {erreur}\n"
+                 "Si c'est libcublas ou libcudnn, indique-lui les bibliothèques de NVIDIA "
+                 "(README des essais, « Si ça coince ») :\n"
+                 "  export LD_LIBRARY_PATH=$(uv run python -c 'import nvidia.cublas.lib as b, "
+                 "nvidia.cudnn.lib as d; print(b.__path__[0] + \":\" + d.__path__[0])')")
+
+
+def niveau(audio) -> tuple[float, float]:
+    """La durée de la prise (s) et son niveau de crête (dB, 0 au maximum)."""
+    import numpy
+    if len(audio) == 0:
+        return 0.0, -120.0
+    crete = float(numpy.max(numpy.abs(audio)))
+    return len(audio) / 16000, 20 * numpy.log10(max(crete, 1e-6))
+
+
 def charger_candidats(noms: list[str], args) -> dict:
     candidats = {}
     if any(n in noms for n in ("es", "multi", "amorce")):
@@ -155,6 +181,7 @@ def charger_candidats(noms: list[str], args) -> dict:
         calcul = "float16" if args.appareil == "cuda" else "int8"
         print(f"Chargement de Whisper {args.whisper}…", flush=True)
         whisper = WhisperModel(args.whisper, device=args.appareil, compute_type=calcul)
+        verifier_whisper(whisper)
         if "es" in noms:
             candidats["es"] = lambda audio: (transcrire(whisper, audio), "es")
         if "multi" in noms:
@@ -197,18 +224,29 @@ def main() -> int:
 
     candidats = charger_candidats(args.candidats.split(","), args)
     bilan = {nom: {"es_justes": 0, "es_attendus": 0, "bascules": [], "fr_gardes": [],
-                   "avec_fr": 0, "secondes": 0.0} for nom in candidats}
+                   "avec_fr": 0, "secondes": 0.0, "erreurs": []} for nom in candidats}
+    muettes = []
     detail = []
     for prise, chemin in prises:
         audio = decoder_16k(chemin.read_bytes())
-        print(f"\n{prise.numero:02d} ({prise.categorie})  {prise.attendu}")
-        ligne = {"prise": prise.numero, "categorie": prise.categorie, "attendu": prise.phrase}
+        duree_prise, crete = niveau(audio)
+        print(f"\n{prise.numero:02d} ({prise.categorie}, {chemin.name}, {duree_prise:.1f} s, "
+              f"crête {crete:.0f} dB)  {prise.attendu}")
+        if duree_prise < 0.5 or crete < -40:
+            print("  Prise vide ou presque muette : ignorée. Réenregistre-la.")
+            muettes.append(prise.numero)
+            continue
+        ligne = {"prise": prise.numero, "categorie": prise.categorie, "attendu": prise.phrase,
+                 "duree": round(duree_prise, 1), "crete_db": round(crete)}
         for nom, transcrire_prise in candidats.items():
             debut = time.perf_counter()
             try:
                 texte, langue = transcrire_prise(audio)
             except Exception as erreur:  # un candidat en échec ne doit pas arrêter les autres
-                texte, langue = "", f"erreur : {erreur}"
+                print(f"  {nom:8} en erreur : {erreur}")
+                bilan[nom]["erreurs"].append(prise.numero)
+                ligne[nom] = {"erreur": str(erreur)}
+                continue
             duree = time.perf_counter() - debut
             entendu = mots(texte)
             es = justes(prise.espagnol, entendu)
@@ -231,10 +269,13 @@ def main() -> int:
         detail.append(ligne)
 
     print("\n— Bilan " + "—" * 70)
-    print(f"{len(prises)} prises")
+    mesurees = len(prises) - len(muettes)
+    print(f"{mesurees} prises mesurées"
+          + (f", {len(muettes)} muettes ignorées ({', '.join(f'{n:02d}' for n in muettes)})"
+             if muettes else ""))
     print(f"  {'':8} {'espagnol':>10} {'bascules':>9} {'français gardé':>15} {'temps':>7}")
     reference = None
-    if "es" in bilan and bilan["es"]["es_attendus"]:
+    if "es" in bilan and bilan["es"]["es_attendus"] and not bilan["es"]["erreurs"]:
         reference = bilan["es"]["es_justes"] / bilan["es"]["es_attendus"]
     retenus = []
     for nom, b in bilan.items():
@@ -242,15 +283,17 @@ def main() -> int:
         taux_fr = len(b["fr_gardes"]) / b["avec_fr"] if b["avec_fr"] else 0
         print(f"  {nom:8} {taux_es:>10.1%} {len(b['bascules']):>9} "
               f"{len(b['fr_gardes']):>6}/{b['avec_fr']} ({taux_fr:.0%}) "
-              f"{b['secondes'] / len(prises):>6.2f}s"
+              f"{b['secondes'] / max(mesurees - len(b['erreurs']), 1):>6.2f}s"
+              + (f"   en erreur sur {len(b['erreurs'])} prise(s)" if b["erreurs"] else "")
               + (f"   bascules : {', '.join(f'{n:02d}' for n in b['bascules'])}" if b["bascules"] else ""))
-        if (nom != "es" and not b["bascules"] and taux_fr >= 0.8
-                and (reference is None or taux_es >= reference - 0.02)):
+        if (nom != "es" and not b["erreurs"] and not b["bascules"] and taux_fr >= 0.8
+                and reference is not None and taux_es >= reference - 0.02):
             retenus.append(nom)
     if reference is None:
-        print("\nSans la référence `es`, la perte d'espagnol n'est pas jugée.")
-    print("\nRetenu(s) : " + (", ".join(retenus) if retenus
-                              else "aucun. Ce sera le bouton « Je ne sais pas le dire »."))
+        print("\nPas de verdict : il faut la référence `es`, mesurée sans erreur.")
+    else:
+        print("\nRetenu(s) : " + (", ".join(retenus) if retenus
+                                  else "aucun. Ce sera le bouton « Je ne sais pas le dire »."))
 
     sortie = args.dossier / "bilan.json"
     sortie.write_text(json.dumps({"bilan": bilan, "retenus": retenus, "detail": detail},
