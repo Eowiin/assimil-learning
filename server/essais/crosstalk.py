@@ -10,7 +10,10 @@ sur tes prises, ce que font quatre façons de transcrire :
 - `amorce` : Whisper, la langue détectée, avec une amorce bilingue (`initial_prompt`)
   qui annonce un apprenant français parlant espagnol ;
 - `voxtral` : la transcription de Mistral, par son API, sans langue imposée. Ta voix
-  part chez Mistral ; il faut `MISTRAL_API_KEY`, sinon ce candidat est sauté.
+  part chez Mistral ; il faut `MISTRAL_API_KEY`, sinon ce candidat est sauté ;
+- `double` : Whisper deux fois, l'espagnol imposé puis le français imposé, et l'IA
+  (Mistral, en texte seulement) reconstitue la prise à partir des deux, le français
+  entre crochets. Il faut aussi `MISTRAL_API_KEY`.
 
 Les prises sont dans `essais/sortie/crosstalk/`, nommées `01.m4a` à `20.m4a` (toute
 extension lisible par ffmpeg). Les phrases attendues sont dans `PHRASES`, plus bas :
@@ -79,6 +82,15 @@ PHRASES = {
 AMORCE = ("Un apprenant français parle espagnol et dit parfois quelques mots en français. "
           "Necesito una… comment dire… une serviette, gracias.")
 
+CONSIGNE_DOUBLE = """Un apprenant français débutant parle espagnol et glisse parfois des \
+mots ou des phrases en français. Voici deux transcriptions automatiques de la même prise : \
+l'une forcée en espagnol, l'autre forcée en français. Chaque transcription traduit ou \
+déforme ce qui n'est pas dans sa langue.
+
+Reconstitue ce que l'apprenant a réellement dit, dans l'ordre, chaque passage dans la \
+langue où il l'a dit. Mets les passages en français entre crochets. Ne corrige pas les \
+fautes d'espagnol et n'ajoute rien. Réponds seulement par la transcription."""
+
 HESITATIONS = {"euh", "heu", "eh", "em", "mmm"}
 
 
@@ -117,6 +129,8 @@ def trouver_audio(dossier: Path, numero: int) -> Path | None:
 
 
 # --- Les candidats -----------------------------------------------------------------
+
+WHISPER = ("es", "multi", "amorce", "double")  # ceux qui chargent Whisper
 
 def whisper_detecte(whisper, audio, multilingue: bool, amorce: str | None) -> tuple[str, str]:
     segments, info = whisper.transcribe(audio, language=None, multilingual=multilingue,
@@ -182,6 +196,16 @@ def verifier_whisper(whisper) -> None:
                  "Pour comparer sans la carte graphique : --appareil cpu (bien plus lent).")
 
 
+def decrire(chemin: Path) -> str:
+    """Les pistes du fichier selon ffprobe, pour comprendre une prise qui ne décode rien."""
+    import subprocess
+    sortie = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                             "format=format_name,duration,size:stream=index,codec_type,codec_name,"
+                             "sample_rate,channels,duration", "-of", "compact", str(chemin)],
+                            capture_output=True, text=True)
+    return (sortie.stdout + sortie.stderr).strip().replace("\n", "\n  ")
+
+
 def niveau(audio) -> tuple[float, float]:
     """La durée de la prise (s) et son niveau de crête (dB, 0 au maximum)."""
     import numpy
@@ -191,9 +215,22 @@ def niveau(audio) -> tuple[float, float]:
     return len(audio) / 16000, 20 * numpy.log10(max(crete, 1e-6))
 
 
+def double(whisper, llm, audio) -> tuple[str, str]:
+    """L'espagnol imposé, le français imposé, puis l'IA reconstitue la prise."""
+    espagnol = transcrire(whisper, audio)
+    segments, _ = whisper.transcribe(audio, language="fr", beam_size=5, vad_filter=True)
+    francais = " ".join(s.text.strip() for s in segments).strip()
+    texte = llm.chat([{"role": "system", "content": CONSIGNE_DOUBLE},
+                      {"role": "user", "content": f"Forcée en espagnol : {espagnol}\n"
+                                                  f"Forcée en français : {francais}"}],
+                     temperature=0)
+    return texte, "es+fr"
+
+
 def charger_candidats(noms: list[str], args) -> dict:
     candidats = {}
-    if any(n in noms for n in ("es", "multi", "amorce")):
+    cle = os.environ.get("MISTRAL_API_KEY", "")
+    if any(n in noms for n in WHISPER):
         from faster_whisper import WhisperModel
         calcul = "float16" if args.appareil == "cuda" else "int8"
         print(f"Chargement de Whisper {args.whisper}…", flush=True)
@@ -205,8 +242,14 @@ def charger_candidats(noms: list[str], args) -> dict:
             candidats["multi"] = lambda audio: whisper_detecte(whisper, audio, True, None)
         if "amorce" in noms:
             candidats["amorce"] = lambda audio: whisper_detecte(whisper, audio, True, AMORCE)
+        if "double" in noms:
+            if cle:
+                from app.llm import choisir_llm
+                llm = choisir_llm()
+                candidats["double"] = lambda audio: double(whisper, llm, audio)
+            else:
+                print("Double sauté : pas de MISTRAL_API_KEY.")
     if "voxtral" in noms:
-        cle = os.environ.get("MISTRAL_API_KEY", "")
         if cle:
             candidats["voxtral"] = Voxtral(cle, args.voxtral_modele).transcrire
         else:
@@ -219,7 +262,7 @@ def charger_candidats(noms: list[str], args) -> dict:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--dossier", type=Path, default=Path("essais/sortie/crosstalk"))
-    p.add_argument("--candidats", default="es,multi,amorce,voxtral")
+    p.add_argument("--candidats", default="es,multi,amorce,voxtral,double")
     p.add_argument("--whisper", default="large-v3-turbo")
     p.add_argument("--appareil", default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--voxtral-modele", default="voxtral-mini-latest")
@@ -240,7 +283,7 @@ def main() -> int:
         p.error(f"aucune prise dans {args.dossier} (01.m4a … 20.m4a)")
 
     noms = args.candidats.split(",")
-    if args.appareil == "cuda" and any(n in noms for n in ("es", "multi", "amorce")):
+    if args.appareil == "cuda" and any(n in noms for n in WHISPER):
         montrer_cuda()
     candidats = charger_candidats(noms, args)
     bilan = {nom: {"es_justes": 0, "es_attendus": 0, "bascules": [], "fr_gardes": [],
@@ -252,6 +295,11 @@ def main() -> int:
         duree_prise, crete = niveau(audio)
         print(f"\n{prise.numero:02d} ({prise.categorie}, {chemin.name}, {duree_prise:.1f} s, "
               f"crête {crete:.0f} dB)  {prise.attendu}")
+        if duree_prise == 0:
+            print("  Aucun son décodé : ignorée. Ce que ffmpeg voit dans le fichier :")
+            print("  " + decrire(chemin))
+            muettes.append(prise.numero)
+            continue
         if duree_prise < 0.5 or crete < -40:
             print("  Prise vide ou presque muette : ignorée. Réenregistre-la.")
             muettes.append(prise.numero)

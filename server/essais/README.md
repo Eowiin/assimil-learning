@@ -138,10 +138,11 @@ uv run python essais/voix.py --voix voxtral pocket
 
 Un débutant répond parfois en français (« Quiero un… comment on dit… un couteau »).
 Le serveur impose l'espagnol à Whisper, qui traduit ou écorche le français sans
-prévenir. Le script compare quatre façons de transcrire sur 20 prises : `es` (le
+prévenir. Le script compare cinq façons de transcrire sur 20 prises : `es` (le
 serveur aujourd'hui), `multi` (Whisper, langue détectée morceau par morceau), `amorce`
-(la même, avec une amorce bilingue) et `voxtral` (Mistral, sans langue imposée ; ta
-voix part chez Mistral, sauté sans `MISTRAL_API_KEY`).
+(la même, avec une amorce bilingue), `voxtral` (Mistral, sans langue imposée ; ta
+voix part chez Mistral, sauté sans `MISTRAL_API_KEY`) et `double` (Whisper en espagnol
+puis en français imposés, et l'IA reconstitue la prise à partir des deux).
 
 Les prises vont dans `essais/sortie/crosstalk/` (`01.m4a` … `20.m4a`, ignoré par git) ;
 les phrases sont dans `PHRASES`, en tête du script, le français entre crochets. Une
