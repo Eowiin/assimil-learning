@@ -148,6 +148,25 @@ class Voxtral:
         return corps.get("text", "").strip(), corps.get("language") or "?"
 
 
+def montrer_cuda() -> None:
+    """Whisper (ctranslate2) cherche libcublas et libcudnn dans `LD_LIBRARY_PATH`. Les
+    paquets de NVIDIA installés avec torch les ont, mais ailleurs : on ajoute leurs
+    dossiers, puis le script se relance, le chargeur ne relisant la variable qu'au
+    démarrage. Rien à faire si elle les contient déjà."""
+    dossiers = []
+    for paquet in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
+        try:
+            module = __import__(paquet, fromlist=["_"])
+        except ImportError:
+            continue
+        dossiers += [str(d) for d in getattr(module, "__path__", [])]
+    actuel = [d for d in os.environ.get("LD_LIBRARY_PATH", "").split(":") if d]
+    manquants = [d for d in dossiers if d not in actuel]
+    if manquants:
+        os.environ["LD_LIBRARY_PATH"] = ":".join(manquants + actuel)
+        os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
 def verifier_whisper(whisper) -> None:
     """Une seconde de bruit, sans filtre de silence : si la carte graphique ne charge
     pas (`libcublas`, `libcudnn`), on le sait avant la première prise, au lieu de
@@ -159,10 +178,8 @@ def verifier_whisper(whisper) -> None:
         list(segments)
     except Exception as erreur:
         sys.exit(f"Whisper ne tourne pas : {erreur}\n"
-                 "Si c'est libcublas ou libcudnn, indique-lui les bibliothèques de NVIDIA "
-                 "(README des essais, « Si ça coince ») :\n"
-                 "  export LD_LIBRARY_PATH=$(uv run python -c 'import nvidia.cublas.lib as b, "
-                 "nvidia.cudnn.lib as d; print(b.__path__[0] + \":\" + d.__path__[0])')")
+                 f"LD_LIBRARY_PATH = {os.environ.get('LD_LIBRARY_PATH', '(vide)')}\n"
+                 "Pour comparer sans la carte graphique : --appareil cpu (bien plus lent).")
 
 
 def niveau(audio) -> tuple[float, float]:
@@ -222,7 +239,10 @@ def main() -> int:
     if not prises:
         p.error(f"aucune prise dans {args.dossier} (01.m4a … 20.m4a)")
 
-    candidats = charger_candidats(args.candidats.split(","), args)
+    noms = args.candidats.split(",")
+    if args.appareil == "cuda" and any(n in noms for n in ("es", "multi", "amorce")):
+        montrer_cuda()
+    candidats = charger_candidats(noms, args)
     bilan = {nom: {"es_justes": 0, "es_attendus": 0, "bascules": [], "fr_gardes": [],
                    "avec_fr": 0, "secondes": 0.0, "erreurs": []} for nom in candidats}
     muettes = []

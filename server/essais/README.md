@@ -154,6 +154,9 @@ prises où le français est gardé tel quel. Règle fixée avant de mesurer : au
 bascule, au plus 2 points d'espagnol perdus face à `es`, le français gardé dans 80 %
 des prises qui en ont. Sinon, un bouton « Je ne sais pas le dire ».
 
+Le script montre lui-même à Whisper les bibliothèques CUDA de NVIDIA (`LD_LIBRARY_PATH`),
+puis se relance : pas besoin de l'`export` de « Si ça coince ».
+
 ```bash
 uv run python essais/crosstalk.py
 uv run python essais/crosstalk.py --candidats es,multi,amorce
