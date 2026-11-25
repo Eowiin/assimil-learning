@@ -142,7 +142,12 @@ prévenir. Le script compare cinq façons de transcrire sur 20 prises : `es` (le
 serveur aujourd'hui), `multi` (Whisper, langue détectée morceau par morceau), `amorce`
 (la même, avec une amorce bilingue), `voxtral` (Mistral, sans langue imposée ; ta
 voix part chez Mistral, sauté sans `MISTRAL_API_KEY`) et `double` (Whisper en espagnol
-puis en français imposés, et l'IA reconstitue la prise à partir des deux).
+puis en français imposés, et l'IA reconstitue la prise à partir des deux). Ajouté le
+2026-11-25, après l'essai en conversation de 6b : `decoupe`, la prise coupée à chaque
+pause de 0,3 s et chaque morceau transcrit seul. Whisper ne détecte la langue qu'une
+fois par fenêtre de 30 s : une prise courte n'a qu'une langue, et l'autre est
+« adaptée ». Par défaut, le script ne compare plus que `es`, `amorce` et `decoupe`
+(`--candidats` pour les autres).
 
 Les prises vont dans `essais/sortie/crosstalk/` (`01.m4a` … `20.m4a`, ignoré par git) ;
 les phrases sont dans `PHRASES`, en tête du script, le français entre crochets. Une
