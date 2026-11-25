@@ -303,3 +303,12 @@ verdict.
        la parole en 3,2 s ») et la meilleure série. Les temps sont gardés dans le
        `ConversationRecord` de la rafale (`reactionTimes`), pour suivre le réflexe d'un
        jour à l'autre ; rien ne les affiche encore.
+6. **Le crosstalk** (2026-11-25) : répondre en français en A0-A1 sans que la prise
+   soit jugée comme de l'espagnol. Plan : 6a, un essai sur 20 prises mélangées
+   (`essais/crosstalk.py` : Whisper en espagnol imposé, `multilingual`, avec une
+   amorce bilingue, et Voxtral ; Deepgram et Azure écartés) ; 6b, le serveur marque
+   les passages en français, l'IA les redonne en espagnol dans son rôle, et le
+   récapitulatif les met à part (« les mots que tu as cherchés ») au lieu de les
+   corriger ; 6c, l'app les affiche en retrait, et une prise avec du français ne
+   compte pas comme un réflexe. Si aucun candidat ne passe la règle de l'essai, le
+   français passe par un bouton « Je ne sais pas le dire ».

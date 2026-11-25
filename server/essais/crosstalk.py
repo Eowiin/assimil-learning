@@ -1,0 +1,263 @@
+"""Le crosstalk : garder le français d'une prise mélangée, sans perdre l'espagnol.
+
+Un débutant (A0, A1) répond parfois en français : « Quiero un… comment on dit… un
+couteau ». Le serveur impose l'espagnol à Whisper : un passage en français est
+traduit ou écorché sans prévenir, puis jugé comme une production. Ce script mesure,
+sur tes prises, ce que font quatre façons de transcrire :
+
+- `es` : Whisper, l'espagnol imposé (le serveur aujourd'hui, la référence) ;
+- `multi` : Whisper, la langue détectée morceau par morceau (`multilingual=True`) ;
+- `amorce` : Whisper, la langue détectée, avec une amorce bilingue (`initial_prompt`)
+  qui annonce un apprenant français parlant espagnol ;
+- `voxtral` : la transcription de Mistral, par son API, sans langue imposée. Ta voix
+  part chez Mistral ; il faut `MISTRAL_API_KEY`, sinon ce candidat est sauté.
+
+Les prises sont dans `essais/sortie/crosstalk/`, nommées `01.m4a` à `20.m4a` (toute
+extension lisible par ffmpeg). Les phrases attendues sont dans `PHRASES`, plus bas :
+entre crochets, la part en français. Si tu n'as pas dit exactement la phrase, corrige-la
+dans `attendu.json`, à côté des prises : `{"10": "Quiero un… [comment on dit…] …"}`.
+
+    uv run python essais/crosstalk.py
+    uv run python essais/crosstalk.py --candidats es,multi      # sans Voxtral
+
+Pour chaque candidat, le bilan dit :
+- **espagnol** : la part des mots espagnols attendus retrouvés, sur toutes les prises ;
+- **bascules** : les prises en espagnol pur dont moins de la moitié des mots est
+  retrouvée (l'accent pris pour du français, ou une traduction). Il en faut zéro ;
+- **français gardé** : les prises avec du français où au moins la moitié des mots
+  français sont rendus tels quels (pas traduits, pas perdus) ;
+- le temps moyen d'une prise.
+
+La règle, fixée avant de mesurer : un candidat est retenu s'il n'a aucune bascule,
+perd au plus 2 points d'espagnol par rapport à `es`, et garde le français dans au
+moins 80 % des prises qui en ont. Sinon, ce sera un bouton « Je ne sais pas le dire ».
+
+Les mots se comparent sans casse, ponctuation ni accents écrits, comme dans l'app.
+Les « euh » ne comptent pas : Whisper les laisse tomber.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.moteurs import decoder_16k, transcrire  # noqa: E402
+from whisper_contexte import justes, mots  # noqa: E402  (le dossier du script est dans le chemin)
+
+# Entre crochets, la part en français.
+PHRASES = {
+    1: "Hola, quiero un café con leche, por favor.",
+    2: "Vivo en Francia y aprendo español.",
+    3: "¿Cuánto cuesta la habitación por una noche?",
+    4: "Mañana voy a la playa con mis amigos.",
+    5: "No entiendo, ¿puede repetir más despacio?",
+    6: "Tengo hambre, ¿dónde está el restaurante?",
+    7: "[Je ne sais pas comment on dit ça.]",
+    8: "[Attends, je cherche le mot.]",
+    9: "[Euh… je n'ai pas compris la question.]",
+    10: "Quiero un… [comment on dit… un couteau], por favor.",
+    11: "Necesito una [fourchette] para comer.",
+    12: "¿Dónde está la [gare]? Tengo que ir a Madrid.",
+    13: "Mi hermano es… [euh… plombier].",
+    14: "Voy a comprar [pain] y queso.",
+    15: "La habitación es muy… [bruyante], no puedo dormir.",
+    16: "Quiero pagar con… [la carte bleue].",
+    17: "Me gusta mucho… [comment dire… le printemps].",
+    18: "[Je sais pas trop], pero creo que sí.",
+    19: "[Attends…] sí, sí, quiero la sopa.",
+    20: "[Comment on dit « réserver »…] quiero reservar una mesa.",
+}
+
+# Sans mot des prises, pour ne pas souffler la réponse.
+AMORCE = ("Un apprenant français parle espagnol et dit parfois quelques mots en français. "
+          "Necesito una… comment dire… une serviette, gracias.")
+
+HESITATIONS = {"euh", "heu", "eh", "em", "mmm"}
+
+
+@dataclass
+class Prise:
+    numero: int
+    phrase: str
+    espagnol: list[str]
+    francais: list[str]
+
+    @property
+    def attendu(self) -> str:
+        return self.phrase.replace("[", "").replace("]", "")
+
+    @property
+    def categorie(self) -> str:
+        if not self.francais:
+            return "espagnol"
+        return "français" if not self.espagnol else "mélangée"
+
+
+def decouper(numero: int, phrase: str) -> Prise:
+    """Les mots espagnols (hors crochets) et français (entre crochets)."""
+    francais = " ".join(re.findall(r"\[([^\]]*)\]", phrase))
+    espagnol = re.sub(r"\[[^\]]*\]", " ", phrase)
+    garder = lambda texte: [m for m in mots(texte) if m not in HESITATIONS]  # noqa: E731
+    return Prise(numero, phrase, garder(espagnol), garder(francais))
+
+
+def trouver_audio(dossier: Path, numero: int) -> Path | None:
+    for nom in (f"{numero:02d}", str(numero)):
+        trouves = sorted(p for p in dossier.glob(f"{nom}.*") if p.suffix != ".json")
+        if trouves:
+            return trouves[0]
+    return None
+
+
+# --- Les candidats -----------------------------------------------------------------
+
+def whisper_detecte(whisper, audio, multilingue: bool, amorce: str | None) -> tuple[str, str]:
+    segments, info = whisper.transcribe(audio, language=None, multilingual=multilingue,
+                                        beam_size=5, vad_filter=True, initial_prompt=amorce)
+    segments = list(segments)
+    texte = " ".join(s.text.strip() for s in segments).strip()
+    # La langue de chaque morceau, quand faster-whisper la donne ; sinon celle de la prise.
+    langues = [getattr(s, "language", None) for s in segments]
+    langues = [lang for lang in langues if lang] or [info.language]
+    return texte, "/".join(dict.fromkeys(langues))
+
+
+class Voxtral:
+    """La transcription de Mistral (`/v1/audio/transcriptions`), sans langue imposée."""
+
+    def __init__(self, cle: str, modele: str):
+        import httpx
+        self.modele = modele
+        self.client = httpx.Client(base_url="https://api.mistral.ai", timeout=60,
+                                   headers={"Authorization": f"Bearer {cle}"})
+
+    def transcrire(self, audio) -> tuple[str, str]:
+        from app.voix import wav_16_bits
+        reponse = self.client.post("/v1/audio/transcriptions", data={"model": self.modele},
+                                   files={"file": ("prise.wav", wav_16_bits(audio, 16000), "audio/wav")})
+        if reponse.status_code != 200:
+            raise RuntimeError(f"Voxtral répond {reponse.status_code} : {reponse.text[:200]}")
+        corps = reponse.json()
+        return corps.get("text", "").strip(), corps.get("language") or "?"
+
+
+def charger_candidats(noms: list[str], args) -> dict:
+    candidats = {}
+    if any(n in noms for n in ("es", "multi", "amorce")):
+        from faster_whisper import WhisperModel
+        calcul = "float16" if args.appareil == "cuda" else "int8"
+        print(f"Chargement de Whisper {args.whisper}…", flush=True)
+        whisper = WhisperModel(args.whisper, device=args.appareil, compute_type=calcul)
+        if "es" in noms:
+            candidats["es"] = lambda audio: (transcrire(whisper, audio), "es")
+        if "multi" in noms:
+            candidats["multi"] = lambda audio: whisper_detecte(whisper, audio, True, None)
+        if "amorce" in noms:
+            candidats["amorce"] = lambda audio: whisper_detecte(whisper, audio, True, AMORCE)
+    if "voxtral" in noms:
+        cle = os.environ.get("MISTRAL_API_KEY", "")
+        if cle:
+            candidats["voxtral"] = Voxtral(cle, args.voxtral_modele).transcrire
+        else:
+            print("Voxtral sauté : pas de MISTRAL_API_KEY.")
+    return candidats
+
+
+# --- La mesure ---------------------------------------------------------------------
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--dossier", type=Path, default=Path("essais/sortie/crosstalk"))
+    p.add_argument("--candidats", default="es,multi,amorce,voxtral")
+    p.add_argument("--whisper", default="large-v3-turbo")
+    p.add_argument("--appareil", default="cuda", choices=["cuda", "cpu"])
+    p.add_argument("--voxtral-modele", default="voxtral-mini-latest")
+    args = p.parse_args()
+
+    phrases = dict(PHRASES)
+    corrections = args.dossier / "attendu.json"
+    if corrections.exists():
+        phrases.update({int(k): v for k, v in json.loads(corrections.read_text()).items()})
+    prises = []
+    for numero, phrase in sorted(phrases.items()):
+        chemin = trouver_audio(args.dossier, numero)
+        if chemin is None:
+            print(f"Prise {numero:02d} introuvable dans {args.dossier}, ignorée.")
+        else:
+            prises.append((decouper(numero, phrase), chemin))
+    if not prises:
+        p.error(f"aucune prise dans {args.dossier} (01.m4a … 20.m4a)")
+
+    candidats = charger_candidats(args.candidats.split(","), args)
+    bilan = {nom: {"es_justes": 0, "es_attendus": 0, "bascules": [], "fr_gardes": [],
+                   "avec_fr": 0, "secondes": 0.0} for nom in candidats}
+    detail = []
+    for prise, chemin in prises:
+        audio = decoder_16k(chemin.read_bytes())
+        print(f"\n{prise.numero:02d} ({prise.categorie})  {prise.attendu}")
+        ligne = {"prise": prise.numero, "categorie": prise.categorie, "attendu": prise.phrase}
+        for nom, transcrire_prise in candidats.items():
+            debut = time.perf_counter()
+            try:
+                texte, langue = transcrire_prise(audio)
+            except Exception as erreur:  # un candidat en échec ne doit pas arrêter les autres
+                texte, langue = "", f"erreur : {erreur}"
+            duree = time.perf_counter() - debut
+            entendu = mots(texte)
+            es = justes(prise.espagnol, entendu)
+            fr = justes(prise.francais, entendu)
+            b = bilan[nom]
+            b["es_justes"] += es
+            b["es_attendus"] += len(prise.espagnol)
+            b["secondes"] += duree
+            if prise.categorie == "espagnol" and es < len(prise.espagnol) / 2:
+                b["bascules"].append(prise.numero)
+            if prise.francais:
+                b["avec_fr"] += 1
+                if fr >= len(prise.francais) / 2:
+                    b["fr_gardes"].append(prise.numero)
+            scores = f"es {es}/{len(prise.espagnol)}" + (f", fr {fr}/{len(prise.francais)}"
+                                                       if prise.francais else "")
+            print(f"  {nom:8} [{langue}] {texte}  ({scores})")
+            ligne[nom] = {"texte": texte, "langue": langue, "es": es, "fr": fr,
+                          "secondes": round(duree, 2)}
+        detail.append(ligne)
+
+    print("\n— Bilan " + "—" * 70)
+    print(f"{len(prises)} prises")
+    print(f"  {'':8} {'espagnol':>10} {'bascules':>9} {'français gardé':>15} {'temps':>7}")
+    reference = None
+    if "es" in bilan and bilan["es"]["es_attendus"]:
+        reference = bilan["es"]["es_justes"] / bilan["es"]["es_attendus"]
+    retenus = []
+    for nom, b in bilan.items():
+        taux_es = b["es_justes"] / b["es_attendus"] if b["es_attendus"] else 0
+        taux_fr = len(b["fr_gardes"]) / b["avec_fr"] if b["avec_fr"] else 0
+        print(f"  {nom:8} {taux_es:>10.1%} {len(b['bascules']):>9} "
+              f"{len(b['fr_gardes']):>6}/{b['avec_fr']} ({taux_fr:.0%}) "
+              f"{b['secondes'] / len(prises):>6.2f}s"
+              + (f"   bascules : {', '.join(f'{n:02d}' for n in b['bascules'])}" if b["bascules"] else ""))
+        if (nom != "es" and not b["bascules"] and taux_fr >= 0.8
+                and (reference is None or taux_es >= reference - 0.02)):
+            retenus.append(nom)
+    if reference is None:
+        print("\nSans la référence `es`, la perte d'espagnol n'est pas jugée.")
+    print("\nRetenu(s) : " + (", ".join(retenus) if retenus
+                              else "aucun. Ce sera le bouton « Je ne sais pas le dire »."))
+
+    sortie = args.dossier / "bilan.json"
+    sortie.write_text(json.dumps({"bilan": bilan, "retenus": retenus, "detail": detail},
+                                 ensure_ascii=False, indent=2))
+    print(f"Détail : {sortie}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
