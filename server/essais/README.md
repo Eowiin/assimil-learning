@@ -134,6 +134,36 @@ uv run python essais/voix.py
 uv run python essais/voix.py --voix voxtral pocket
 ```
 
+## `crosstalk.py` : garder le français d'une prise mélangée (étape 6a)
+
+Un débutant répond parfois en français (« Quiero un… comment on dit… un couteau »).
+Le serveur impose l'espagnol à Whisper, qui traduit ou écorche le français sans
+prévenir. Le script compare cinq façons de transcrire sur 20 prises : `es` (le
+serveur aujourd'hui), `multi` (Whisper, langue détectée morceau par morceau), `amorce`
+(la même, avec une amorce bilingue), `voxtral` (Mistral, sans langue imposée ; ta
+voix part chez Mistral, sauté sans `MISTRAL_API_KEY`) et `double` (Whisper en espagnol
+puis en français imposés, et l'IA reconstitue la prise à partir des deux).
+
+Les prises vont dans `essais/sortie/crosstalk/` (`01.m4a` … `20.m4a`, ignoré par git) ;
+les phrases sont dans `PHRASES`, en tête du script, le français entre crochets. Une
+phrase dite autrement se corrige dans `essais/sortie/crosstalk/attendu.json`
+(`{"10": "Quiero un… [comment on dit…] …"}`).
+
+Le bilan dit, par candidat, la part des mots espagnols retrouvés, les **bascules**
+(une prise en espagnol pur dont moins de la moitié des mots est retrouvée) et les
+prises où le français est gardé tel quel. Règle fixée avant de mesurer : aucune
+bascule, au plus 2 points d'espagnol perdus face à `es`, le français gardé dans 80 %
+des prises qui en ont. Ajouté après la première mesure de `double`, qui mettait parfois la
+traduction à côté de l'original : pas plus de prises avec 3 mots en trop que `es`. Sinon, un bouton « Je ne sais pas le dire ».
+
+Le script montre lui-même à Whisper les bibliothèques CUDA de NVIDIA (`LD_LIBRARY_PATH`),
+puis se relance : pas besoin de l'`export` de « Si ça coince ».
+
+```bash
+uv run python essais/crosstalk.py
+uv run python essais/crosstalk.py --candidats es,multi,amorce
+```
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris

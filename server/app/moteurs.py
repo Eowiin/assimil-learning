@@ -41,13 +41,22 @@ class Reglages:
 def decoder_16k(audio: bytes):
     """N'importe quel audio vers du 16 kHz mono en flottants, par ffmpeg.
     faster-whisper sait lire un fichier seul, mais par PyAV, dont les versions
-    récentes ne lui conviennent plus."""
+    récentes ne lui conviennent plus.
+
+    L'audio passe par un fichier temporaire, pas par l'entrée de ffmpeg : un .m4a
+    dont l'index (`moov`) est à la fin ne se lit pas d'un tube, et ffmpeg n'en
+    rend alors rien, sans erreur (prises du Dictaphone, essai du 2026-11-25)."""
+    import tempfile
+
     import numpy
-    brut = subprocess.run(
-        ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", "pipe:0",
-         "-f", "s16le", "-ac", "1", "-ar", "16000", "pipe:1"],
-        input=audio, capture_output=True, check=True,
-    ).stdout
+    with tempfile.NamedTemporaryFile() as fichier:
+        fichier.write(audio)
+        fichier.flush()
+        brut = subprocess.run(
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", fichier.name,
+             "-f", "s16le", "-ac", "1", "-ar", "16000", "pipe:1"],
+            capture_output=True, check=True,
+        ).stdout
     return numpy.frombuffer(brut, numpy.int16).astype(numpy.float32) / 32768.0
 
 
