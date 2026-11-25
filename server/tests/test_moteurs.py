@@ -240,6 +240,20 @@ def test_wav_16_bits():
     with wave.open(io.BytesIO(donnees)) as wav:
         assert (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()) == (1, 2, 24000, 3)
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg absent")
+def test_un_m4a_indexe_a_la_fin_se_decode(tmp_path):
+    """Un .m4a dont l'index est à la fin (sans `faststart`) : lu d'un tube, ffmpeg
+    n'en tirait rien, sans erreur."""
+    import subprocess
+
+    from app.moteurs import decoder_16k
+    m4a = tmp_path / "prise.m4a"
+    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "sine=frequency=440:duration=8:sample_rate=48000", "-c:a", "aac", str(m4a)],
+                   check=True)
+    assert len(decoder_16k(m4a.read_bytes())) / 16000 == pytest.approx(8, abs=0.1)
+
+
 def test_un_m4a_passe_sans_conversion():
     assert en_m4a(Audio(b"deja-en-m4a", "m4a")) == b"deja-en-m4a"
 

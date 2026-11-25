@@ -29,11 +29,14 @@ Pour chaque candidat, le bilan dit :
   retrouvée (l'accent pris pour du français, ou une traduction). Il en faut zéro ;
 - **français gardé** : les prises avec du français où au moins la moitié des mots
   français sont rendus tels quels (pas traduits, pas perdus) ;
+- **ajouts** : les prises où au moins 3 mots entendus ne sont pas dans la prise (une
+  traduction mise à côté de l'original, ou une invention) ;
 - le temps moyen d'une prise.
 
 La règle, fixée avant de mesurer : un candidat est retenu s'il n'a aucune bascule,
 perd au plus 2 points d'espagnol par rapport à `es`, et garde le français dans au
-moins 80 % des prises qui en ont. Sinon, ce sera un bouton « Je ne sais pas le dire ».
+moins 80 % des prises qui en ont. Ajouté le 2026-11-25, après la première mesure de
+`double`, qui doublait des phrases : pas plus d'ajouts que `es`. Sinon, ce sera un bouton « Je ne sais pas le dire ».
 
 Les mots se comparent sans casse, ponctuation ni accents écrits, comme dans l'app.
 Les « euh » ne comptent pas : Whisper les laisse tomber.
@@ -82,14 +85,35 @@ PHRASES = {
 AMORCE = ("Un apprenant français parle espagnol et dit parfois quelques mots en français. "
           "Necesito una… comment dire… une serviette, gracias.")
 
+# Les exemples n'ont aucun mot des prises, pour ne pas souffler la réponse.
 CONSIGNE_DOUBLE = """Un apprenant français débutant parle espagnol et glisse parfois des \
-mots ou des phrases en français. Voici deux transcriptions automatiques de la même prise : \
-l'une forcée en espagnol, l'autre forcée en français. Chaque transcription traduit ou \
-déforme ce qui n'est pas dans sa langue.
+mots ou des phrases en français. Tu reçois deux transcriptions automatiques du MÊME \
+enregistrement : l'une forcée en espagnol, l'autre forcée en français. Chacune traduit \
+ou déforme ce qui n'est pas dans sa langue : ce sont deux lectures d'une seule prise, \
+pas deux phrases dites l'une après l'autre.
 
-Reconstitue ce que l'apprenant a réellement dit, dans l'ordre, chaque passage dans la \
-langue où il l'a dit. Mets les passages en français entre crochets. Ne corrige pas les \
-fautes d'espagnol et n'ajoute rien. Réponds seulement par la transcription."""
+Reconstitue ce que l'apprenant a réellement dit, une seule fois, dans l'ordre.
+- Chaque mot dit n'apparaît qu'une fois : ne mets jamais les deux versions bout à bout.
+- Par défaut, c'est de l'espagnol : garde la version espagnole, telle quelle.
+- Un passage est en français seulement si la version française le donne naturellement \
+et que la version espagnole le déforme (un mot qui n'existe pas, ou qui n'a pas de sens \
+dans la phrase) ou le traduit. Mets ce passage entre crochets.
+- Ne corrige pas les fautes d'espagnol, n'ajoute rien, n'explique rien.
+
+Exemples :
+Forcée en espagnol : Quiero comprar una toala grande.
+Forcée en français : Je veux acheter une serviette grande.
+→ Quiero comprar una [serviette] grande.
+
+Forcée en espagnol : No sé cómo se dice.
+Forcée en français : Je ne sais pas comment on dit.
+→ [Je ne sais pas comment on dit.]
+
+Forcée en espagnol : El tren sale a las ocho.
+Forcée en français : Le train part à huit heures.
+→ El tren sale a las ocho.
+
+Réponds seulement par la transcription."""
 
 HESITATIONS = {"euh", "heu", "eh", "em", "mmm"}
 
@@ -215,16 +239,27 @@ def niveau(audio) -> tuple[float, float]:
     return len(audio) / 16000, 20 * numpy.log10(max(crete, 1e-6))
 
 
-def double(whisper, llm, audio) -> tuple[str, str]:
-    """L'espagnol imposé, le français imposé, puis l'IA reconstitue la prise."""
-    espagnol = transcrire(whisper, audio)
+def en_francais(whisper, audio) -> str:
     segments, _ = whisper.transcribe(audio, language="fr", beam_size=5, vad_filter=True)
-    francais = " ".join(s.text.strip() for s in segments).strip()
+    return " ".join(s.text.strip() for s in segments).strip()
+
+
+def double(whisper, llm, audio) -> tuple[str, str]:
+    """L'espagnol imposé et le français imposé, en parallèle sur la carte graphique
+    (le modèle est chargé avec deux « workers »), puis l'IA reconstitue la prise."""
+    from concurrent.futures import ThreadPoolExecutor
+    debut = time.perf_counter()
+    with ThreadPoolExecutor(2) as deux:
+        espagnol = deux.submit(transcrire, whisper, audio)
+        francais = deux.submit(en_francais, whisper, audio)
+        espagnol, francais = espagnol.result(), francais.result()
+    ecoute = time.perf_counter() - debut
     texte = llm.chat([{"role": "system", "content": CONSIGNE_DOUBLE},
                       {"role": "user", "content": f"Forcée en espagnol : {espagnol}\n"
                                                   f"Forcée en français : {francais}"}],
                      temperature=0)
-    return texte, "es+fr"
+    ia = time.perf_counter() - debut - ecoute
+    return texte, f"es+fr : Whisper {ecoute:.2f} s, IA {ia:.2f} s"
 
 
 def charger_candidats(noms: list[str], args) -> dict:
@@ -234,7 +269,9 @@ def charger_candidats(noms: list[str], args) -> dict:
         from faster_whisper import WhisperModel
         calcul = "float16" if args.appareil == "cuda" else "int8"
         print(f"Chargement de Whisper {args.whisper}…", flush=True)
-        whisper = WhisperModel(args.whisper, device=args.appareil, compute_type=calcul)
+        # Deux « workers » : `double` lance ses deux passes en même temps.
+        whisper = WhisperModel(args.whisper, device=args.appareil, compute_type=calcul,
+                               num_workers=2)
         verifier_whisper(whisper)
         if "es" in noms:
             candidats["es"] = lambda audio: (transcrire(whisper, audio), "es")
@@ -287,7 +324,8 @@ def main() -> int:
         montrer_cuda()
     candidats = charger_candidats(noms, args)
     bilan = {nom: {"es_justes": 0, "es_attendus": 0, "bascules": [], "fr_gardes": [],
-                   "avec_fr": 0, "secondes": 0.0, "erreurs": []} for nom in candidats}
+                   "avec_fr": 0, "secondes": 0.0, "erreurs": [], "ajouts": []}
+             for nom in candidats}
     muettes = []
     detail = []
     for prise, chemin in prises:
@@ -325,12 +363,18 @@ def main() -> int:
             b["secondes"] += duree
             if prise.categorie == "espagnol" and es < len(prise.espagnol) / 2:
                 b["bascules"].append(prise.numero)
+            # Des mots entendus qui ne sont pas dans la prise : une traduction mise à côté
+            # de l'original, ou une invention. Trois ou plus, la prise compte comme ajout.
+            en_trop = max(len(entendu) - es - fr, 0)
+            if en_trop >= 3:
+                b["ajouts"].append(prise.numero)
             if prise.francais:
                 b["avec_fr"] += 1
                 if fr >= len(prise.francais) / 2:
                     b["fr_gardes"].append(prise.numero)
-            scores = f"es {es}/{len(prise.espagnol)}" + (f", fr {fr}/{len(prise.francais)}"
-                                                       if prise.francais else "")
+            scores = (f"es {es}/{len(prise.espagnol)}"
+                      + (f", fr {fr}/{len(prise.francais)}" if prise.francais else "")
+                      + (f", {en_trop} en trop" if en_trop else ""))
             print(f"  {nom:8} [{langue}] {texte}  ({scores})")
             ligne[nom] = {"texte": texte, "langue": langue, "es": es, "fr": fr,
                           "secondes": round(duree, 2)}
@@ -341,21 +385,24 @@ def main() -> int:
     print(f"{mesurees} prises mesurées"
           + (f", {len(muettes)} muettes ignorées ({', '.join(f'{n:02d}' for n in muettes)})"
              if muettes else ""))
-    print(f"  {'':8} {'espagnol':>10} {'bascules':>9} {'français gardé':>15} {'temps':>7}")
-    reference = None
+    print(f"  {'':8} {'espagnol':>10} {'bascules':>9} {'ajouts':>7} {'français gardé':>15} {'temps':>7}")
+    reference = ajouts_reference = None
     if "es" in bilan and bilan["es"]["es_attendus"] and not bilan["es"]["erreurs"]:
         reference = bilan["es"]["es_justes"] / bilan["es"]["es_attendus"]
+        ajouts_reference = len(bilan["es"]["ajouts"])
     retenus = []
     for nom, b in bilan.items():
         taux_es = b["es_justes"] / b["es_attendus"] if b["es_attendus"] else 0
         taux_fr = len(b["fr_gardes"]) / b["avec_fr"] if b["avec_fr"] else 0
-        print(f"  {nom:8} {taux_es:>10.1%} {len(b['bascules']):>9} "
+        print(f"  {nom:8} {taux_es:>10.1%} {len(b['bascules']):>9} {len(b['ajouts']):>7} "
               f"{len(b['fr_gardes']):>6}/{b['avec_fr']} ({taux_fr:.0%}) "
               f"{b['secondes'] / max(mesurees - len(b['erreurs']), 1):>6.2f}s"
               + (f"   en erreur sur {len(b['erreurs'])} prise(s)" if b["erreurs"] else "")
-              + (f"   bascules : {', '.join(f'{n:02d}' for n in b['bascules'])}" if b["bascules"] else ""))
+              + (f"   bascules : {', '.join(f'{n:02d}' for n in b['bascules'])}" if b["bascules"] else "")
+              + (f"   ajouts : {', '.join(f'{n:02d}' for n in b['ajouts'])}" if b["ajouts"] else ""))
         if (nom != "es" and not b["erreurs"] and not b["bascules"] and taux_fr >= 0.8
-                and reference is not None and taux_es >= reference - 0.02):
+                and reference is not None and taux_es >= reference - 0.02
+                and len(b["ajouts"]) <= ajouts_reference):
             retenus.append(nom)
     if reference is None:
         print("\nPas de verdict : il faut la référence `es`, mesurée sans erreur.")

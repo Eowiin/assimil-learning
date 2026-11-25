@@ -153,7 +153,8 @@ Le bilan dit, par candidat, la part des mots espagnols retrouvés, les **bascule
 (une prise en espagnol pur dont moins de la moitié des mots est retrouvée) et les
 prises où le français est gardé tel quel. Règle fixée avant de mesurer : aucune
 bascule, au plus 2 points d'espagnol perdus face à `es`, le français gardé dans 80 %
-des prises qui en ont. Sinon, un bouton « Je ne sais pas le dire ».
+des prises qui en ont. Ajouté après la première mesure de `double`, qui mettait parfois la
+traduction à côté de l'original : pas plus de prises avec 3 mots en trop que `es`. Sinon, un bouton « Je ne sais pas le dire ».
 
 Le script montre lui-même à Whisper les bibliothèques CUDA de NVIDIA (`LD_LIBRARY_PATH`),
 puis se relance : pas besoin de l'`export` de « Si ça coince ».
