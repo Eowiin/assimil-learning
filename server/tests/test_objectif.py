@@ -305,7 +305,7 @@ def test_review_sans_objectif_comme_avant(faux):
 def test_review_objectif_sans_phrase_de_l_eleve(faux):
     corps = client_avec(faux, FausseLangue()).post(
         "/conversation/review", json={"history": HISTORIQUE[:1], "objective": OBJ_031}).json()
-    assert corps == {"corrections": [], "objective_uses": [], "lemmas_produced": []}
+    assert corps == {"corrections": [], "objective_uses": [], "lemmas_produced": [], "searched": None}
     assert faux.messages is None
 
 
@@ -375,3 +375,17 @@ def test_la_consigne_de_l_ecrit_n_est_pas_celle_de_l_oral(faux):
 def test_un_objectif_incomplet_est_refuse(faux):
     reponse = client_avec(faux).post("/writing/review", json={"text": TEXTE, "objective": {"id": "x"}})
     assert reponse.status_code == 422
+
+
+def test_les_lemmes_produits_sans_le_francais_ni_les_demandes():
+    """Étape 6b : « comment », « couteau » ne sont pas de l'espagnol produit."""
+    from app.conversation import MotCherche
+    faux = Faux()
+    faux.cherches = [MotCherche(fr="un couteau", es="un cuchillo", lemma="cuchillo")]
+    historique = [{"role": "assistant", "content": "¿Qué quieres?"},
+                  {"role": "user", "content": "Quiero un couteau"},
+                  {"role": "user", "content": "fourchette", "ask": True}]
+    corps = client_avec(faux, FausseLangue()).post(
+        "/conversation/review", json={"history": historique, "level": "A0"}).json()
+    assert corps["lemmas_produced"] == ["quiero"]
+    assert corps["searched"] == [{"fr": "un couteau", "es": "un cuchillo", "lemma": "cuchillo"}]

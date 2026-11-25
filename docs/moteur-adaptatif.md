@@ -82,8 +82,8 @@ conversation ou à l'écrit deux jours différents.
 | `POST /placement/evaluate` | `level`, `items[{objective_id, instruction, prompt, expected, also_correct, check, answer}]` (`instruction` optionnel) | `[{objective_id, verdict, analyse_courte}]`, `verdict` : `shown`, `correct_not_shown`, `wrong` |
 | `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]` (places des phrases, ou null), `attempts`, `new_occurrences[{lemma, sentence, form}]` (étape 4c) |
 | `POST /tts` | `sentences[]` (40 au plus) | `audios[{text, audio}]` : un m4a par phrase, en base64 ; `seconds` |
-| `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]`, `hints` (5b) ; `/turn` : `closing` (5b) | + `coverage`, `attempts` (null sans `allowed_lemmas`), `hints[{es, fr}]` (null sans demande) |
-| `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]` |
+| `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]`, `hints` (5b) ; `/turn` : `closing` (5b), `ask` (6b) ; `history[]` : `ask` par message (6b) | + `coverage`, `attempts` (null sans `allowed_lemmas`), `hints[{es, fr}]` (null sans demande) |
+| `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]`, `searched[{fr, es, lemma}]` (6b ; null au-delà de l'A1 sans demande) |
 | `POST /writing/review` | `text`, `level`, `objective` | `corrections[]` (catégorie `orthographe` en plus), `corrected_text`, `objective_uses[]`, `lemmas_produced[]` |
 
 Tout champ nouveau est optionnel. Le serveur annonce l'API 2 depuis l'étape 3b, avec
@@ -336,3 +336,19 @@ verdict.
    - **Décision (6b, 6c)** : en A0-A1, le serveur transcrit avec l'amorce bilingue ;
      le français est repéré par l'IA, au récapitulatif ; un bouton « Je ne sais pas le
      dire » couvre le mot qui manque. À retirer s'il ne sert pas.
+   - **6b, le serveur** (`Ecoute`, `langue_d_ecoute`, `MotCherche`) :
+     - **L'écoute** : `es` (l'espagnol imposé) à partir de l'A2 et sans profil ;
+       `bilingue` en A0-A1 (la langue détectée par morceau, `AMORCE_BILINGUE`) ; `fr`
+       pour une demande (`ask`). Le filet : une transcription bilingue qui a des lettres
+       d'un autre alphabet que le latin est refaite en espagnol imposé.
+     - **Le jeu de rôle** : la consigne dit, à tous les niveaux, de donner l'espagnol
+       d'un passage dit en français, dans la conversation. Une demande part avec une
+       note à elle (`DEMANDE`) : donner le mot dans son rôle, inviter à dire la phrase,
+       sans autre question ; ni la note du tour ni la fin de scène (`closing` est
+       ignoré). Le message garde `ask` dans l'historique de l'app ; l'IA le lit comme
+       « en francés, porque no sabe decirlo », sans le marqueur, que l'API refuse.
+     - **Le récapitulatif** : en A0-A1, ou dès qu'une demande a été faite, la consigne
+       dit qu'un passage en français n'est pas une faute, et l'IA rend `searched`
+       (`fr`, `es`, `lemma` ; sans hésitation, sans doublon de lemme). Les demandes et
+       les passages de `searched` sont retirés avant `lemmas_produced`. Au-delà de
+       l'A1 sans demande, rien ne change. Pas d'appel de plus.

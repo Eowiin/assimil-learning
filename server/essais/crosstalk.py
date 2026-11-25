@@ -54,7 +54,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from app.moteurs import decoder_16k, transcrire  # noqa: E402
+from app.moteurs import AMORCE_BILINGUE, decoder_16k, transcrire  # noqa: E402
 from whisper_contexte import justes, mots  # noqa: E402  (le dossier du script est dans le chemin)
 
 # Entre crochets, la part en français.
@@ -81,9 +81,8 @@ PHRASES = {
     20: "[Comment on dit « réserver »…] quiero reservar una mesa.",
 }
 
-# Sans mot des prises, pour ne pas souffler la réponse.
-AMORCE = ("Un apprenant français parle espagnol et dit parfois quelques mots en français. "
-          "Necesito una… comment dire… une serviette, gracias.")
+# L'amorce du serveur (étape 6b), pour mesurer exactement ce qu'il fait.
+AMORCE = AMORCE_BILINGUE
 
 # Les exemples n'ont aucun mot des prises, pour ne pas souffler la réponse.
 CONSIGNE_DOUBLE = """Un apprenant français débutant parle espagnol et glisse parfois des \

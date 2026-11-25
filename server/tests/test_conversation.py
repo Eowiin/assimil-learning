@@ -5,8 +5,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.conversation import (CONSIGNE, CONSIGNE_CORRECTION, FIN_DE_SCENE, Amorce, Amorces, Correction,
-                              Corrections, Profil, amorces_propres, consigne, note_du_tour)
+from app.conversation import (CONSIGNE, CONSIGNE_CHERCHES, CONSIGNE_CORRECTION, DEMANDE, FIN_DE_SCENE,
+                              Amorce, Amorces, Correction, Corrections, CorrectionsCherches,
+                              MotCherche, Profil, amorces_propres, consigne, langue_d_ecoute,
+                              mots_cherches_propres, note_du_tour, sans_francais)
 from app.llm import LLMIndisponible
 from app.moteurs import Reglages
 
@@ -32,10 +34,13 @@ class Faux:
             Amorce(es="quiero", fr="je veux"), Amorce(es="No sé si…", fr="Je ne sais pas si…"),
             Amorce(es="Prefiero…", fr="Je préfère…")])
         self.demandes_amorces: list[list[dict]] = []
+        # Les mots cherchés que rend un récapitulatif de débutant (étape 6b).
+        self.cherches: list[MotCherche] = []
 
-    def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
+    def ecouter(self, audio: bytes, contexte: str | None = None, langue: str = "es") -> str:
         assert audio == b"audio-du-tour"
         self.contexte = contexte
+        self.langue = langue
         return self.entendu
 
     def repondre(self, messages):
@@ -60,6 +65,8 @@ class Faux:
         self.modele = modele
         if self.recap is not None:
             return self.recap
+        if modele is CorrectionsCherches:
+            return CorrectionsCherches(searched=self.cherches)
         assert modele is Corrections
         return Corrections(corrections=[Correction(
             said="Yo soy cansado", corrected="Estoy cansado",
@@ -285,7 +292,8 @@ def test_la_consigne_previent_des_erreurs_de_transcription():
 
 def test_review_sans_phrase_de_l_eleve(client, faux):
     corps = client.post("/conversation/review", json={"history": HISTORIQUE}).json()
-    assert corps == {"corrections": [], "objective_uses": None, "lemmas_produced": None}
+    assert corps == {"corrections": [], "objective_uses": None, "lemmas_produced": None,
+                     "searched": None}
     assert faux.messages is None
 
 
@@ -346,3 +354,90 @@ def test_derniere_reponse_l_ia_conclut_sans_amorces(client, faux):
     assert corps["hints"] is None
     assert faux.demandes_amorces == []
 
+
+
+# --- le crosstalk (étape 6b) ---------------------------------------------------------
+
+AUDIO = {"audio": ("tour.m4a", b"audio-du-tour", "audio/mp4")}
+
+
+def test_langue_d_ecoute():
+    assert langue_d_ecoute(None) == "es"
+    assert langue_d_ecoute(Profil(level="A0")) == "bilingue"
+    assert langue_d_ecoute(Profil(level="A1")) == "bilingue"
+    assert langue_d_ecoute(Profil(level="A2")) == "es"
+    assert langue_d_ecoute(Profil(level="B1"), demande=True) == "fr"
+    assert langue_d_ecoute(None, demande=True) == "fr"
+
+
+@pytest.mark.parametrize(("niveau", "attendue"), [("A0", "bilingue"), ("B1", "es")])
+def test_turn_ecoute_selon_le_niveau(client, faux, niveau, attendue):
+    client.post("/conversation/turn", data={"profile": json.dumps({"level": niveau})}, files=AUDIO)
+    assert faux.langue == attendue
+
+
+def test_turn_sans_profil_ecoute_en_espagnol(client, faux):
+    client.post("/conversation/turn", files=AUDIO)
+    assert faux.langue == "es"
+
+
+def test_une_demande_s_ecoute_en_francais_et_l_ia_donne_le_mot(client, faux):
+    faux.entendu = "couteau"
+    profil = {"level": "A0", "words": ["aprovechar"]}
+    corps = client.post("/conversation/turn", files=AUDIO,
+                        data={"profile": json.dumps(profil), "ask": "true", "closing": "true"}).json()
+    assert faux.langue == "fr"
+    assert corps["heard"] == "couteau"
+    derniere = faux.messages[-1]["content"]
+    assert "«couteau»" in derniere and DEMANDE in derniere
+    # Une demande n'est pas une réponse : ni fin de scène, ni la note habituelle du tour.
+    assert FIN_DE_SCENE not in derniere and "aprovechar" not in derniere
+
+
+def test_une_demande_passee_reste_une_demande_pour_l_ia(client, faux):
+    historique = [*HISTORIQUE, {"role": "user", "content": "couteau", "ask": True},
+                  {"role": "assistant", "content": "Un cuchillo. ¡Dilo tú!"}]
+    client.post("/conversation/turn", data={"history": json.dumps(historique), "text": "Quiero un cuchillo"})
+    demande = faux.messages[-3]
+    # Le marqueur reste chez nous : l'API de Mistral n'accepte que le rôle et le texte.
+    assert set(demande) == {"role", "content"}
+    assert "«couteau»" in demande["content"] and "francés" in demande["content"]
+
+
+def test_review_d_un_debutant_releve_les_mots_cherches(client, faux):
+    faux.cherches = [MotCherche(fr="couteau", es="cuchillo", lemma="Cuchillo"),
+                     MotCherche(fr="un couteau", es="un cuchillo", lemma="cuchillo"),
+                     MotCherche(fr="", es="tenedor", lemma="tenedor")]
+    historique = [*HISTORIQUE, {"role": "user", "content": "Quiero un couteau"}]
+    corps = client.post("/conversation/review", json={"history": historique, "level": "A0"}).json()
+    assert faux.modele is CorrectionsCherches
+    assert CONSIGNE_CHERCHES in faux.messages[0]["content"]
+    assert corps["searched"] == [{"fr": "couteau", "es": "cuchillo", "lemma": "cuchillo"}]
+
+
+def test_review_au_dela_de_l_a1_ne_change_pas(client, faux):
+    historique = [*HISTORIQUE, {"role": "user", "content": "Yo soy cansado"}]
+    corps = client.post("/conversation/review", json={"history": historique, "level": "B1"}).json()
+    assert faux.modele is Corrections
+    assert CONSIGNE_CHERCHES not in faux.messages[0]["content"]
+    assert corps["searched"] is None
+
+
+def test_review_une_demande_suffit_et_se_dit_comme_telle(client, faux):
+    historique = [*HISTORIQUE, {"role": "user", "content": "couteau", "ask": True}]
+    corps = client.post("/conversation/review", json={"history": historique, "level": "B1"}).json()
+    assert faux.modele is CorrectionsCherches
+    assert "Élève (demande) : couteau" in faux.messages[1]["content"]
+    assert corps["searched"] == []
+
+
+def test_mots_cherches_propres():
+    mots = [MotCherche(fr=" pain ", es=" pan ", lemma=" Pan "), MotCherche(fr="x", es="", lemma="y")]
+    assert mots_cherches_propres(mots) == [MotCherche(fr="pain", es="pan", lemma="pan")]
+
+
+def test_sans_francais():
+    phrases = ["Quiero un… comment on dit… un couteau, por favor.", "Comment on dit", "Hola"]
+    assert sans_francais(phrases, ["comment on dit", "un couteau"]) == [
+        "Quiero un… … , por favor.", "Hola"]
+    assert sans_francais(["Hola"], []) == ["Hola"]

@@ -326,3 +326,68 @@ def test_le_prechauffage_passe_par_le_llm(monkeypatch):
     reels.prechauffer()
     assert entendus == [b"m4a:Hola, \xc2\xbfqu\xc3\xa9 tal?"]
     assert llm.appels == [("prechauffer", None)]
+
+
+# --- Écouter : l'espagnol, les deux langues, le français (étape 6b) --------------------
+
+class FauxSegment:
+    def __init__(self, texte):
+        self.text = texte
+
+
+class FauxWhisper:
+    """Rend un texte par façon d'écouter, et note chaque appel."""
+
+    def __init__(self, bilingue="Quiero un… comment on dit… un couteau."):
+        self.bilingue = bilingue
+        self.appels = []
+
+    def transcribe(self, audio, language=None, multilingual=False, initial_prompt=None, **_):
+        self.appels.append({"language": language, "multilingual": multilingual,
+                            "initial_prompt": initial_prompt})
+        texte = {"es": "Quiero un cuchillo.", "fr": "couteau"}.get(language, self.bilingue)
+        info = type("Info", (), {"language": language or "ko"})()
+        return [FauxSegment(texte)], info
+
+
+@pytest.fixture
+def sans_ffmpeg(monkeypatch):
+    from app import moteurs
+    monkeypatch.setattr(moteurs, "decoder_16k", lambda audio: audio)
+
+
+def reels(whisper):
+    return Reels(Reglages(), whisper, llm=None, tts=None)
+
+
+def test_ecouter_en_espagnol_par_defaut(sans_ffmpeg):
+    whisper = FauxWhisper()
+    assert reels(whisper).ecouter(b"x") == "Quiero un cuchillo."
+    assert whisper.appels == [{"language": "es", "multilingual": False, "initial_prompt": None}]
+
+
+def test_ecouter_les_deux_langues_avec_l_amorce(sans_ffmpeg):
+    from app.moteurs import AMORCE_BILINGUE
+    whisper = FauxWhisper()
+    assert reels(whisper).ecouter(b"x", langue="bilingue") == "Quiero un… comment on dit… un couteau."
+    assert whisper.appels == [{"language": None, "multilingual": True,
+                               "initial_prompt": AMORCE_BILINGUE}]
+
+
+def test_ecouter_une_demande_en_francais(sans_ffmpeg):
+    whisper = FauxWhisper()
+    assert reels(whisper).ecouter(b"x", langue="fr") == "couteau"
+    assert whisper.appels[0]["language"] == "fr"
+
+
+def test_hors_alphabet_latin_on_reecoute_en_espagnol(sans_ffmpeg):
+    whisper = FauxWhisper(bilingue="아따. 시시이 괴로라 소파.")
+    assert reels(whisper).ecouter(b"x", langue="bilingue") == "Quiero un cuchillo."
+    assert [a["language"] for a in whisper.appels] == [None, "es"]
+
+
+def test_hors_latin():
+    from app.moteurs import hors_latin
+    assert not hors_latin("¿Dónde está la gare? Ça coûte cher, señor. 25 €")
+    assert hors_latin("А то.")
+    assert hors_latin("아따")
