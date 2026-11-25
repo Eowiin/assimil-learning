@@ -11,10 +11,6 @@ sur tes prises, ce que font quatre façons de transcrire :
   qui annonce un apprenant français parlant espagnol ;
 - `voxtral` : la transcription de Mistral, par son API, sans langue imposée. Ta voix
   part chez Mistral ; il faut `MISTRAL_API_KEY`, sinon ce candidat est sauté ;
-- `decoupe` : la prise coupée à chaque pause (0,3 s), chaque morceau transcrit seul,
-  langue détectée et amorce bilingue. Whisper ne détecte la langue qu'une fois par
-  fenêtre de 30 s : sans découpe, une prise courte n'a qu'une langue, et l'autre est
-  « adaptée » ;
 - `double` : Whisper deux fois, l'espagnol imposé puis le français imposé, et l'IA
   (Mistral, en texte seulement) reconstitue la prise à partir des deux, le français
   entre crochets. Il faut aussi `MISTRAL_API_KEY`.
@@ -157,7 +153,7 @@ def trouver_audio(dossier: Path, numero: int) -> Path | None:
 
 # --- Les candidats -----------------------------------------------------------------
 
-WHISPER = ("es", "multi", "amorce", "decoupe", "double")  # ceux qui chargent Whisper
+WHISPER = ("es", "multi", "amorce", "double")  # ceux qui chargent Whisper
 
 def whisper_detecte(whisper, audio, multilingue: bool, amorce: str | None) -> tuple[str, str]:
     segments, info = whisper.transcribe(audio, language=None, multilingual=multilingue,
@@ -242,33 +238,6 @@ def niveau(audio) -> tuple[float, float]:
     return len(audio) / 16000, 20 * numpy.log10(max(crete, 1e-6))
 
 
-PAUSE_MS = 300
-
-
-def decoupe(whisper, audio, pause_ms: int = PAUSE_MS) -> tuple[str, str]:
-    """La prise coupée sur ses pauses (le VAD de faster-whisper), chaque morceau
-    transcrit seul, sa langue détectée, avec l'amorce bilingue. Un morceau hors
-    alphabet latin est refait en espagnol imposé, comme au serveur."""
-    from faster_whisper.vad import VadOptions, get_speech_timestamps
-
-    from app.moteurs import hors_latin
-    morceaux = get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=pause_ms,
-                                                       speech_pad_ms=150))
-    textes, langues = [], []
-    for morceau in morceaux:
-        extrait = audio[morceau["start"]:morceau["end"]]
-        segments, info = whisper.transcribe(extrait, language=None, beam_size=5,
-                                            vad_filter=False, initial_prompt=AMORCE)
-        texte = " ".join(s.text.strip() for s in segments).strip()
-        langue = info.language
-        if hors_latin(texte):
-            texte, langue = transcrire(whisper, extrait), "es!"
-        if texte:
-            textes.append(texte)
-            langues.append(langue)
-    return " ".join(textes), "/".join(langues) or "-"
-
-
 def en_francais(whisper, audio) -> str:
     segments, _ = whisper.transcribe(audio, language="fr", beam_size=5, vad_filter=True)
     return " ".join(s.text.strip() for s in segments).strip()
@@ -309,8 +278,6 @@ def charger_candidats(noms: list[str], args) -> dict:
             candidats["multi"] = lambda audio: whisper_detecte(whisper, audio, True, None)
         if "amorce" in noms:
             candidats["amorce"] = lambda audio: whisper_detecte(whisper, audio, True, AMORCE)
-        if "decoupe" in noms:
-            candidats["decoupe"] = lambda audio: decoupe(whisper, audio)
         if "double" in noms:
             if cle:
                 from app.llm import choisir_llm
@@ -331,7 +298,7 @@ def charger_candidats(noms: list[str], args) -> dict:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--dossier", type=Path, default=Path("essais/sortie/crosstalk"))
-    p.add_argument("--candidats", default="es,amorce,decoupe")
+    p.add_argument("--candidats", default="es,multi,amorce,voxtral,double")
     p.add_argument("--whisper", default="large-v3-turbo")
     p.add_argument("--appareil", default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--voxtral-modele", default="voxtral-mini-latest")

@@ -352,3 +352,8 @@ verdict.
        (`fr`, `es`, `lemma` ; sans hésitation, sans doublon de lemme). Les demandes et
        les passages de `searched` sont retirés avant `lemmas_produced`. Au-delà de
        l'A1 sans demande, rien ne change. Pas d'appel de plus.
+     - **Essayé et écarté** : couper la prise sur ses pauses (0,3 s) pour une langue
+       par morceau. Whisper ne détecte la langue qu'une fois par fenêtre de 30 s, d'où
+       une prise « adaptée » à une seule langue en conversation. Mais sur les 20 prises,
+       autant de français gardé (11/14), moins d'espagnol (96,7 %), et des inventions
+       sur les morceaux courts.
