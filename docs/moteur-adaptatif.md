@@ -304,11 +304,35 @@ verdict.
        `ConversationRecord` de la rafale (`reactionTimes`), pour suivre le réflexe d'un
        jour à l'autre ; rien ne les affiche encore.
 6. **Le crosstalk** (2026-11-25) : répondre en français en A0-A1 sans que la prise
-   soit jugée comme de l'espagnol. Plan : 6a, un essai sur 20 prises mélangées
-   (`essais/crosstalk.py` : Whisper en espagnol imposé, `multilingual`, avec une
-   amorce bilingue, et Voxtral ; Deepgram et Azure écartés) ; 6b, le serveur marque
-   les passages en français, l'IA les redonne en espagnol dans son rôle, et le
-   récapitulatif les met à part (« les mots que tu as cherchés ») au lieu de les
-   corriger ; 6c, l'app les affiche en retrait, et une prise avec du français ne
-   compte pas comme un réflexe. Si aucun candidat ne passe la règle de l'essai, le
-   français passe par un bouton « Je ne sais pas le dire ».
+   soit jugée comme de l'espagnol.
+   - **6a, l'essai** (`essais/crosstalk.py`, 20 prises d'Ethan : 6 en espagnol, 3 en
+     français, 11 mélangées). Résultats du 2026-11-25 :
+
+     | | espagnol | bascules | ajouts | français gardé | temps |
+     |---|---|---|---|---|---|
+     | `es` (le serveur) | 98,9 % | 0 | 3 | 4/14 | 0,18 s |
+     | `multi` | 90,1 % | 0 | 2 | 8/14 | 0,29 s |
+     | `amorce` | 98,9 % | 0 | 0 | 11/14 | 0,27 s |
+     | `double` | 98,9 % | 0 | 4 | 8/14 | 0,94 s |
+     | `voxtral` | 92,3 % | 0 | 1 | 12/14 | 0,35 s |
+
+     Aucun ne passe la règle (80 % du français gardé, 2 points d'espagnol perdus au
+     plus, pas plus d'ajouts que `es`). `amorce` la manque d'une prise. Constats :
+     - l'espagnol imposé **traduit le français en silence** (« ¿Cómo se dice
+       reservar? », « No he entendido la pregunta ») : le récapitulatif le compte
+       comme une production. `amorce` ne le fait jamais ;
+     - le mot français seul dans une phrase espagnole n'est rendu par aucun Whisper
+       (« furchette », « brillante » pour « bruyante », vrai mot espagnol) ;
+     - `double` (Whisper en espagnol et en français imposés, l'IA reconstitue) échoue :
+       chaque passe traduit l'autre langue au lieu de la déformer, et l'IA ne peut plus
+       savoir ce qui a été dit. En parallèle, les deux passes ne gagnent rien : elles se
+       partagent la carte graphique ;
+     - Voxtral garde le mieux le français mais met de l'espagnol en français, ou
+       invente (« А то. ») ; Deepgram et Azure n'ont pas été essayés ;
+     - la langue que Whisper donne pour la prise ne vaut rien (« fr » pour des prises
+       mélangées, « ko » une fois) ;
+     - un .m4a indexé à la fin (le Dictaphone) ne se décodait pas par un tube : le
+       serveur passe désormais par un fichier temporaire (`decoder_16k`).
+   - **Décision (6b, 6c)** : en A0-A1, le serveur transcrit avec l'amorce bilingue ;
+     le français est repéré par l'IA, au récapitulatif ; un bouton « Je ne sais pas le
+     dire » couvre le mot qui manque. À retirer s'il ne sert pas.
