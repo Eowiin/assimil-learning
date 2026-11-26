@@ -21,11 +21,12 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .conversation import (Amorce, Amorces, Correction, CorrectionEcrite, Corrections, CorrectionsEcrit,
-                           CorrectionsEcritObjectif, CorrectionsObjectif, Message, Moteurs, Niveau,
-                           Objectif, Profil, UsageObjectif, amorces_propres, connus_du_tour,
-                           derniere_replique, lemmes_produits, messages_amorces, messages_correction,
-                           messages_ecrit, messages_ouverture, messages_tour, mesurer,
-                           vraies_corrections)
+                           CorrectionsEcritObjectif, CorrectionsObjectif, Message, MotCherche, Moteurs,
+                           Niveau, Objectif, Profil, UsageObjectif, amorces_propres, avec_cherches,
+                           connus_du_tour, derniere_replique, langue_d_ecoute, lemmes_produits,
+                           messages_amorces, messages_correction, messages_ecrit, messages_ouverture,
+                           messages_tour, mesurer, modele_correction, mots_cherches_propres,
+                           sans_francais, vraies_corrections)
 from .langue import Langue
 from .llm import LLMIndisponible
 from .placement import JugementDefi, PlacementRequest, evaluer
@@ -91,10 +92,13 @@ class ReviewRequest(BaseModel):
 
 class Review(BaseModel):
     """`objective_uses` : null sans objectif demandé. `lemmas_produced` : les lemmes
-    des phrases de l'apprenant, par spaCy ; null si la langue n'est pas chargée."""
+    des phrases de l'apprenant, par spaCy ; null si la langue n'est pas chargée.
+    `searched` : les mots dits en français ou demandés (étape 6b), null au-delà de
+    l'A1 sans demande."""
     corrections: list[Correction]
     objective_uses: list[UsageObjectif] | None = None
     lemmas_produced: list[str] | None = None
+    searched: list[MotCherche] | None = None
 
 
 class WritingRequest(BaseModel):
@@ -342,8 +346,11 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
              audio: UploadFile | None = File(None),
              text: str | None = Form(None),
              profile: str | None = Form(None, description="le profil de l'apprenant, en JSON"),
-             closing: bool = Form(False, description="la dernière réponse permise : l'IA conclut")) -> Turn:
-        """Un tour : ce que l'apprenant a dit (audio, ou texte), et la réponse."""
+             closing: bool = Form(False, description="la dernière réponse permise : l'IA conclut"),
+             ask: bool = Form(False, description="une demande « Je ne sais pas le dire », en français")) -> Turn:
+        """Un tour : ce que l'apprenant a dit (audio, ou texte), et la réponse. Une
+        demande s'écoute en français et ne compte pas comme une réponse : `closing` n'y
+        joue pas."""
         m = prets(request)
         try:
             historique = TypeAdapter(list[Message]).validate_json(history)
@@ -357,32 +364,39 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
             raise HTTPException(422, "Il faut un audio ou un texte.")
         with verrou:
             if audio is not None:
-                compris, ecoute = chrono(m.ecouter, audio.file.read(), derniere_replique(historique))
+                compris, ecoute = chrono(m.ecouter, audio.file.read(), derniere_replique(historique),
+                                         langue_d_ecoute(profil, ask))
             else:
                 compris, ecoute = text.strip(), None
             if not compris:
                 raise HTTPException(422, "Je n'ai rien entendu.")
-            replique = repliquer(request, messages_tour(historique, compris, profil, fin=closing), profil,
-                                 compris, ecoute, historique=historique + [Message(role="user", content=compris)],
-                                 fin=closing)
+            fin = closing and not ask
+            replique = repliquer(request, messages_tour(historique, compris, profil, fin=fin, demande=ask),
+                                 profil, None if ask else compris, ecoute,
+                                 historique=historique + [Message(role="user", content=compris, ask=ask)],
+                                 fin=fin)
         return Turn(heard=compris, **replique.model_dump())
 
     @app.post("/conversation/review")
     def review(request: Request, body: ReviewRequest) -> Review:
         """Le récapitulatif : les phrases fautives de l'apprenant, corrigées."""
         m = prets(request)
-        phrases = [msg.content for msg in body.history if msg.role == "user"]
-        if not phrases:
+        # Une demande n'est pas une production : ni corrigée comme telle, ni lemmatisée.
+        phrases = [msg.content for msg in body.history if msg.role == "user" and not msg.ask]
+        cherches = avec_cherches(body.history, body.level)
+        if not any(msg.role == "user" for msg in body.history):
             return Review(corrections=[], objective_uses=[] if body.objective else None,
-                          lemmas_produced=[] if request.app.state.langue is not None else None)
-        modele = CorrectionsObjectif if body.objective else Corrections
+                          lemmas_produced=[] if request.app.state.langue is not None else None,
+                          searched=[] if cherches else None)
+        modele = modele_correction(bool(body.objective), cherches)
         with verrou:
             recap, _ = penser(m.structurer,
                               messages_correction(body.history, body.objective, body.level), modele)
-            produits = lemmes(request, phrases)
+            trouves = mots_cherches_propres(recap.searched) if cherches else None
+            produits = lemmes(request, sans_francais(phrases, [c.fr for c in trouves or []]))
         return Review(corrections=vraies_corrections(recap.corrections),
                       objective_uses=recap.objective_uses if body.objective else None,
-                      lemmas_produced=produits)
+                      lemmas_produced=produits, searched=trouves)
 
     @app.post("/writing/review")
     def writing_review(request: Request, body: WritingRequest) -> WritingReview:

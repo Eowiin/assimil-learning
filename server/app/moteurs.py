@@ -8,10 +8,12 @@ protocole (`llm.py`, `voix.py`) : `Reels` ne fait que les assembler.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
+import unicodedata
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from pydantic import BaseModel
 
@@ -19,6 +21,19 @@ from .llm import LLM, choisir_llm
 from .voix import TTS, choisir_tts, en_m4a
 
 M = TypeVar("M", bound=BaseModel)
+
+journal = logging.getLogger("assimil")
+
+# Comment écouter une prise (étape 6b) : l'espagnol imposé (A2 et au-delà), les deux
+# langues (A0-A1, où l'on répond parfois en français), ou le français imposé (une
+# demande « Je ne sais pas le dire »).
+Ecoute = Literal["es", "bilingue", "fr"]
+
+# L'amorce bilingue de l'essai du 2026-11-25 (`essais/crosstalk.py`, candidat
+# `amorce`) : autant d'espagnol que l'espagnol imposé, et le français gardé en
+# français au lieu d'être traduit. Sans mot des prises de l'essai.
+AMORCE_BILINGUE = ("Un apprenant français parle espagnol et dit parfois quelques mots en "
+                   "français. Necesito una… comment dire… une serviette, gracias.")
 
 
 @dataclass(frozen=True)
@@ -70,6 +85,21 @@ def transcrire(whisper, audio, amorce: str | None = None) -> str:
     return " ".join(s.text.strip() for s in segments).strip()
 
 
+def transcrire_bilingue(whisper, audio) -> tuple[str, str]:
+    """Whisper, la langue détectée morceau par morceau, avec l'amorce bilingue. Rend le
+    texte et la langue détectée pour la prise (qui ne vaut rien seule : « fr » pour une
+    prise mélangée, « ko » une fois à l'essai)."""
+    segments, info = whisper.transcribe(audio, language=None, multilingual=True, beam_size=5,
+                                        vad_filter=True, initial_prompt=AMORCE_BILINGUE)
+    return " ".join(s.text.strip() for s in segments).strip(), info.language
+
+
+def hors_latin(texte: str) -> bool:
+    """Une lettre d'un autre alphabet que le latin : Whisper a cru entendre une langue
+    qui n'est ni l'espagnol ni le français (du coréen, à l'essai)."""
+    return any(c.isalpha() and not unicodedata.name(c, "").startswith("LATIN") for c in texte)
+
+
 class Reels:
     """Les moteurs du serveur, tels que `conversation.Moteurs` les attend. Une seule IA
     écrit les répliques et le texte du bloc 2, et rend les jugements."""
@@ -90,9 +120,20 @@ class Reels:
 
     # --- Écouter --------------------------------------------------------------
 
-    def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
+    def ecouter(self, audio: bytes, contexte: str | None = None, langue: Ecoute = "es") -> str:
+        echantillons = decoder_16k(audio)
         amorce = contexte if self.reglages.whisper_contexte and contexte else None
-        return transcrire(self.whisper, decoder_16k(audio), amorce)
+        if langue == "fr":
+            segments, _ = self.whisper.transcribe(echantillons, language="fr", beam_size=5,
+                                                  vad_filter=True)
+            return " ".join(s.text.strip() for s in segments).strip()
+        if langue == "bilingue":
+            texte, detectee = transcrire_bilingue(self.whisper, echantillons)
+            if not hors_latin(texte):
+                return texte
+            # Le filet : une autre langue que les deux attendues, on réécoute comme avant.
+            journal.info("Écoute bilingue hors alphabet latin (%s) : l'espagnol imposé.", detectee)
+        return transcrire(self.whisper, echantillons, amorce)
 
     # --- Penser ---------------------------------------------------------------
 

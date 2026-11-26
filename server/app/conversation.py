@@ -32,6 +32,8 @@ Reglas:
 - Responde siempre en español de España, en {longueur}.
 - Reacciona primero a lo que acaba de decir el estudiante, como haría un amigo que escucha.
 - Si dice que no conoce o no entiende una palabra, explícasela con palabras sencillas antes de seguir.
+- Si dice algo en francés porque no sabe decirlo en español, dale con naturalidad la palabra o \
+la frase en español, dentro de la conversación, y sigue.
 - {style}
 - Termina siempre con una pregunta para que la conversación siga.
 - No corrijas los errores del estudiante durante la conversación: responde a lo que quiso decir.
@@ -211,19 +213,41 @@ def note_du_tour(profil: Profil | None, rang: int, ouverture: bool = False) -> s
 
 
 class Message(BaseModel):
-    """Une réplique de la conversation, telle que l'app la garde."""
+    """Une réplique de la conversation, telle que l'app la garde. `ask` : une demande
+    « Je ne sais pas le dire », dite en français (étape 6b) ; ce n'est pas une réponse."""
     role: Literal["user", "assistant"]
     content: str
+    ask: bool = False
+
+
+# Les niveaux où l'on répond parfois en français : le serveur écoute les deux langues.
+DEBUTANTS = ("A0", "A1")
+
+
+def langue_d_ecoute(profil: Profil | None, demande: bool = False) -> str:
+    """`fr` pour une demande, `bilingue` en A0-A1, `es` sinon (essai du 2026-11-25)."""
+    if demande:
+        return "fr"
+    return "bilingue" if profil is not None and profil.level in DEBUTANTS else "es"
+
+
+def _pour_l_ia(message: Message) -> dict:
+    """Une réplique de l'historique telle que l'IA la lit : une demande y est dite
+    comme telle, et le marqueur `ask` reste chez nous (l'API n'en veut pas)."""
+    contenu = DEMANDE_PASSEE.format(texte=message.content) if message.ask else message.content
+    return {"role": message.role, "content": contenu}
 
 
 class Moteurs(Protocol):
     """Ce que le serveur attend des modèles. `moteurs.Reels` les charge vraiment ;
     les tests en passent un faux."""
 
-    def ecouter(self, audio: bytes, contexte: str | None = None) -> str:
+    def ecouter(self, audio: bytes, contexte: str | None = None, langue: str = "es") -> str:
         """La transcription d'un enregistrement (n'importe quel format lu par ffmpeg).
         `contexte` : la dernière réplique de l'IA, que Whisper peut recevoir pour
-        mieux reconnaître les mots qu'elle vient d'employer."""
+        mieux reconnaître les mots qu'elle vient d'employer. `langue` : `es` (imposé),
+        `bilingue` (espagnol et français, A0-A1) ou `fr` (une demande « Je ne sais pas
+        le dire »)."""
         ...
 
     def repondre(self, messages: list[dict]) -> str:
@@ -265,12 +289,23 @@ FIN_DE_SCENE = ("(Nota para ti, no la menciones: es tu última réplica. Respond
                 "No hagas ninguna pregunta.)")
 
 
+# Une demande « Je ne sais pas le dire » (étape 6b) : l'apprenant dit en français ce
+# qu'il cherche. Elle remplace la note du tour : rien d'autre à amener.
+DEMANDE_PASSEE = "(En francés, porque no sabe decirlo en español: «{texte}»)"
+DEMANDE = ("(Nota para ti, no la menciones: el estudiante no sabe decir esto en español y te "
+           "lo pregunta en francés. Dale la palabra o la expresión en español, en una frase "
+           "corta y dentro de tu papel, y anímale a decir su frase. No hagas otra pregunta.)")
+
+
 def messages_tour(historique: list[Message], phrase: str, profil: Profil | None = None,
-                  fin: bool = False) -> list[dict]:
+                  fin: bool = False, demande: bool = False) -> list[dict]:
     rang = sum(m.role == "assistant" for m in historique)
-    note = FIN_DE_SCENE if fin else note_du_tour(profil, rang)
+    if demande:
+        phrase, note = DEMANDE_PASSEE.format(texte=phrase), DEMANDE
+    else:
+        note = FIN_DE_SCENE if fin else note_du_tour(profil, rang)
     return ([{"role": "system", "content": consigne(profil)}]
-            + [m.model_dump() for m in historique]
+            + [_pour_l_ia(m) for m in historique]
             + [{"role": "user", "content": phrase + ("\n\n" + note if note else "")}])
 
 
@@ -475,6 +510,22 @@ Si l'élève n'a fait aucune faute, renvoie une liste vide."""
 
 CONSIGNE_CORRECTION = CONSIGNE_CORRECTION_MODELE.format(niveau=NIVEAU_PAR_DEFAUT)
 
+# Le français d'un débutant (étape 6b) : ni faute ni production, des mots cherchés.
+CONSIGNE_CHERCHES = """
+
+L'élève est débutant : quand il ne sait pas dire quelque chose, il le dit en français. Un \
+passage en français n'est pas une faute : ne le relève pas dans "corrections". Les lignes \
+« Élève (demande) » sont des questions en français sur un mot ou une expression.
+
+Dans "searched", mets chaque mot ou expression que l'élève a dit en français ou demandé, une \
+fois chacun :
+- "fr" : le passage en français, tel que l'élève l'a dit ;
+- "es" : l'équivalent en espagnol d'Espagne, celui que le partenaire lui a donné s'il l'a \
+fait ;
+- "lemma" : le lemme espagnol du mot principal (infinitif, masculin singulier, sans article).
+Ne mets pas les mots d'hésitation (« euh », « attends », « comment on dit »). S'il n'a rien \
+dit en français, renvoie une liste vide."""
+
 CONSIGNE_ECRIT = """Tu es professeur d'espagnol (espagnol d'Espagne). Voici un texte écrit \
 par un élève francophone (niveau {niveau}). Il l'a tapé lui-même : l'orthographe, les \
 accents écrits, les signes ¿ et ¡ comptent, comme la grammaire.
@@ -542,6 +593,57 @@ class CorrectionsObjectif(Corrections):
     objective_uses: list[UsageObjectif] = Field(default_factory=list)
 
 
+class MotCherche(BaseModel):
+    """Un mot que l'apprenant a dit en français ou demandé, et son espagnol."""
+    fr: str
+    es: str
+    lemma: str
+
+
+class Cherches(BaseModel):
+    searched: list[MotCherche] = Field(default_factory=list)
+
+
+class CorrectionsCherches(Corrections, Cherches):
+    pass
+
+
+class CorrectionsObjectifCherches(CorrectionsObjectif, Cherches):
+    pass
+
+
+def modele_correction(objectif: bool, cherches: bool) -> type[Corrections]:
+    if cherches:
+        return CorrectionsObjectifCherches if objectif else CorrectionsCherches
+    return CorrectionsObjectif if objectif else Corrections
+
+
+def mots_cherches_propres(mots: list[MotCherche]) -> list[MotCherche]:
+    """Sans vide ni doublon (par lemme)."""
+    vus, propres = set(), []
+    for mot in mots:
+        fr, es, lemme = mot.fr.strip(), mot.es.strip(), mot.lemma.strip().casefold()
+        if not fr or not es or not lemme or lemme in vus:
+            continue
+        vus.add(lemme)
+        propres.append(MotCherche(fr=fr, es=es, lemma=lemme))
+    return propres
+
+
+def sans_francais(phrases: list[str], passages: list[str]) -> list[str]:
+    """Les phrases de l'apprenant sans ses passages en français, pour que « comment »
+    ou « couteau » ne comptent pas comme des lemmes espagnols produits."""
+    import re
+    motifs = [re.compile(re.escape(p.strip()), re.IGNORECASE) for p in passages if p.strip()]
+    propres = []
+    for phrase in phrases:
+        for motif in motifs:
+            phrase = motif.sub(" ", phrase)
+        if phrase := " ".join(phrase.split()):
+            propres.append(phrase)
+    return propres
+
+
 class CorrectionsEcrit(BaseModel):
     corrections: list[CorrectionEcrite] = Field(default_factory=list)
     corrected_text: str
@@ -558,12 +660,25 @@ def _consigne_objectif(objectif: Objectif | None) -> str:
                                     validation=objectif.validation.strip() or "—")
 
 
+def avec_cherches(historique: list[Message], niveau: str | None) -> bool:
+    """Le récapitulatif relève les mots cherchés en A0-A1, ou dès qu'une demande a été
+    faite. Au-delà, la consigne ne change pas."""
+    return niveau in DEBUTANTS or any(m.ask for m in historique)
+
+
+def _qui(message: Message) -> str:
+    if message.role == "assistant":
+        return "Partenaire"
+    return "Élève (demande)" if message.ask else "Élève"
+
+
 def messages_correction(historique: list[Message], objectif: Objectif | None = None,
                         niveau: str | None = None) -> list[dict]:
     """La conversation en un seul texte : l'IA corrige un document, elle ne
     continue pas le dialogue."""
-    lignes = [f"{'Élève' if m.role == 'user' else 'Partenaire'} : {m.content}" for m in historique]
+    lignes = [f"{_qui(m)} : {m.content}" for m in historique]
     systeme = (CONSIGNE_CORRECTION_MODELE.format(niveau=niveau or NIVEAU_PAR_DEFAUT)
+               + (CONSIGNE_CHERCHES if avec_cherches(historique, niveau) else "")
                + _consigne_objectif(objectif))
     return [{"role": "system", "content": systeme}, {"role": "user", "content": "\n".join(lignes)}]
 
