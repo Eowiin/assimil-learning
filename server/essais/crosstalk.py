@@ -22,6 +22,11 @@ dans `attendu.json`, à côté des prises : `{"10": "Quiero un… [comment on di
 
     uv run python essais/crosstalk.py
     uv run python essais/crosstalk.py --candidats es,multi      # sans Voxtral
+    uv run python essais/crosstalk.py --reelles --dossier essais/sortie/prises
+
+`--reelles` : les vraies prises de conversation, gardées par le serveur
+(`ASSIMIL_GARDER_PRISES`, voir `app/prises.py`). Seules celles que tu as relues et
+mises dans `attendu.json` sont mesurées, pas les 20 phrases ci-dessous.
 
 Pour chaque candidat, le bilan dit :
 - **espagnol** : la part des mots espagnols attendus retrouvés, sur toutes les prises ;
@@ -302,9 +307,11 @@ def main() -> int:
     p.add_argument("--whisper", default="large-v3-turbo")
     p.add_argument("--appareil", default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--voxtral-modele", default="voxtral-mini-latest")
+    p.add_argument("--reelles", action="store_true",
+                   help="les prises gardées par le serveur : seulement celles de attendu.json")
     args = p.parse_args()
 
-    phrases = dict(PHRASES)
+    phrases = {} if args.reelles else dict(PHRASES)
     corrections = args.dossier / "attendu.json"
     if corrections.exists():
         phrases.update({int(k): v for k, v in json.loads(corrections.read_text()).items()})

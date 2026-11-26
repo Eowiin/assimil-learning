@@ -11,6 +11,7 @@ from app.conversation import (CONSIGNE, CONSIGNE_CHERCHES, CONSIGNE_CORRECTION, 
                               mots_cherches_propres, note_du_tour, sans_francais)
 from app.llm import LLMIndisponible
 from app.moteurs import Reglages
+from app.prises import Carnet
 
 
 class Faux:
@@ -379,6 +380,46 @@ def test_turn_ecoute_selon_le_niveau(client, faux, niveau, attendue):
 def test_turn_sans_profil_ecoute_en_espagnol(client, faux):
     client.post("/conversation/turn", files=AUDIO)
     assert faux.langue == "es"
+
+
+# --- Les prises gardées pour l'essai du crosstalk -----------------------------------
+
+def test_sans_la_variable_aucune_prise_n_est_gardee(client):
+    assert client.app.state.prises is None
+
+
+def test_les_prises_des_debutants_sont_gardees_au_format_de_l_essai(client, faux, tmp_path):
+    client.app.state.prises = Carnet(tmp_path / "prises")
+    historique = json.dumps([{"role": "assistant", "content": "¿Qué quieres comer?"}])
+    for _ in range(2):
+        client.post("/conversation/turn", files=AUDIO, data={
+            "profile": json.dumps({"level": "A0"}), "history": historique})
+    assert (tmp_path / "prises" / "01.m4a").read_bytes() == b"audio-du-tour"
+    assert (tmp_path / "prises" / "02.m4a").exists()
+    notes = json.loads((tmp_path / "prises" / "entendu.json").read_text())
+    assert notes["1"]["entendu"] == faux.entendu
+    assert notes["1"]["replique"] == "¿Qué quieres comer?"
+
+
+@pytest.mark.parametrize(("niveau", "demande"), [("B1", False), ("A0", True)])
+def test_seules_les_prises_ecoutees_dans_les_deux_langues_sont_gardees(client, tmp_path, niveau, demande):
+    client.app.state.prises = Carnet(tmp_path)
+    client.post("/conversation/turn", files=AUDIO,
+                data={"profile": json.dumps({"level": niveau}), "ask": str(demande).lower()})
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_une_prise_qui_ne_se_garde_pas_ne_fait_pas_echouer_le_tour(client, tmp_path):
+    bloque = tmp_path / "fichier"
+    bloque.write_text("pas un dossier")
+    client.app.state.prises = Carnet(bloque / "prises")
+    reponse = client.post("/conversation/turn", files=AUDIO, data={"profile": json.dumps({"level": "A0"})})
+    assert reponse.status_code == 200
+
+
+def test_le_carnet_se_lit_dans_l_environnement(tmp_path):
+    assert Carnet.depuis_environnement({}) is None
+    assert Carnet.depuis_environnement({"ASSIMIL_GARDER_PRISES": str(tmp_path)}).dossier == tmp_path
 
 
 def test_une_demande_s_ecoute_en_francais_et_l_ia_donne_le_mot(client, faux):
