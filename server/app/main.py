@@ -30,6 +30,7 @@ from .conversation import (Amorce, Amorces, Correction, CorrectionEcrite, Correc
 from .langue import Langue
 from .llm import LLMIndisponible
 from .placement import JugementDefi, PlacementRequest, evaluer
+from .prises import Carnet
 from .prononciation.jugement import par_mots
 from .seance import InputRequest, InputText, generer
 
@@ -253,6 +254,8 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
     app.state.moteurs = moteurs
     app.state.prononciation = prononciation
     app.state.langue = langue
+    # Les prises des débutants, gardées pour l'essai du crosstalk si la variable le demande.
+    app.state.prises = Carnet.depuis_environnement()
     # Une carte graphique, un utilisateur : les tours passent l'un après l'autre.
     verrou = threading.Lock()
 
@@ -364,8 +367,11 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
             raise HTTPException(422, "Il faut un audio ou un texte.")
         with verrou:
             if audio is not None:
-                compris, ecoute = chrono(m.ecouter, audio.file.read(), derniere_replique(historique),
-                                         langue_d_ecoute(profil, ask))
+                son, ecoute_en = audio.file.read(), langue_d_ecoute(profil, ask)
+                compris, ecoute = chrono(m.ecouter, son, derniere_replique(historique), ecoute_en)
+                carnet: Carnet | None = request.app.state.prises
+                if carnet is not None and ecoute_en == "bilingue":
+                    carnet.garder(son, audio.filename, compris, derniere_replique(historique))
             else:
                 compris, ecoute = text.strip(), None
             if not compris:

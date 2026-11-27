@@ -164,6 +164,30 @@ uv run python essais/crosstalk.py
 uv run python essais/crosstalk.py --candidats es,multi,amorce
 ```
 
+### Les vraies prises de conversation
+
+Les 20 prises lues ne montrent pas ce qui arrive en vraie conversation : Whisper y
+réécrit parfois une prise mélangée tout en espagnol ou tout en français. Pour mesurer
+sur tes vraies prises :
+
+1. Lancer le serveur avec la variable, puis faire quelques conversations en A0-A1 :
+   ```bash
+   ASSIMIL_GARDER_PRISES=essais/sortie/prises uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+   Chaque prise y est rangée (`01.m4a`, `02.m4a`…), et `entendu.json` dit ce que le
+   serveur a compris et la réplique de l'IA à laquelle tu répondais. Les demandes
+   « Je ne sais pas le dire » ne sont pas gardées : elles s'écoutent en français.
+2. Réécouter les prises, et écrire dans `essais/sortie/prises/attendu.json` ce que tu as
+   vraiment dit, le français entre crochets : `{"3": "Quiero [une carafe d'eau], por favor"}`.
+   Seules les prises de ce fichier sont mesurées : inutile de toutes les relire, mais
+   mets aussi des prises justes, pas seulement les bizarres.
+3. Mesurer :
+   ```bash
+   uv run python essais/crosstalk.py --reelles --dossier essais/sortie/prises --candidats es,amorce
+   ```
+
+Rien ne sort du PC. Sans la variable, le serveur ne garde rien.
+
 ## `prononciation/` : le jugement des sons, sur les prises du 10 novembre
 
 Le prototype du 10 novembre (README principal, « L'accent au phonème »), repris

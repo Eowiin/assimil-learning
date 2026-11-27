@@ -114,6 +114,7 @@ PC n'entre dans le dépôt public :
 | `ASSIMIL_WHISPER` | `large-v3-turbo` | le modèle Whisper |
 | `ASSIMIL_APPAREIL` | `cuda` | `cpu` pour essayer sans carte graphique |
 | `ASSIMIL_WHISPER_CONTEXTE` | désactivé | `1` : Whisper reçoit la dernière réplique de l'IA comme amorce. À l'essai (`essais/whisper_contexte.py`) |
+| `ASSIMIL_GARDER_PRISES` | désactivé | un dossier (`essais/sortie/prises`) : chaque prise écoutée dans les deux langues (A0, A1) y est gardée, pour l'essai du crosstalk (`app/prises.py`) |
 | `ASSIMIL_PRONONCIATION_MODELE` | `xlsr53` | le wav2vec2 de la prononciation : `xlsr53`, `lv60` ou `cnam` |
 
 Les phrases de l'apprenant (conversation, écrit, placement) partent chez Mistral ; sans
