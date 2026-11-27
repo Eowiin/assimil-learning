@@ -357,3 +357,14 @@ verdict.
        une prise « adaptée » à une seule langue en conversation. Mais sur les 20 prises,
        autant de français gardé (11/14), moins d'espagnol (96,7 %), et des inventions
        sur les morceaux courts.
+   - **6c, l'app** (2026-11-27), en deux PR :
+     - **6c-1, le bouton « Je ne sais pas le dire »** (`ConversationSession.ask`,
+       `ConversationSetup.allowsAsk`) : en A0-A1, au jeu de rôle et à la rafale (pas au
+       calibrage, ni en conversation libre). Il ouvre une prise en français, envoyée par
+       le même bouton micro (orange pendant la demande) avec `ask=true`. La demande se
+       garde dans l'historique (`ConversationMessage.ask`, écrit seulement quand il est
+       vrai : les conversations d'avant se lisent toujours) et s'affiche à part. Elle ne
+       compte pas parmi les 6 réponses, ne part jamais avec `closing`, et n'est pas un
+       temps du réflexe : le temps repart à la fin de la réplique qui donne le mot.
+     - **6c-2, les mots cherchés** : au récapitulatif (`searched`), puis en cartes du
+       lexique (source `searched`, recto la phrase de l'IA qui donne le mot).

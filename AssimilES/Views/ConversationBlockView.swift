@@ -91,7 +91,8 @@ struct ConversationBlockContent: View {
         onOpen()
         opened = ConversationSetup(profile: profile, turns: SessionConversation.roleplayTurns, intro: intro,
                                    closesScene: true, limitHint: "La scène est finie : touche Terminer",
-                                   playbackRate: LearnerLevel.playbackRate(profile.level), onReview: { review in
+                                   playbackRate: LearnerLevel.playbackRate(profile.level),
+                                   allowsAsk: LearnerLevel.isBeginner(profile.level), onReview: { review in
             try? SessionConversation.record(review, in: session, pack: pack, at: .now, in: context)
             try? context.save()
         })

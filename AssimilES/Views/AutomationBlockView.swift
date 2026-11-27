@@ -83,6 +83,7 @@ struct AutomationBlockContent: View {
                                            targetSeconds: SessionAutomation.speedSeconds,
                                            title: AutomationPart.speed.title, topic: theme?.es,
                                            measuresReflex: true,
+                                           allowsAsk: LearnerLevel.isBeginner(profile.level),
                                            onReview: { review in
                 try? SessionConversation.record(review, in: session, pack: pack, part: AutomationPart.speed.key,
                                                 at: .now, in: context)

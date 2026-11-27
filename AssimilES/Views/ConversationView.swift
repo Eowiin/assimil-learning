@@ -25,6 +25,9 @@ struct ConversationSetup {
     var topic: String? = nil
     /// Mesurer le temps avant chaque réponse, montrer le combo réflexe (la rafale).
     var measuresReflex = false
+    /// Le bouton « Je ne sais pas le dire » (étape 6c) : un débutant (A0-A1), au jeu de
+    /// rôle et à la rafale.
+    var allowsAsk = false
     /// Le récapitulatif reçu, une fois par conversation (même après « Réessayer »).
     var onReview: ((ConversationReview) -> Void)? = nil
     /// La fin rend la main au lieu de fermer l'écran (« Continuer ») : le récapitulatif
@@ -123,6 +126,7 @@ struct ConversationView: View {
                 session.closesScene = setup.closesScene
                 session.topic = setup.topic
                 session.measuresReflex = setup.measuresReflex
+                session.allowsAsk = setup.allowsAsk
             } else if session.profile == nil {
                 session.profile = Self.profile(in: context)
             }
@@ -183,6 +187,23 @@ struct ConversationView: View {
     @ViewBuilder
     private func bubble(_ line: ConversationLine) -> some View {
         switch line.speaker {
+        case .learner where line.ask:
+            // Une demande, en français : elle se distingue d'une réponse.
+            HStack {
+                Spacer(minLength: 48)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Label("Je ne sais pas le dire", systemImage: "questionmark.bubble")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(line.text)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(StudyStyle.button, lineWidth: 1))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Ta demande : \(line.text)")
+                .accessibilityIdentifier("learner-ask")
+            }
         case .learner:
             HStack {
                 Spacer(minLength: 48)
@@ -250,6 +271,9 @@ struct ConversationView: View {
             if !session.currentHints.isEmpty {
                 hints(session.currentHints)
             }
+            if session.canAsk {
+                askButton
+            }
             if session.measuresReflex, let badge = session.reflex.badge {
                 reflexBadge(badge)
             }
@@ -291,7 +315,7 @@ struct ConversationView: View {
                 .font(.system(size: 30, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 84, height: 84)
-                .background(recording ? Color.red : StudyStyle.button, in: Circle())
+                .background(recording ? (session.asking ? Color.orange : Color.red) : StudyStyle.button, in: Circle())
                 .symbolEffect(.pulse, isActive: recording)
                 .contentTransition(.symbolEffect(.replace))
         }
@@ -301,6 +325,19 @@ struct ConversationView: View {
         .sensoryFeedback(.start, trigger: recording)
         .accessibilityLabel(recording ? "Envoyer" : "Parler")
         .accessibilityIdentifier("conversation-mic")
+    }
+
+    /// « Je ne sais pas le dire » : on dit en français ce qui manque, l'IA donne le mot.
+    private var askButton: some View {
+        Button {
+            Task { await session.ask() }
+        } label: {
+            Label("Je ne sais pas le dire", systemImage: "questionmark.bubble")
+                .font(.subheadline.weight(.semibold))
+        }
+        .buttonStyle(.bordered)
+        .accessibilityHint("Dis en français ce que tu veux dire : l'IA te donne l'espagnol")
+        .accessibilityIdentifier("conversation-ask")
     }
 
     private var isFailed: Bool {
@@ -319,6 +356,8 @@ struct ConversationView: View {
             } else {
                 hint("Touche le micro pour répondre")
             }
+        case .recording where session.asking:
+            hint("Dis-le en français… touche pour envoyer")
         case .recording:
             hint("Je t'écoute… touche pour envoyer")
         case .opening, .waiting:
