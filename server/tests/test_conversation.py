@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app import main
 from app.conversation import (CONSIGNE, CONSIGNE_CHERCHES, CONSIGNE_CORRECTION, DEMANDE, FIN_DE_SCENE,
                               Amorce, Amorces, Correction, Corrections, CorrectionsCherches,
-                              MotCherche, Profil, amorces_propres, consigne, langue_d_ecoute,
+                              Message, MotCherche, MotTrouve, Profil, amorces_propres, consigne, langue_d_ecoute,
                               mots_cherches_propres, note_du_tour, sans_francais)
 from app.llm import LLMIndisponible
 from app.moteurs import Reglages
@@ -453,7 +453,25 @@ def test_review_d_un_debutant_releve_les_mots_cherches(client, faux):
     corps = client.post("/conversation/review", json={"history": historique, "level": "A0"}).json()
     assert faux.modele is CorrectionsCherches
     assert CONSIGNE_CHERCHES in faux.messages[0]["content"]
-    assert corps["searched"] == [{"fr": "couteau", "es": "cuchillo", "lemma": "cuchillo"}]
+    assert corps["searched"] == [{"fr": "couteau", "es": "cuchillo", "lemma": "cuchillo",
+                                  "sentence": None, "sentence_fr": None}]
+
+
+def test_review_rend_la_phrase_du_partenaire(client, faux):
+    """Étape 6c : la phrase qui donne le mot, et sa traduction, font la carte."""
+    faux.cherches = [MotCherche(fr="couteau", es="cuchillo", lemma="cuchillo",
+                                sentence="aqui tiene el cuchillo", sentence_fr="Voici le couteau."),
+                     MotCherche(fr="fourchette", es="tenedor", lemma="tenedor",
+                                sentence="Aquí está el tenedor.", sentence_fr="Voici la fourchette.")]
+    historique = [*HISTORIQUE, {"role": "user", "content": "couteau", "ask": True},
+                  {"role": "assistant", "content": "¡Claro! Aquí tiene el cuchillo. ¿Algo más?"}]
+    corps = client.post("/conversation/review", json={"history": historique, "level": "A0"}).json()
+    assert "sentence_fr" in faux.messages[0]["content"]
+    assert corps["searched"] == [
+        {"fr": "couteau", "es": "cuchillo", "lemma": "cuchillo",
+         "sentence": "aqui tiene el cuchillo", "sentence_fr": "Voici le couteau."},
+        # Le partenaire ne l'a jamais dite : pas de phrase.
+        {"fr": "fourchette", "es": "tenedor", "lemma": "tenedor", "sentence": None, "sentence_fr": None}]
 
 
 def test_review_au_dela_de_l_a1_ne_change_pas(client, faux):
@@ -474,7 +492,17 @@ def test_review_une_demande_suffit_et_se_dit_comme_telle(client, faux):
 
 def test_mots_cherches_propres():
     mots = [MotCherche(fr=" pain ", es=" pan ", lemma=" Pan "), MotCherche(fr="x", es="", lemma="y")]
-    assert mots_cherches_propres(mots) == [MotCherche(fr="pain", es="pan", lemma="pan")]
+    assert mots_cherches_propres(mots) == [MotTrouve(fr="pain", es="pan", lemma="pan")]
+
+
+def test_la_phrase_doit_etre_entiere_et_traduite():
+    historique = [Message(role="assistant", content="¿Quieres pan? Toma el pan."),
+                  Message(role="user", content="Comment on dit beurre ?")]
+    mot = lambda phrase, fr: MotCherche(fr="pain", es="pan", lemma="pan", sentence=phrase, sentence_fr=fr)
+    assert mots_cherches_propres([mot("Toma el pan.", "Prends le pain.")], historique)[0].sentence == "Toma el pan."
+    # Un bout de mot ne suffit pas, ni une phrase sans traduction, ni une phrase de l'élève.
+    for phrase, fr in [("oma el pa", "x"), ("Toma el pan.", " "), ("Comment on dit beurre", "x")]:
+        assert mots_cherches_propres([mot(phrase, fr)], historique)[0].sentence is None
 
 
 def test_sans_francais():

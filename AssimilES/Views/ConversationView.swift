@@ -88,7 +88,9 @@ struct ConversationView: View {
             if finished {
                 ConversationRecapView(review: session.review, objectiveUses: session.lastReview?.objectiveUses,
                                       earlier: earlier,
-                                      reflex: session.measuresReflex ? session.reflex : nil) { await review() }
+                                      reflex: session.measuresReflex ? session.reflex : nil,
+                                      searched: session.lastReview?.searched,
+                                      searchedBecomeCards: setup?.allowsAsk == true) { await review() }
             } else {
                 VStack(spacing: 0) {
                     transcript

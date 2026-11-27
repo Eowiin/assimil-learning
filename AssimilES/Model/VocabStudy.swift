@@ -304,7 +304,8 @@ struct VocabSession {
     }
 }
 
-/// Les mots du lexique adaptatif qui ont leur phrase (vus dans le texte du bloc 2) :
+/// Les mots du lexique adaptatif qui ont leur phrase (vus dans le texte du bloc 2, ou
+/// cherchés en conversation depuis l'étape 6c) :
 /// de quoi faire leurs cartes, dans l'ordre où ils ont été vus.
 struct LexiconWords {
     struct Word: Equatable {
@@ -312,6 +313,8 @@ struct LexiconWords {
         let sentence: String
         let form: String?
         let translation: String
+        /// Cherché en conversation (étape 6c), plutôt que lu dans le texte du jour.
+        var searched = false
     }
 
     /// La source d'un mot entré dans l'état par le texte du bloc 2.
@@ -331,7 +334,7 @@ struct LexiconWords {
             .filter { $0.language == language && $0.hasContext }
             .sorted { $0.firstSeenAt == $1.firstSeenAt ? $0.lemma < $1.lemma : $0.firstSeenAt < $1.firstSeenAt }
             .map { Word(lemma: $0.lemma, sentence: $0.contextES ?? "", form: $0.contextForm,
-                        translation: $0.contextFR ?? "") })
+                        translation: $0.contextFR ?? "", searched: $0.source == SearchedWords.source) })
     }
 
     func word(_ lemma: String) -> Word? { byLemma[lemma] }

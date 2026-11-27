@@ -12,6 +12,10 @@ struct ConversationRecapView: View {
     var earlier = ErrorPatterns()
     /// Les temps de réaction d'une rafale. Nil : une autre conversation.
     var reflex: ReflexMeter? = nil
+    /// Les mots que l'apprenant a cherchés (étape 6c). Nil ou vide : pas de section.
+    var searched: [SearchedWord]? = nil
+    /// Les mots cherchés deviennent des cartes (le jeu de rôle, la rafale) : on le dit.
+    var searchedBecomeCards = false
     let retry: () async -> Void
 
     var body: some View {
@@ -70,6 +74,7 @@ struct ConversationRecapView: View {
             .frame(maxWidth: .infinity, minHeight: 200)
         case .done(let corrections):
             if let objectiveUses { objective(objectiveUses) }
+            if let searched, !searched.isEmpty { searchedWords(searched) }
             if corrections.isEmpty { clean } else { list(corrections) }
             if let correctedText, !corrections.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -136,6 +141,33 @@ struct ConversationRecapView: View {
                 .accessibilityIdentifier("recap-objective-use")
             }
         }
+        .studySection()
+    }
+
+    /// Ce qu'on a dit en français ou demandé, et comment ça se dit.
+    private func searchedWords(_ words: [SearchedWord]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Les mots que tu as cherchés")
+                .font(.title3.weight(.semibold))
+            ForEach(Array(words.enumerated()), id: \.offset) { _, word in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(word.es)
+                        .font(.system(.body, design: .serif).weight(.semibold))
+                    Text(word.fr)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("recap-searched-word")
+            }
+            if searchedBecomeCards {
+                Label("Ils rejoignent tes révisions de vocabulaire.", systemImage: "rectangle.stack.badge.plus")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .studySection()
     }
 

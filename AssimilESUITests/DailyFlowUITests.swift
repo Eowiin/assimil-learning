@@ -434,6 +434,10 @@ final class DailyFlowUITests: XCTestCase {
         snapshot(app, "seance-conversation-demande")
         tap(app.buttons["conversation-end"])
         XCTAssertTrue(app.descendants(matching: .any)["recap-objective-use"].firstMatch.waitForExistence(timeout: 5))
+        // Le mot demandé revient au récapitulatif (étape 6c).
+        let searched = app.descendants(matching: .any)["recap-searched-word"].firstMatch
+        XCTAssertTrue(searched.exists)
+        XCTAssertTrue(searched.label.contains("cansado"), searched.label)
         snapshot(app, "seance-conversation-recap")
         tap(app.buttons["recap-close"])
         let tally = app.descendants(matching: .any)["roleplay-tally"]

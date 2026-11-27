@@ -21,7 +21,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .conversation import (Amorce, Amorces, Correction, CorrectionEcrite, Corrections, CorrectionsEcrit,
-                           CorrectionsEcritObjectif, CorrectionsObjectif, Message, MotCherche, Moteurs,
+                           CorrectionsEcritObjectif, CorrectionsObjectif, Message, MotTrouve, Moteurs,
                            Niveau, Objectif, Profil, UsageObjectif, amorces_propres, avec_cherches,
                            connus_du_tour, derniere_replique, langue_d_ecoute, lemmes_produits,
                            messages_amorces, messages_correction, messages_ecrit, messages_ouverture,
@@ -99,7 +99,7 @@ class Review(BaseModel):
     corrections: list[Correction]
     objective_uses: list[UsageObjectif] | None = None
     lemmas_produced: list[str] | None = None
-    searched: list[MotCherche] | None = None
+    searched: list[MotTrouve] | None = None
 
 
 class WritingRequest(BaseModel):
@@ -398,7 +398,7 @@ def create_app(moteurs: Moteurs | None = None, charger: bool = True,
         with verrou:
             recap, _ = penser(m.structurer,
                               messages_correction(body.history, body.objective, body.level), modele)
-            trouves = mots_cherches_propres(recap.searched) if cherches else None
+            trouves = mots_cherches_propres(recap.searched, body.history) if cherches else None
             produits = lemmes(request, sans_francais(phrases, [c.fr for c in trouves or []]))
         return Review(corrections=vraies_corrections(recap.corrections),
                       objective_uses=recap.objective_uses if body.objective else None,

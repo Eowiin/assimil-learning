@@ -388,4 +388,5 @@ def test_les_lemmes_produits_sans_le_francais_ni_les_demandes():
     corps = client_avec(faux, FausseLangue()).post(
         "/conversation/review", json={"history": historique, "level": "A0"}).json()
     assert corps["lemmas_produced"] == ["quiero"]
-    assert corps["searched"] == [{"fr": "un couteau", "es": "un cuchillo", "lemma": "cuchillo"}]
+    assert corps["searched"] == [{"fr": "un couteau", "es": "un cuchillo", "lemma": "cuchillo",
+                                  "sentence": None, "sentence_fr": None}]

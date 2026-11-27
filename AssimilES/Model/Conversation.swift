@@ -146,15 +146,32 @@ struct ObjectiveUse: Codable, Equatable, Sendable {
     }
 }
 
+/// Un mot que l'apprenant a dit en français ou demandé (étapes 6b, 6c), et son espagnol.
+/// `sentence` : la phrase de l'IA qui le donne, et `sentenceFR` sa traduction, le recto
+/// et le verso de sa carte ; nil quand l'IA ne l'a pas dite.
+struct SearchedWord: Codable, Equatable, Sendable {
+    let fr: String
+    let es: String
+    let lemma: String
+    var sentence: String? = nil
+    var sentenceFR: String? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case fr, es, lemma, sentence, sentenceFR = "sentence_fr"
+    }
+}
+
 /// Le récapitulatif : les corrections, et, en API 2, l'objectif jugé (null sans
-/// objectif demandé) et les lemmes que l'apprenant a produits (null sans spaCy).
+/// objectif demandé), les lemmes que l'apprenant a produits (null sans spaCy) et les
+/// mots qu'il a cherchés (null au-delà de l'A1 sans demande).
 struct ConversationReview: Decodable, Equatable, Sendable {
     var corrections: [ConversationCorrection]
     var objectiveUses: [ObjectiveUse]? = nil
     var lemmasProduced: [String]? = nil
+    var searched: [SearchedWord]? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case corrections, objectiveUses = "objective_uses", lemmasProduced = "lemmas_produced"
+        case corrections, objectiveUses = "objective_uses", lemmasProduced = "lemmas_produced", searched
     }
 }
 
@@ -612,7 +629,12 @@ struct FakeConversationService: ConversationService {
                 ObjectiveUse(said: "Hoy yo soy cansado.", valid: true, analysis: "L'objectif est employé."),
                 ObjectiveUse(said: "¡Vaya!", valid: false, analysis: "Pas d'emploi correct de l'objectif."),
             ],
-            lemmasProduced: ["hoy", "cansado"])
+            lemmasProduced: ["hoy", "cansado"],
+            // Un débutant, ou une demande : le mot cherché, avec la phrase qui le donne.
+            searched: history.contains(where: \.ask) || LearnerLevel.isBeginner(level) ? [
+                SearchedWord(fr: "fatigué", es: "cansado", lemma: "cansado",
+                             sentence: "Se dice «cansado».", sentenceFR: "On dit « fatigué »."),
+            ] : nil)
     }
 }
 
