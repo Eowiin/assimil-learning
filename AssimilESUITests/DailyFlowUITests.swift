@@ -424,8 +424,20 @@ final class DailyFlowUITests: XCTestCase {
         tap(app.buttons["conversation-mic"])
         tap(app.buttons["conversation-mic"])
         XCTAssertTrue(app.staticTexts["¡Vaya! ¿Has dormido mal?"].waitForExistence(timeout: 5))
+        // Un débutant (A0) peut demander un mot : la demande se distingue d'une réponse,
+        // et l'IA donne le mot.
+        tap(app.buttons["conversation-ask"])
+        tap(app.buttons["conversation-mic"])
+        XCTAssertTrue(app.descendants(matching: .any)["learner-ask"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Se dice «cansado». ¿Estás cansado?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Touche le micro pour répondre (2 sur 6)"].exists, "une demande n'est pas une réponse")
+        snapshot(app, "seance-conversation-demande")
         tap(app.buttons["conversation-end"])
         XCTAssertTrue(app.descendants(matching: .any)["recap-objective-use"].firstMatch.waitForExistence(timeout: 5))
+        // Le mot demandé revient au récapitulatif (étape 6c).
+        let searched = app.descendants(matching: .any)["recap-searched-word"].firstMatch
+        XCTAssertTrue(searched.exists)
+        XCTAssertTrue(searched.label.contains("cansado"), searched.label)
         snapshot(app, "seance-conversation-recap")
         tap(app.buttons["recap-close"])
         let tally = app.descendants(matching: .any)["roleplay-tally"]

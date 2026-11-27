@@ -122,7 +122,7 @@ struct VocabReviewView: View {
                         .accessibilityIdentifier("vocab-front")
                     VoiceButton(text: word.sentence, player: voicePlayer) { player.pause() }
                     if case .new = entry {
-                        Text("Nouveau · texte du jour")
+                        Text(word.searched ? "Nouveau · mot cherché" : "Nouveau · texte du jour")
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 10).padding(.vertical, 4)
                             .background(StudyStyle.surface, in: Capsule())

@@ -37,12 +37,15 @@ enum SessionConversation {
 
     /// Le récapitulatif d'une conversation, à inscrire une fois : chaque emploi de
     /// l'objectif va au journal (une réussite au plus pour la conversation), les mots
-    /// produits montent, la partie du bloc est cochée. `part` : le jeu de rôle, ou la
+    /// produits montent, les mots cherchés deviennent des cartes, la partie du bloc est
+    /// cochée. `part` : le jeu de rôle, ou la
     /// rafale du bloc 4.
     static func record(_ review: ConversationReview, in session: StudySession, pack: CurriculumPack,
                        part: String = SessionConversation.part, at date: Date, in context: ModelContext) throws {
         try recordProduction(uses: review.objectiveUses, lemmas: review.lemmasProduced, objectiveID: session.objectiveID,
                              source: ObjectiveEvidence.Source.conversation, pack: pack, at: date, in: context)
+        // Les mots cherchés (étape 6c) deviennent des cartes du lexique.
+        try SearchedWords.record(review.searched ?? [], language: pack.language, ranks: pack.ranks, at: date, in: context)
         StudySessionProgress.markPart(part, in: session, at: date)
     }
 

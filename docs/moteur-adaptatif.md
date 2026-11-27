@@ -83,7 +83,7 @@ conversation ou à l'écrit deux jours différents.
 | `POST /session/generate-input` | `level`, `theme`, `objective`, `known_lemmas[]`, `new_lemmas[6-8]`, `target_words` | `text`, `sentences[{es, fr}]`, `coverage`, `unknown_lemmas[]`, `new_used[]`, `objective_hits[]` (places des phrases, ou null), `attempts`, `new_occurrences[{lemma, sentence, form}]` (étape 4c) |
 | `POST /tts` | `sentences[]` (40 au plus) | `audios[{text, audio}]` : un m4a par phrase, en base64 ; `seconds` |
 | `POST /conversation/start`, `/turn` | `profile` étendu : `level`, `objective`, `mode` (`roleplay`, `speed`), `allowed_lemmas[]`, `hints` (5b) ; `/turn` : `closing` (5b), `ask` (6b) ; `history[]` : `ask` par message (6b) | + `coverage`, `attempts` (null sans `allowed_lemmas`), `hints[{es, fr}]` (null sans demande) |
-| `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]`, `searched[{fr, es, lemma}]` (6b ; null au-delà de l'A1 sans demande) |
+| `POST /conversation/review` | + `objective` | + `objective_uses[{said, valide, analyse_courte}]`, `lemmas_produced[]`, `searched[{fr, es, lemma, sentence, sentence_fr}]` (6b ; null au-delà de l'A1 sans demande ; `sentence`, `sentence_fr` en 6c, null si la phrase n'est pas dans une réplique de l'IA) |
 | `POST /writing/review` | `text`, `level`, `objective` | `corrections[]` (catégorie `orthographe` en plus), `corrected_text`, `objective_uses[]`, `lemmas_produced[]` |
 
 Tout champ nouveau est optionnel. Le serveur annonce l'API 2 depuis l'étape 3b, avec
@@ -357,3 +357,27 @@ verdict.
        une prise « adaptée » à une seule langue en conversation. Mais sur les 20 prises,
        autant de français gardé (11/14), moins d'espagnol (96,7 %), et des inventions
        sur les morceaux courts.
+   - **6c, l'app** (2026-11-27), en deux PR :
+     - **6c-1, le bouton « Je ne sais pas le dire »** (`ConversationSession.ask`,
+       `ConversationSetup.allowsAsk`) : en A0-A1, au jeu de rôle et à la rafale (pas au
+       calibrage, ni en conversation libre). Il ouvre une prise en français, envoyée par
+       le même bouton micro (orange pendant la demande) avec `ask=true`. La demande se
+       garde dans l'historique (`ConversationMessage.ask`, écrit seulement quand il est
+       vrai : les conversations d'avant se lisent toujours) et s'affiche à part. Elle ne
+       compte pas parmi les 6 réponses, ne part jamais avec `closing`, et n'est pas un
+       temps du réflexe : le temps repart à la fin de la réplique qui donne le mot.
+     - **6c-2, les mots cherchés** (`SearchedWord`, `SearchedWords`) : le serveur rend
+       aussi, pour chaque mot, la phrase de l'IA qui le donne (`sentence`, recopiée mot
+       pour mot) et sa traduction (`sentence_fr`), dans le même appel. Il ne la garde
+       que si elle est bien dans une réplique de l'IA (casse, ponctuation et accents
+       mis à part) et qu'elle est traduite : une phrase inventée ferait une carte
+       fausse. Essai : `essais/cherches.py`.
+       - **Au récapitulatif**, une section « Les mots que tu as cherchés » : l'espagnol,
+         puis le français dit. Au jeu de rôle et à la rafale, « Ils rejoignent tes
+         révisions de vocabulaire ».
+       - **En cartes** : chaque mot devient une carte `recognize` du paquet
+         `lexique-es`, comme un mot du texte du bloc 2. Inconnu de l'état, il y entre
+         « vu », source `searched` ; connu sans phrase, il la reçoit et garde sa source ;
+         déjà muni d'une phrase, il garde sa carte. Recto la phrase de l'IA, la forme
+         donnée en gras ; verso sa traduction. Sans phrase gardée : l'espagnol seul au
+         recto, le français dit au verso. La carte s'annonce « Nouveau · mot cherché ».

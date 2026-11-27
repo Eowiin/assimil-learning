@@ -120,6 +120,20 @@ uv run python essais/amorces.py
 uv run python essais/amorces.py --niveaux A1 A2
 ```
 
+## `cherches.py` : les mots cherchés et leur phrase (étape 6c)
+
+Charge l'IA seule. Quatre conversations de débutant écrites d'avance (demandes « Je ne
+sais pas le dire », français glissé dans une réponse, et une sans rien) passent au
+récapitulatif, comme sur le serveur. Pour chaque mot cherché : le lemme, la phrase du
+partenaire qui le donne (le recto de la carte) et sa traduction (le verso). Une phrase
+que l'IA a reformulée ou inventée est écartée par le serveur, et le script le dit. À
+regarder : la bonne phrase, une traduction juste, aucun mot oublié.
+
+```bash
+uv run python essais/cherches.py
+uv run python essais/cherches.py --fois 3   # la stabilité
+```
+
 ## `voix.py` : Voxtral, Pocket TTS et XTTS côte à côte (étape 5c)
 
 Les mêmes phrases dites par chaque voix : des mots seuls (Pocket est connu pour couper

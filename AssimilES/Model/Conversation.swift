@@ -9,6 +9,32 @@ struct ConversationMessage: Codable, Equatable, Sendable {
     enum Role: String, Codable, Sendable { case user, assistant }
     let role: Role
     let content: String
+    /// Une demande « Je ne sais pas le dire » (étape 6c), dite en français. Écrit
+    /// seulement quand il est vrai : l'historique d'une conversation sans demande part
+    /// tel qu'avant, et les conversations gardées avant se lisent toujours.
+    var ask = false
+
+    init(role: Role, content: String, ask: Bool = false) {
+        self.role = role
+        self.content = content
+        self.ask = ask
+    }
+
+    private enum CodingKeys: String, CodingKey { case role, content, ask }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        role = try values.decode(Role.self, forKey: .role)
+        content = try values.decode(String.self, forKey: .content)
+        ask = try values.decodeIfPresent(Bool.self, forKey: .ask) ?? false
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(role, forKey: .role)
+        try values.encode(content, forKey: .content)
+        if ask { try values.encode(true, forKey: .ask) }
+    }
 }
 
 /// Le temps de chaque étape côté serveur, en secondes.
@@ -120,15 +146,32 @@ struct ObjectiveUse: Codable, Equatable, Sendable {
     }
 }
 
+/// Un mot que l'apprenant a dit en français ou demandé (étapes 6b, 6c), et son espagnol.
+/// `sentence` : la phrase de l'IA qui le donne, et `sentenceFR` sa traduction, le recto
+/// et le verso de sa carte ; nil quand l'IA ne l'a pas dite.
+struct SearchedWord: Codable, Equatable, Sendable {
+    let fr: String
+    let es: String
+    let lemma: String
+    var sentence: String? = nil
+    var sentenceFR: String? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case fr, es, lemma, sentence, sentenceFR = "sentence_fr"
+    }
+}
+
 /// Le récapitulatif : les corrections, et, en API 2, l'objectif jugé (null sans
-/// objectif demandé) et les lemmes que l'apprenant a produits (null sans spaCy).
+/// objectif demandé), les lemmes que l'apprenant a produits (null sans spaCy) et les
+/// mots qu'il a cherchés (null au-delà de l'A1 sans demande).
 struct ConversationReview: Decodable, Equatable, Sendable {
     var corrections: [ConversationCorrection]
     var objectiveUses: [ObjectiveUse]? = nil
     var lemmasProduced: [String]? = nil
+    var searched: [SearchedWord]? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case corrections, objectiveUses = "objective_uses", lemmasProduced = "lemmas_produced"
+        case corrections, objectiveUses = "objective_uses", lemmasProduced = "lemmas_produced", searched
     }
 }
 
@@ -138,9 +181,10 @@ protocol ConversationService: Sendable {
     /// `profile` : ce que le partenaire sait de l'apprenant, nil sans profil.
     func start(topic: String?, profile: ConversationProfile?) async throws -> PartnerReply
     /// `audio` : l'enregistrement du tour. `text` le remplace, pour les tests. `closing` :
-    /// la dernière réponse permise, l'IA conclut la scène.
+    /// la dernière réponse permise, l'IA conclut la scène. `ask` : une demande « Je ne
+    /// sais pas le dire », écoutée en français (étape 6c).
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply
+              profile: ConversationProfile?, closing: Bool, ask: Bool) async throws -> TurnReply
     /// `objective` : l'objectif à juger dans les phrases de l'apprenant. `level` : son niveau.
     func review(history: [ConversationMessage], objective: ConversationObjective?,
                 level: String?) async throws -> ConversationReview
@@ -156,12 +200,12 @@ extension ConversationService {
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage]) async throws -> TurnReply {
-        try await turn(audio: audio, text: text, history: history, profile: nil, closing: false)
+        try await turn(audio: audio, text: text, history: history, profile: nil, closing: false, ask: false)
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
               profile: ConversationProfile?) async throws -> TurnReply {
-        try await turn(audio: audio, text: text, history: history, profile: profile, closing: false)
+        try await turn(audio: audio, text: text, history: history, profile: profile, closing: false, ask: false)
     }
 }
 
@@ -208,8 +252,8 @@ struct ConversationClient: ConversationService {
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply {
-        let form = Self.form(audio: audio, text: text, history: history, profile: profile, closing: closing)
+              profile: ConversationProfile?, closing: Bool, ask: Bool) async throws -> TurnReply {
+        let form = Self.form(audio: audio, text: text, history: history, profile: profile, closing: closing, ask: ask)
         let body = try await post("conversation/turn", body: form.body, contentType: form.contentType,
                                   as: ReplyBody.self)
         return TurnReply(heard: body.heard ?? "", reply: try body.partner())
@@ -224,7 +268,7 @@ struct ConversationClient: ConversationService {
 
     /// Le formulaire d'un tour : l'historique en JSON, puis l'audio ou le texte.
     static func form(audio: Data?, text: String?, history: [ConversationMessage], profile: ConversationProfile? = nil,
-                     closing: Bool = false,
+                     closing: Bool = false, ask: Bool = false,
                      boundary: String = "assimil-\(UUID().uuidString)") -> (body: Data, contentType: String) {
         var form = MultipartForm(boundary: boundary)
         // Clés triées : le même historique donne toujours le même texte.
@@ -237,6 +281,7 @@ struct ConversationClient: ConversationService {
         }
         if let text { form.field("text", text) }
         if closing { form.field("closing", "true") }
+        if ask { form.field("ask", "true") }
         if let audio { form.audio("audio", filename: "tour.m4a", audio) }
         return form.finished()
     }
@@ -259,6 +304,8 @@ struct ConversationLine: Identifiable, Equatable {
     var audio: Data?
     /// Les débuts de réponse proposés sous cette réplique (A0, A1).
     var hints: [ConversationHint] = []
+    /// Une demande « Je ne sais pas le dire » de l'apprenant (étape 6c).
+    var ask = false
 }
 
 /// Ce que l'écran demande à l'audio : enregistrer un tour, jouer une réplique.
@@ -325,11 +372,16 @@ final class ConversationSession {
     /// Mesurer le temps avant chaque réponse (la rafale du bloc 4, étape 5c-3).
     var measuresReflex = false
     private(set) var reflex = ReflexMeter()
+    /// Le bouton « Je ne sais pas le dire » (étape 6c) : un débutant, au jeu de rôle et
+    /// à la rafale.
+    var allowsAsk = false
+    /// La prise en cours est une demande, dite en français.
+    private(set) var asking = false
 
     private let service: any ConversationService
     private let sound: any ConversationSound
     /// Ce qui a échoué, à renvoyer tel quel : l'ouverture, ou l'audio d'un tour.
-    private enum Pending { case opening, turn(Data) }
+    private enum Pending { case opening, turn(Data, ask: Bool) }
     private var pending: Pending?
     /// Le top départ de la réponse : la fin de la dernière réplique de l'IA, ou l'appui
     /// sur le micro qui la coupe. Il reste posé après une prise annulée : hésiter compte.
@@ -348,11 +400,14 @@ final class ConversationSession {
 
     /// L'historique envoyé au serveur, qui ne garde rien.
     var history: [ConversationMessage] {
-        lines.map { ConversationMessage(role: $0.speaker == .learner ? .user : .assistant, content: $0.text) }
+        lines.map { ConversationMessage(role: $0.speaker == .learner ? .user : .assistant, content: $0.text,
+                                        ask: $0.ask) }
     }
 
     var learnerSpoke: Bool { lines.contains { $0.speaker == .learner } }
-    var learnerTurns: Int { lines.filter { $0.speaker == .learner }.count }
+    /// Les réponses de l'apprenant. Une demande n'en est pas une : elle ne compte ni
+    /// dans la limite du jeu de rôle, ni pour la fin de scène.
+    var learnerTurns: Int { lines.filter { $0.speaker == .learner && !$0.ask }.count }
     var reachedLimit: Bool { turnLimit.map { learnerTurns >= $0 } ?? false }
 
     /// Les débuts de réponse à montrer : ceux de la dernière réplique, quand c'est à
@@ -360,6 +415,12 @@ final class ConversationSession {
     var currentHints: [ConversationHint] {
         guard phase == .ready, !reachedLimit, let last = lines.last, last.speaker == .partner else { return [] }
         return last.hints
+    }
+
+    /// « Je ne sais pas le dire » peut se toucher : c'est à l'apprenant, et la scène
+    /// n'est pas finie.
+    var canAsk: Bool {
+        allowsAsk && !reachedLimit && (phase == .ready || phase == .micDenied)
     }
 
     /// Le tour qui part est le dernier permis.
@@ -406,22 +467,44 @@ final class ConversationSession {
         case .ready, .micDenied:
             guard !reachedLimit else { return }
             if measuresReflex, cue == nil { cue = now() }
-            sound.stopPlayback()
-            playingLine = nil
-            onset = nil
-            phase = await sound.startRecording { [weak self] time in self?.voiceStarted(at: time) }
-                ? .recording : .micDenied
+            await startRecording(asking: false)
         case .recording:
+            let ask = asking
+            asking = false
             guard let audio = sound.stopRecording(), !audio.isEmpty else {
                 onset = nil
                 phase = .ready
                 return
             }
-            measureReflex()
-            await send(.turn(audio))
+            if ask {
+                // Une demande n'est pas une réponse : pas de temps compté, et le temps
+                // repart à la fin de la réplique qui donne le mot.
+                cue = nil
+                onset = nil
+            } else {
+                measureReflex()
+            }
+            await send(.turn(audio, ask: ask))
         case .opening, .waiting, .failed:
             break
         }
+    }
+
+    /// « Je ne sais pas le dire » : une prise en français, envoyée par le même bouton
+    /// micro. Le serveur l'écoute en français et l'IA donne le mot dans son rôle.
+    func ask() async {
+        guard canAsk else { return }
+        await startRecording(asking: true)
+    }
+
+    private func startRecording(asking: Bool) async {
+        sound.stopPlayback()
+        playingLine = nil
+        onset = nil
+        self.asking = asking
+        let allowed = await sound.startRecording { [weak self] time in self?.voiceStarted(at: time) }
+        if !allowed { self.asking = false }
+        phase = allowed ? .recording : .micDenied
     }
 
     /// Abandonner une prise en cours, sans l'envoyer.
@@ -429,6 +512,7 @@ final class ConversationSession {
         guard phase == .recording else { return }
         _ = sound.stopRecording()
         onset = nil
+        asking = false
         phase = .ready
     }
 
@@ -470,10 +554,11 @@ final class ConversationSession {
             case .opening:
                 let reply = try await service.start(topic: topic, profile: profile)
                 partner = ConversationLine(speaker: .partner, text: reply.text, audio: reply.audio, hints: reply.hints)
-            case .turn(let audio):
+            case .turn(let audio, let ask):
+                // Une demande ne conclut jamais la scène (le serveur l'ignorerait).
                 let turn = try await service.turn(audio: audio, text: nil, history: history, profile: profile,
-                                                  closing: isLastTurn)
-                lines.append(ConversationLine(speaker: .learner, text: turn.heard))
+                                                  closing: !ask && isLastTurn, ask: ask)
+                lines.append(ConversationLine(speaker: .learner, text: turn.heard, ask: ask))
                 partner = ConversationLine(speaker: .partner, text: turn.reply.text, audio: turn.reply.audio,
                                            hints: turn.reply.hints)
             }
@@ -513,8 +598,14 @@ struct FakeConversationService: ConversationService {
     }
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply {
-        TurnReply(heard: text ?? "Hoy yo soy cansado.",
+              profile: ConversationProfile?, closing: Bool, ask: Bool) async throws -> TurnReply {
+        if ask {
+            return TurnReply(heard: "Comment on dit fatigué ?",
+                             reply: PartnerReply(text: "Se dice «cansado». ¿Estás cansado?", audio: Data(),
+                                                 timings: ConversationTimings(listen: 0, think: 0, speak: 0),
+                                                 hints: Self.hints(profile)))
+        }
+        return TurnReply(heard: text ?? "Hoy yo soy cansado.",
                   reply: PartnerReply(text: closing ? "¡Que descanses! Hasta pronto." : "¡Vaya! ¿Has dormido mal?",
                                       audio: Data(), timings: ConversationTimings(listen: 0, think: 0, speak: 0),
                                       hints: closing ? [] : Self.hints(profile)))
@@ -538,7 +629,12 @@ struct FakeConversationService: ConversationService {
                 ObjectiveUse(said: "Hoy yo soy cansado.", valid: true, analysis: "L'objectif est employé."),
                 ObjectiveUse(said: "¡Vaya!", valid: false, analysis: "Pas d'emploi correct de l'objectif."),
             ],
-            lemmasProduced: ["hoy", "cansado"])
+            lemmasProduced: ["hoy", "cansado"],
+            // Un débutant, ou une demande : le mot cherché, avec la phrase qui le donne.
+            searched: history.contains(where: \.ask) || LearnerLevel.isBeginner(level) ? [
+                SearchedWord(fr: "fatigué", es: "cansado", lemma: "cansado",
+                             sentence: "Se dice «cansado».", sentenceFR: "On dit « fatigué »."),
+            ] : nil)
     }
 }
 

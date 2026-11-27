@@ -522,7 +522,11 @@ fois chacun :
 - "fr" : le passage en français, tel que l'élève l'a dit ;
 - "es" : l'équivalent en espagnol d'Espagne, celui que le partenaire lui a donné s'il l'a \
 fait ;
-- "lemma" : le lemme espagnol du mot principal (infinitif, masculin singulier, sans article).
+- "lemma" : le lemme espagnol du mot principal (infinitif, masculin singulier, sans article) ;
+- "sentence" : la phrase du partenaire où il donne ou emploie cet équivalent, recopiée mot \
+pour mot depuis sa réplique (une seule phrase, pas toute la réplique) ; "" s'il ne l'a pas \
+dit ;
+- "sentence_fr" : la traduction française de cette phrase ; "" si "sentence" est vide.
 Ne mets pas les mots d'hésitation (« euh », « attends », « comment on dit »). S'il n'a rien \
 dit en français, renvoie une liste vide."""
 
@@ -594,10 +598,24 @@ class CorrectionsObjectif(Corrections):
 
 
 class MotCherche(BaseModel):
-    """Un mot que l'apprenant a dit en français ou demandé, et son espagnol."""
+    """Un mot que l'apprenant a dit en français ou demandé, et son espagnol. `sentence` :
+    la phrase du partenaire qui le donne, et `sentence_fr` sa traduction (étape 6c) : le
+    recto et le verso de sa carte dans l'app."""
     fr: str
     es: str
     lemma: str
+    sentence: str = ""
+    sentence_fr: str = ""
+
+
+class MotTrouve(BaseModel):
+    """Un mot cherché, tel que l'app le reçoit : la phrase est null quand le partenaire
+    ne l'a pas dite (ou que l'IA l'a inventée)."""
+    fr: str
+    es: str
+    lemma: str
+    sentence: str | None = None
+    sentence_fr: str | None = None
 
 
 class Cherches(BaseModel):
@@ -618,15 +636,22 @@ def modele_correction(objectif: bool, cherches: bool) -> type[Corrections]:
     return CorrectionsObjectif if objectif else Corrections
 
 
-def mots_cherches_propres(mots: list[MotCherche]) -> list[MotCherche]:
-    """Sans vide ni doublon (par lemme)."""
+def mots_cherches_propres(mots: list[MotCherche], historique: list[Message] | None = None) -> list[MotTrouve]:
+    """Sans vide ni doublon (par lemme). La phrase n'est gardée que si elle est bien
+    dans une réplique du partenaire (casse, ponctuation et accents mis à part) et
+    qu'elle a sa traduction : une phrase inventée ferait une carte fausse."""
+    repliques = [_a_l_oral(m.content) for m in historique or [] if m.role == "assistant"]
     vus, propres = set(), []
     for mot in mots:
         fr, es, lemme = mot.fr.strip(), mot.es.strip(), mot.lemma.strip().casefold()
         if not fr or not es or not lemme or lemme in vus:
             continue
         vus.add(lemme)
-        propres.append(MotCherche(fr=fr, es=es, lemma=lemme))
+        phrase, traduction = mot.sentence.strip(), mot.sentence_fr.strip()
+        oral = _a_l_oral(phrase)
+        if not oral or not traduction or not any(f" {oral} " in f" {r} " for r in repliques):
+            phrase, traduction = None, None
+        propres.append(MotTrouve(fr=fr, es=es, lemma=lemme, sentence=phrase, sentence_fr=traduction))
     return propres
 
 

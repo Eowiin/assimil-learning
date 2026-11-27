@@ -168,15 +168,22 @@ private final class ScriptedService: ConversationService, @unchecked Sendable {
     }
 
     var closings: [Bool] = []
+    var asks: [Bool] = []
     /// Les débuts de réponse que le serveur joint à chaque réplique.
     var hints: [ConversationHint] = []
 
     func turn(audio: Data?, text: String?, history: [ConversationMessage],
-              profile: ConversationProfile?, closing: Bool) async throws -> TurnReply {
+              profile: ConversationProfile?, closing: Bool, ask: Bool) async throws -> TurnReply {
         histories.append(history)
         profiles.append(profile)
         closings.append(closing)
+        asks.append(ask)
         if let error = failNext { failNext = nil; throw error }
+        if ask {
+            return TurnReply(heard: "Comment on dit tomate ?",
+                             reply: PartnerReply(text: "Se dice «tomate». ¿Qué más?", audio: Data("voix-ask".utf8),
+                                                 timings: ConversationTimings(listen: 0, think: 0, speak: 0)))
+        }
         return TurnReply(heard: "He ido al mercado.",
                          reply: PartnerReply(text: "¿Qué has comprado?", audio: Data("voix-1".utf8),
                                              timings: ConversationTimings(listen: 0, think: 0, speak: 0),
@@ -682,5 +689,133 @@ struct ReflexMeterTests {
         #expect(record.latencies == nil)
         record.latencies = [2.5, 6]
         #expect(record.latencies == [2.5, 6])
+    }
+}
+
+// MARK: - « Je ne sais pas le dire » (étape 6c)
+
+@Suite("Conversation : la demande « Je ne sais pas le dire »")
+@MainActor
+struct AskTests {
+
+    private func session(_ service: ScriptedService) -> ConversationSession {
+        let session = ConversationSession(service: service, sound: FakeSound())
+        session.allowsAsk = true
+        return session
+    }
+
+    @Test("Le marqueur ne part que pour une demande ; une conversation gardée avant se lit toujours")
+    func messageWire() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let plain = ConversationMessage(role: .user, content: "Hola")
+        #expect(String(decoding: try encoder.encode(plain), as: UTF8.self) == #"{"content":"Hola","role":"user"}"#)
+        let ask = ConversationMessage(role: .user, content: "Comment on dit couteau ?", ask: true)
+        #expect(String(decoding: try encoder.encode(ask), as: UTF8.self).contains(#""ask":true"#))
+        #expect(try JSONDecoder().decode(ConversationMessage.self, from: encoder.encode(ask)) == ask)
+        let old = try JSONDecoder().decode(ConversationMessage.self, from: Data(#"{"role":"user","content":"Hola"}"#.utf8))
+        #expect(old == plain)
+    }
+
+    @Test("Le tour porte ask=true pour une demande, rien sinon")
+    func formWire() {
+        let asked = ConversationClient.form(audio: nil, text: "couteau", history: [], ask: true, boundary: "b")
+        #expect(String(decoding: asked.body, as: UTF8.self).contains("name=\"ask\"\r\n\r\ntrue"))
+        let plain = ConversationClient.form(audio: nil, text: "Hola", history: [], boundary: "b")
+        #expect(!String(decoding: plain.body, as: UTF8.self).contains("name=\"ask\""))
+    }
+
+    @Test("Une demande part avec ask, se garde dans l'historique, et le micro envoie la suivante en réponse")
+    func askTurn() async {
+        let service = ScriptedService()
+        let session = session(service)
+        await session.open()
+        #expect(session.canAsk)
+        await session.ask()
+        #expect(session.phase == .recording && session.asking)
+        #expect(!session.canAsk)
+        await session.toggleMic()
+        #expect(!session.asking)
+        #expect(session.lines.map(\.ask) == [false, true, false])
+        #expect(session.history[1] == ConversationMessage(role: .user, content: "Comment on dit tomate ?", ask: true))
+        await session.toggleMic()
+        await session.toggleMic()
+        #expect(service.asks == [true, false])
+        // Le serveur relit la demande avec son marqueur.
+        #expect(service.histories[1][1].ask)
+    }
+
+    @Test("Une demande ne compte pas dans les 6 réponses et ne conclut pas la scène")
+    func notCounted() async {
+        let service = ScriptedService()
+        let session = session(service)
+        session.turnLimit = 2
+        session.closesScene = true
+        await session.open()
+        await session.toggleMic(); await session.toggleMic()
+        // La prochaine réponse serait la dernière : une demande ne la consomme pas.
+        await session.ask(); await session.toggleMic()
+        #expect(session.learnerTurns == 1)
+        #expect(!session.reachedLimit)
+        await session.toggleMic(); await session.toggleMic()
+        #expect(service.closings == [false, false, true])
+        #expect(service.asks == [false, true, false])
+        #expect(session.reachedLimit)
+        // La scène finie, plus de demande.
+        #expect(!session.canAsk)
+        await session.ask()
+        #expect(session.phase == .ready)
+    }
+
+    @Test("Sans le réglage (calibrage, conversation libre, au-delà de l'A1), pas de demande")
+    func disabled() async {
+        let service = ScriptedService()
+        let session = ConversationSession(service: service, sound: FakeSound())
+        await session.open()
+        #expect(!session.canAsk)
+        await session.ask()
+        #expect(session.phase == .ready)
+        #expect(service.histories.isEmpty)
+    }
+
+    @Test("Annuler une demande : rien ne part, et le micro suivant est une réponse")
+    func cancelAsk() async {
+        let service = ScriptedService()
+        let session = session(service)
+        await session.open()
+        await session.ask()
+        session.cancelRecording()
+        #expect(!session.asking && session.phase == .ready)
+        await session.toggleMic(); await session.toggleMic()
+        #expect(service.asks == [false])
+    }
+}
+
+@Suite("Rafale : le réflexe et les demandes")
+@MainActor
+struct AskReflexTests {
+
+    @Test("Une demande ne compte pas pour le réflexe ; le temps repart à la fin du mot donné")
+    func askIgnored() async {
+        let sound = FakeSound(), clock = Clock()
+        let session = ConversationSession(service: ScriptedService(), sound: sound, now: { clock.time })
+        session.measuresReflex = true
+        session.allowsAsk = true
+        await session.open()
+        sound.finish?()
+        // On cherche longtemps, puis on demande.
+        clock.advance(8)
+        await session.ask()
+        sound.voice?(clock.time)
+        await session.toggleMic()
+        #expect(session.reflex.latencies.isEmpty)
+        // L'IA donne le mot ; la réponse vient 2 s après la fin de sa réplique.
+        clock.advance(4)
+        sound.finish?()
+        clock.advance(2)
+        await session.toggleMic()
+        sound.voice?(clock.time)
+        await session.toggleMic()
+        #expect(session.reflex.latencies == [2])
     }
 }
